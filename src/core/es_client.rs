@@ -29,9 +29,7 @@ pub struct EsClient {
 }
 
 impl EsClient {
-    pub fn new(config: &ClusterConfig) -> Result<Self> {
-        let password = auth::get_password(&config.name)?.unwrap_or_default();
-
+    fn build_client(config: &ClusterConfig) -> Result<Client> {
         let mut builder = ClientBuilder::new()
             .timeout(Duration::from_secs(30))
             .connect_timeout(Duration::from_secs(10));
@@ -54,7 +52,16 @@ impl EsClient {
             builder = builder.danger_accept_invalid_certs(true);
         }
 
-        let client = builder.build().context("Failed to build HTTP client")?;
+        builder.build().context("Failed to build HTTP client")
+    }
+
+    pub fn new(config: &ClusterConfig) -> Result<Self> {
+        let password = auth::get_password(&config.name)
+            .ok()
+            .flatten()
+            .unwrap_or_default();
+
+        let client = Self::build_client(config)?;
 
         Ok(Self {
             config: config.clone(),
@@ -64,13 +71,22 @@ impl EsClient {
     }
 
     pub fn with_password(config: &ClusterConfig, password: impl Into<String>) -> Result<Self> {
-        let mut s = Self::new(config)?;
-        s.password = password.into();
-        Ok(s)
+        let client = Self::build_client(config)?;
+        Ok(Self {
+            config: config.clone(),
+            client,
+            password: password.into(),
+        })
     }
 
     fn request(&self, method: reqwest::Method, path: &str) -> RequestBuilder {
-        let url = format!("{}{}", self.config.host.trim_end_matches('/'), path);
+        let host = self.config.host.trim();
+        let host = if host.starts_with("http://") || host.starts_with("https://") {
+            host.to_string()
+        } else {
+            format!("http://{}", host)
+        };
+        let url = format!("{}{}", host.trim_end_matches('/'), path);
         self.client
             .request(method, &url)
             .basic_auth(&self.config.username, Some(&self.password))

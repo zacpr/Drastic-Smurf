@@ -32,8 +32,17 @@ impl ClusterManager {
         let mut clients = self.clients.lock().unwrap();
         clients.clear();
         for cluster in clusters.iter() {
-            if let Ok(client) = EsClient::new(cluster) {
-                clients.insert(cluster.name.clone(), client);
+            match EsClient::new(cluster) {
+                Ok(client) => {
+                    clients.insert(cluster.name.clone(), client);
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "Failed to create client for cluster '{}': {}",
+                        cluster.name,
+                        e
+                    );
+                }
             }
         }
         Ok(())
@@ -61,8 +70,17 @@ impl ClusterManager {
         }
         {
             let mut clients = self.clients.lock().unwrap();
-            if let Ok(client) = EsClient::new(&config) {
-                clients.insert(config.name.clone(), client);
+            match EsClient::new(&config) {
+                Ok(client) => {
+                    clients.insert(config.name.clone(), client);
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "Failed to create client for cluster '{}': {}",
+                        config.name,
+                        e
+                    );
+                }
             }
         }
         self.save()?;
@@ -81,8 +99,17 @@ impl ClusterManager {
         {
             let mut clients = self.clients.lock().unwrap();
             clients.remove(old_name);
-            if let Ok(client) = EsClient::new(&config) {
-                clients.insert(config.name.clone(), client);
+            match EsClient::new(&config) {
+                Ok(client) => {
+                    clients.insert(config.name.clone(), client);
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "Failed to create client for cluster '{}': {}",
+                        config.name,
+                        e
+                    );
+                }
             }
         }
         self.save()?;
