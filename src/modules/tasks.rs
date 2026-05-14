@@ -1,5 +1,6 @@
 use egui::Ui;
 use crate::core::es_client::TaskInfo;
+use crate::ui::widgets::human_nanos;
 
 #[derive(Debug, Clone, Default)]
 pub struct TasksState {
@@ -53,7 +54,7 @@ pub fn render_tasks_module(ui: &mut Ui, state: &mut TasksState) {
                             ui.label(&task.action);
                             ui.label(task.description.as_deref().unwrap_or("—"));
                             let millis = task.running_time_in_nanos / 1_000_000;
-                            ui.label(format!("{}ms", millis));
+                            ui.label(human_nanos(task.running_time_in_nanos));
                             ui.label(if task.cancellable { "Yes" } else { "No" });
                             ui.end_row();
                         }

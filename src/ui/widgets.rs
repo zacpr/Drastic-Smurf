@@ -257,3 +257,18 @@ pub fn human_duration(seconds: u64) -> String {
         format!("{}d {}h", seconds / 86400, (seconds % 86400) / 3600)
     }
 }
+
+pub fn human_nanos(nanos: u64) -> String {
+    let micros = nanos / 1000;
+    if micros < 1000 {
+        format!("{}µs", micros)
+    } else {
+        let millis = micros / 1000;
+        if millis < 1000 {
+            format!("{}ms", millis)
+        } else {
+            let secs = millis / 1000;
+            human_duration(secs)
+        }
+    }
+}
