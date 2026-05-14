@@ -130,6 +130,10 @@ impl EsClient {
         self.exec(self.request(reqwest::Method::GET, "/_cat/indices?format=json&bytes=b")).await
     }
 
+    pub async fn cluster_stats(&self) -> Result<ClusterStats, EsError> {
+        self.exec(self.request(reqwest::Method::GET, "/_cluster/stats")).await
+    }
+
     pub async fn execute(&self, method: reqwest::Method, path: &str, body: Option<String>) -> Result<serde_json::Value, EsError> {
         let mut req = self.request(method, path);
         if let Some(b) = body {
@@ -353,4 +357,75 @@ pub struct CatIndex {
     pub status: Option<String>,
     pub pri: Option<String>,
     pub rep: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize, Default)]
+pub struct ClusterStats {
+    #[serde(rename = "cluster_name")]
+    pub cluster_name: String,
+    #[serde(rename = "cluster_uuid")]
+    pub cluster_uuid: String,
+    pub timestamp: i64,
+    pub status: String,
+    pub indices: Option<IndicesStats>,
+    pub nodes: Option<NodesStats>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize, Default)]
+pub struct IndicesStats {
+    pub count: u32,
+    #[serde(rename = "docs")]
+    pub docs: Option<DocStats>,
+    #[serde(rename = "store")]
+    pub store: Option<StoreStats>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct DocStats {
+    pub count: u64,
+    pub deleted: u64,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct StoreStats {
+    #[serde(rename = "size_in_bytes")]
+    pub size_in_bytes: u64,
+}
+
+#[derive(Debug, Clone, serde::Deserialize, Default)]
+pub struct NodesStats {
+    pub count: Option<NodeCount>,
+    #[serde(rename = "jvm")]
+    pub jvm: Option<JvmStats>,
+    #[serde(rename = "fs")]
+    pub fs: Option<FsStats>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct NodeCount {
+    pub total: u32,
+    #[serde(rename = "data")]
+    pub data: u32,
+    #[serde(rename = "coordinating_only")]
+    pub coordinating_only: u32,
+    pub master: u32,
+    pub ingest: u32,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct JvmStats {
+    #[serde(rename = "max_heap_in_bytes")]
+    pub max_heap_in_bytes: u64,
+    #[serde(rename = "used_heap_in_bytes")]
+    pub used_heap_in_bytes: u64,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct FsStats {
+    #[serde(rename = "total_in_bytes")]
+    pub total_in_bytes: u64,
+    #[serde(rename = "free_in_bytes")]
+    pub free_in_bytes: u64,
+    #[serde(rename = "available_in_bytes")]
+    pub available_in_bytes: u64,
 }

@@ -24,6 +24,7 @@ pub enum Tab {
 pub enum RefreshMsg {
     SnapshotResult(String, ClusterSnapshotStatus),
     HealthResult(String, Option<ClusterHealth>),
+    StatsResult(String, Option<crate::core::es_client::ClusterStats>),
     TasksResult(String, Vec<crate::core::es_client::TaskInfo>),
     ConsoleResult(Result<serde_json::Value, String>),
     TestResult(String),
@@ -118,20 +119,32 @@ impl DrasticSmurfApp {
                     });
                 }
 
-                // Tasks refresh
+                // Stats refresh
                 let ctx3 = ctx.clone();
                 let tx3 = self.refresh_tx.clone();
                 let name3 = cluster.name.clone();
                 if let Some(client3) = self.cluster_manager.get_client(&cluster.name) {
                     tokio::spawn(async move {
-                        let tasks = client3.tasks(Some("*reindex*,*snapshot*")).await.ok();
+                        let stats = client3.cluster_stats().await.ok();
+                        let _ = tx3.send(RefreshMsg::StatsResult(name3, stats));
+                        ctx3.request_repaint();
+                    });
+                }
+
+                // Tasks refresh
+                let ctx4 = ctx.clone();
+                let tx4 = self.refresh_tx.clone();
+                let name4 = cluster.name.clone();
+                if let Some(client4) = self.cluster_manager.get_client(&cluster.name) {
+                    tokio::spawn(async move {
+                        let tasks = client4.tasks(Some("*reindex*,*snapshot*")).await.ok();
                         if let Some(t) = tasks {
                             let items: Vec<_> = t.nodes.into_values()
                                 .flat_map(|n| n.tasks.into_values())
                                 .collect();
-                            let _ = tx3.send(RefreshMsg::TasksResult(name3, items));
+                            let _ = tx4.send(RefreshMsg::TasksResult(name4, items));
                         }
-                        ctx3.request_repaint();
+                        ctx4.request_repaint();
                     });
                 }
             }
@@ -176,6 +189,13 @@ impl DrasticSmurfApp {
                         existing.1 = health;
                     } else {
                         self.status_state.health_data.push((name, health));
+                    }
+                }
+                RefreshMsg::StatsResult(name, stats) => {
+                    if let Some(existing) = self.status_state.stats_data.iter_mut().find(|(n, _)| n == &name) {
+                        existing.1 = stats;
+                    } else {
+                        self.status_state.stats_data.push((name, stats));
                     }
                 }
                 RefreshMsg::TasksResult(name, tasks) => {
