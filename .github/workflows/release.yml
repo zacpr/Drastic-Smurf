@@ -9,39 +9,27 @@ permissions:
   contents: write
 
 jobs:
-  create-release:
-    name: Create Release
-    runs-on: ubuntu-latest
-    outputs:
-      upload_url: ${{ steps.create_release.outputs.upload_url }}
-    steps:
-      - uses: actions/checkout@v4
-      - name: Create Release
-        id: create_release
-        uses: softprops/action-gh-release@v1
-        with:
-          draft: true
-          prerelease: false
-          generate_release_notes: true
-
   build-release:
-    name: Build Release
-    needs: create-release
+    name: Build Release (${{ matrix.target }})
     strategy:
       matrix:
         include:
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
             name: drastic-smurf-linux-x86_64
+            asset: drastic-smurf-linux-x86_64.tar.gz
           - target: x86_64-apple-darwin
             os: macos-latest
             name: drastic-smurf-macos-x86_64
+            asset: drastic-smurf-macos-x86_64.tar.gz
           - target: aarch64-apple-darwin
             os: macos-latest
             name: drastic-smurf-macos-aarch64
+            asset: drastic-smurf-macos-aarch64.tar.gz
           - target: x86_64-pc-windows-msvc
             os: windows-latest
             name: drastic-smurf-windows-x86_64.exe
+            asset: drastic-smurf-windows-x86_64.zip
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -65,27 +53,20 @@ jobs:
         run: |
           mkdir -p dist
           cp target/${{ matrix.target }}/release/drastic-smurf dist/${{ matrix.name }}
-          cd dist
-          tar czvf ../${{ matrix.name }}.tar.gz ${{ matrix.name }}
-          cd ..
-          echo "ASSET=${{ matrix.name }}.tar.gz" >> $GITHUB_ENV
+          tar czvf ${{ matrix.asset }} -C dist ${{ matrix.name }}
 
       - name: Package (Windows)
         if: matrix.os == 'windows-latest'
         run: |
           mkdir dist
           copy target\${{ matrix.target }}\release\drastic-smurf.exe dist\${{ matrix.name }}
-          cd dist
-          7z a ..\${{ matrix.name }}.zip ${{ matrix.name }}
-          cd ..
-          echo "ASSET=${{ matrix.name }}.zip" >> $env:GITHUB_ENV
+          7z a ${{ matrix.asset }} .\dist\${{ matrix.name }}
 
       - name: Upload Release Asset
-        uses: actions/upload-release-asset@v1
+        uses: softprops/action-gh-release@v1
+        with:
+          files: ${{ matrix.asset }}
+          draft: true
+          generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: ${{ env.ASSET }}
-          asset_name: ${{ env.ASSET }}
-          asset_content_type: application/octet-stream
