@@ -386,6 +386,9 @@ fn render_cluster_card(
             ui.horizontal(|ui| {
                 ui.add(StatePill::new(state.as_str(), state.color()));
                 ui.label(egui::RichText::new(&info.snapshot).monospace().size(11.0).color(Theme::TEXT_SECONDARY));
+                if ui.small_button("📋").on_hover_text("Copy snapshot name").clicked() {
+                    ui.ctx().copy_text(info.snapshot.clone());
+                }
             });
 
             if let Some(ref stats) = status.snapshot_stats {
