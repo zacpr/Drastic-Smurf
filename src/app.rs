@@ -96,62 +96,78 @@ impl DrasticSmurfApp {
         let clusters = self.cluster_manager.clusters();
 
         for cluster in clusters {
-            if let Some(client) = self.cluster_manager.get_client(&cluster.name) {
-                let ctx1 = ctx.clone();
-                let ctx2 = ctx.clone();
-                let tx1 = self.refresh_tx.clone();
-                let tx2 = self.refresh_tx.clone();
-                let name1 = cluster.name.clone();
-                let name2 = cluster.name.clone();
-                let cluster2 = cluster.clone();
+            let manager = self.cluster_manager.clone();
+            let ctx = ctx.clone();
+            let tx = self.refresh_tx.clone();
+            let name = cluster.name.clone();
 
-                // Snapshot refresh
-                tokio::spawn(async move {
-                    let status = fetch_cluster_snapshot(&client, &cluster2).await;
-                    let _ = tx1.send(RefreshMsg::SnapshotResult(name1, status));
-                    ctx1.request_repaint();
-                });
+            tokio::spawn(async move {
+                // Ensure SSH tunnel is up if configured
+                if let Err(e) = manager.ensure_tunnel(&name).await {
+                    tracing::warn!("SSH tunnel failed for '{}': {}", name, e);
+                }
 
-                // Health refresh
-                if let Some(client2) = self.cluster_manager.get_client(&cluster.name) {
+                if let Some(client) = manager.get_client(&name) {
+                    // Snapshot refresh
+                    let tx2 = tx.clone();
+                    let name2 = name.clone();
+                    let ctx2 = ctx.clone();
+                    let manager2 = manager.clone();
                     tokio::spawn(async move {
-                        let health = client2.cluster_health().await.ok();
-                        let _ = tx2.send(RefreshMsg::HealthResult(name2.clone(), health));
+                        let config = manager2.clusters().into_iter().find(|c| c.name == name2);
+                        if let Some(config) = config {
+                            let status = fetch_cluster_snapshot(&client, &config).await;
+                            let _ = tx2.send(RefreshMsg::SnapshotResult(name2, status));
+                        }
                         ctx2.request_repaint();
                     });
-                }
 
-                // Stats refresh
-                let ctx3 = ctx.clone();
-                let tx3 = self.refresh_tx.clone();
-                let name3 = cluster.name.clone();
-                if let Some(client3) = self.cluster_manager.get_client(&cluster.name) {
+                    // Health refresh
+                    let tx3 = tx.clone();
+                    let name3 = name.clone();
+                    let ctx3 = ctx.clone();
+                    let manager3 = manager.clone();
                     tokio::spawn(async move {
-                        let stats = client3.cluster_stats().await.ok();
-                        let _ = tx3.send(RefreshMsg::StatsResult(name3, stats));
+                        if let Some(client) = manager3.get_client(&name3) {
+                            let health = client.cluster_health().await.ok();
+                            let _ = tx3.send(RefreshMsg::HealthResult(name3, health));
+                        }
                         ctx3.request_repaint();
                     });
-                }
 
-                // Tasks refresh
-                let ctx4 = ctx.clone();
-                let tx4 = self.refresh_tx.clone();
-                let name4 = cluster.name.clone();
-                if let Some(client4) = self.cluster_manager.get_client(&cluster.name) {
+                    // Stats refresh
+                    let tx4 = tx.clone();
+                    let name4 = name.clone();
+                    let ctx4 = ctx.clone();
+                    let manager4 = manager.clone();
                     tokio::spawn(async move {
-                        let tasks = client4.tasks(Some("*reindex*,*snapshot*")).await.ok();
-                        if let Some(t) = tasks {
-                            let items: Vec<_> = t
-                                .nodes
-                                .into_values()
-                                .flat_map(|n| n.tasks.into_values())
-                                .collect();
-                            let _ = tx4.send(RefreshMsg::TasksResult(name4, items));
+                        if let Some(client) = manager4.get_client(&name4) {
+                            let stats = client.cluster_stats().await.ok();
+                            let _ = tx4.send(RefreshMsg::StatsResult(name4, stats));
                         }
                         ctx4.request_repaint();
                     });
+
+                    // Tasks refresh
+                    let name5 = name.clone();
+                    let ctx5 = ctx.clone();
+                    let manager5 = manager.clone();
+                    tokio::spawn(async move {
+                        if let Some(client) = manager5.get_client(&name5) {
+                            let tasks = client.tasks(Some("*reindex*,*snapshot*")).await.ok();
+                            if let Some(t) = tasks {
+                                let items: Vec<_> = t
+                                    .nodes
+                                    .into_values()
+                                    .flat_map(|n| n.tasks.into_values())
+                                    .collect();
+                                let _ = tx.send(RefreshMsg::TasksResult(name5, items));
+                            }
+                        }
+                        ctx5.request_repaint();
+                    });
                 }
-            }
+            });
         }
 
         self.last_refresh = Some(Instant::now());
@@ -457,6 +473,27 @@ impl DrasticSmurfApp {
                     ui.text_edit_singleline(&mut self.new_cluster.slm_policy);
                 });
                 ui.checkbox(&mut self.new_cluster.verify_ssl, "Verify SSL");
+
+                ui.add_space(8.0);
+                ui.checkbox(&mut self.new_cluster.ssh_tunnel, "SSH Tunnel");
+                if self.new_cluster.ssh_tunnel {
+                    ui.horizontal(|ui| {
+                        ui.label("SSH Host:");
+                        ui.text_edit_singleline(&mut self.new_cluster.ssh_host);
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("SSH User:");
+                        ui.text_edit_singleline(&mut self.new_cluster.ssh_user);
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("SSH Port:");
+                        ui.add(
+                            egui::DragValue::new(&mut self.new_cluster.ssh_port)
+                                .speed(1)
+                                .range(1..=65535),
+                        );
+                    });
+                }
 
                 ui.add_space(8.0);
                 ui.horizontal(|ui| {

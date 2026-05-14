@@ -28,10 +28,20 @@ pub struct ClusterConfig {
     pub verify_ssl: bool,
     #[serde(default)]
     pub ca_cert: CaCert,
+    #[serde(default)]
+    pub ssh_tunnel: bool,
+    pub ssh_host: String,
+    pub ssh_user: String,
+    #[serde(default = "default_ssh_port")]
+    pub ssh_port: u16,
 }
 
 fn default_verify_ssl() -> bool {
     true
+}
+
+fn default_ssh_port() -> u16 {
+    22
 }
 
 impl Default for ClusterConfig {
@@ -44,6 +54,10 @@ impl Default for ClusterConfig {
             slm_policy: String::new(),
             verify_ssl: true,
             ca_cert: CaCert::default(),
+            ssh_tunnel: false,
+            ssh_host: String::new(),
+            ssh_user: String::new(),
+            ssh_port: 22,
         }
     }
 }

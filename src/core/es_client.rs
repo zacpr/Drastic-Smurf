@@ -26,6 +26,7 @@ pub struct EsClient {
     config: ClusterConfig,
     client: Client,
     password: String,
+    tunnel_url: Option<String>,
 }
 
 impl EsClient {
@@ -67,6 +68,7 @@ impl EsClient {
             config: config.clone(),
             client,
             password,
+            tunnel_url: None,
         })
     }
 
@@ -76,11 +78,20 @@ impl EsClient {
             config: config.clone(),
             client,
             password: password.into(),
+            tunnel_url: None,
         })
     }
 
+    pub fn with_tunnel(mut self, tunnel_url: impl Into<String>) -> Self {
+        self.tunnel_url = Some(tunnel_url.into());
+        self
+    }
+
     fn request(&self, method: reqwest::Method, path: &str) -> RequestBuilder {
-        let host = self.config.host.trim();
+        let host = self
+            .tunnel_url
+            .as_deref()
+            .unwrap_or(self.config.host.trim());
         let host = if host.starts_with("http://") || host.starts_with("https://") {
             host.to_string()
         } else {
