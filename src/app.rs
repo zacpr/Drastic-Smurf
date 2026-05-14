@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 use std::sync::mpsc::{channel, Receiver, Sender};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use eframe::egui;
 
 use crate::core::cluster_manager::ClusterManager;
-use crate::core::config::{AppConfig, ClusterConfig};
+use crate::core::config::ClusterConfig;
 use crate::core::es_client::{ClusterHealth, EsClient};
 use crate::modules::console::{render_console_module, ConsoleState};
 use crate::modules::snapshot::{fetch_cluster_snapshot, render_snapshot_module, ClusterSnapshotStatus, SnapshotHistory};
@@ -25,6 +25,8 @@ pub enum RefreshMsg {
     SnapshotResult(String, ClusterSnapshotStatus),
     HealthResult(String, Option<ClusterHealth>),
     TasksResult(String, Vec<crate::core::es_client::TaskInfo>),
+    ConsoleResult(Result<serde_json::Value, String>),
+    TestResult(String),
 }
 
 pub struct DrasticSmurfApp {
@@ -46,6 +48,7 @@ pub struct DrasticSmurfApp {
     pub refresh_tx: Sender<RefreshMsg>,
     pub refresh_rx: Receiver<RefreshMsg>,
     pub pending_delete: Option<String>,
+    pub console_send: Option<(String, String, String, Option<String>)>,
 }
 
 impl Default for DrasticSmurfApp {
@@ -55,7 +58,7 @@ impl Default for DrasticSmurfApp {
         let _ = manager.load();
 
         let clusters = manager.clusters();
-        let cluster_names: Vec<String> = clusters.iter().map(|c| c.name.clone()).collect();
+        let _cluster_names: Vec<String> = clusters.iter().map(|c| c.name.clone()).collect();
 
         Self {
             cluster_manager: manager,
@@ -76,6 +79,7 @@ impl Default for DrasticSmurfApp {
             refresh_tx: tx,
             refresh_rx: rx,
             pending_delete: None,
+            console_send: None,
         }
     }
 }
@@ -109,8 +113,25 @@ impl DrasticSmurfApp {
                 if let Some(client2) = self.cluster_manager.get_client(&cluster.name) {
                     tokio::spawn(async move {
                         let health = client2.cluster_health().await.ok();
-                        let _ = tx2.send(RefreshMsg::HealthResult(name2, health));
+                        let _ = tx2.send(RefreshMsg::HealthResult(name2.clone(), health));
                         ctx2.request_repaint();
+                    });
+                }
+
+                // Tasks refresh
+                let ctx3 = ctx.clone();
+                let tx3 = self.refresh_tx.clone();
+                let name3 = cluster.name.clone();
+                if let Some(client3) = self.cluster_manager.get_client(&cluster.name) {
+                    tokio::spawn(async move {
+                        let tasks = client3.tasks(Some("*reindex*,*snapshot*")).await.ok();
+                        if let Some(t) = tasks {
+                            let items: Vec<_> = t.nodes.into_values()
+                                .flat_map(|n| n.tasks.into_values())
+                                .collect();
+                            let _ = tx3.send(RefreshMsg::TasksResult(name3, items));
+                        }
+                        ctx3.request_repaint();
                     });
                 }
             }
@@ -158,9 +179,20 @@ impl DrasticSmurfApp {
                     }
                 }
                 RefreshMsg::TasksResult(name, tasks) => {
+                    self.tasks_state.tasks.retain(|(n, _)| n != &name);
                     for task in tasks {
                         self.tasks_state.tasks.push((name.clone(), task));
                     }
+                }
+                RefreshMsg::ConsoleResult(result) => {
+                    self.console_state.response = match result {
+                        Ok(val) => serde_json::to_string_pretty(&val).unwrap_or_else(|e| e.to_string()),
+                        Err(e) => format!("Error: {}", e),
+                    };
+                    self.console_state.is_loading = false;
+                }
+                RefreshMsg::TestResult(msg) => {
+                    self.test_result = Some(msg);
                 }
             }
         }
@@ -168,7 +200,7 @@ impl DrasticSmurfApp {
 
     fn render_sidebar(&mut self, ui: &mut egui::Ui) {
         let sidebar_width = 220.0;
-        let frame = egui::Frame::none()
+        let frame = egui::Frame::new()
             .fill(Theme::BG_DARKEST)
             .inner_margin(egui::Vec2::new(12.0, 16.0));
 
@@ -212,7 +244,7 @@ impl DrasticSmurfApp {
             ui.checkbox(&mut self.auto_refresh, "Auto Refresh");
             ui.horizontal(|ui| {
                 ui.label("Interval:");
-                ui.add(egui::DragValue::new(&mut self.refresh_interval_secs).speed(1).clamp_range(5..=300));
+                ui.add(egui::DragValue::new(&mut self.refresh_interval_secs).speed(1).range(5..=300));
                 ui.label("s");
             });
 
@@ -276,7 +308,7 @@ impl DrasticSmurfApp {
                 if self.console_state.selected_cluster.is_empty() && !names.is_empty() {
                     self.console_state.selected_cluster = names[0].clone();
                 }
-                render_console_module(ui, &mut self.console_state, &names);
+                render_console_module(ui, &mut self.console_state, &names, &mut self.console_send);
             }
         }
     }
@@ -333,14 +365,13 @@ impl DrasticSmurfApp {
                             Ok(c) => {
                                 let ctx = ctx.clone();
                                 let tx = self.refresh_tx.clone();
-                                let name = self.new_cluster.name.clone();
                                 tokio::spawn(async move {
                                     let result = c.cluster_health().await;
                                     let msg = match result {
                                         Ok(h) => format!("Connected! Cluster: {}, Status: {}", h.cluster_name, h.status),
                                         Err(e) => format!("Failed: {}", e),
                                     };
-                                    let _ = tx.send(RefreshMsg::HealthResult(name, None));
+                                    let _ = tx.send(RefreshMsg::TestResult(msg));
                                     ctx.request_repaint();
                                 });
                                 self.test_result = Some("Testing...".to_string());
@@ -410,6 +441,28 @@ impl eframe::App for DrasticSmurfApp {
         // Process async results
         self.process_refresh_results();
 
+        // Handle console send
+        if let Some((cluster_name, method, path, body)) = self.console_send.take() {
+            if let Some(client) = self.cluster_manager.get_client(&cluster_name) {
+                let tx = self.refresh_tx.clone();
+                let ctx = ctx.clone();
+                tokio::spawn(async move {
+                    let method = match method.as_str() {
+                        "GET" => reqwest::Method::GET,
+                        "POST" => reqwest::Method::POST,
+                        "PUT" => reqwest::Method::PUT,
+                        "DELETE" => reqwest::Method::DELETE,
+                        "HEAD" => reqwest::Method::HEAD,
+                        _ => reqwest::Method::GET,
+                    };
+                    let result = client.execute(method, &path, body).await
+                        .map_err(|e| e.to_string());
+                    let _ = tx.send(RefreshMsg::ConsoleResult(result));
+                    ctx.request_repaint();
+                });
+            }
+        }
+
         // Auto refresh
         if self.auto_refresh {
             let should_refresh = self.last_refresh.map_or(true, |last| {
@@ -422,7 +475,7 @@ impl eframe::App for DrasticSmurfApp {
 
         // Main layout
         egui::CentralPanel::default()
-            .frame(egui::Frame::none().fill(Theme::BG_DARK))
+            .frame(egui::Frame::new().fill(Theme::BG_DARK))
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
                     // Sidebar

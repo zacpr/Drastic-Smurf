@@ -1,10 +1,10 @@
 use std::collections::VecDeque;
-use std::sync::{Arc, Mutex};
+
 use std::time::{Duration, Instant};
 
-use egui::{Rounding, Vec2};
+use egui::{CornerRadius, Vec2};
 use crate::core::config::ClusterConfig;
-use crate::core::es_client::{ClusterHealth, EsClient, EsError, SnapshotInfo, SnapshotStatusInfo};
+use crate::core::es_client::{EsClient, SnapshotInfo};
 use crate::ui::theme::Theme;
 use crate::ui::widgets::{human_bytes, human_duration, human_speed, ConnectionDot, GradientProgressBar, MiniSparkline, StatePill};
 
@@ -353,9 +353,9 @@ fn render_cluster_card(
     on_delete: &mut Option<String>,
 ) {
     let card_width = 380.0;
-    let frame = egui::Frame::none()
+    let frame = egui::Frame::new()
         .fill(Theme::BG_CARD)
-        .rounding(Theme::CARD_ROUNDING)
+        .corner_radius(Theme::CARD_ROUNDING)
         .inner_margin(Theme::CARD_PADDING);
 
     frame.show(ui, |ui| {
@@ -449,9 +449,9 @@ fn render_cluster_card(
             // SLM info
             if status.slm_last_run.is_some() || status.slm_next_run.is_some() {
                 ui.add_space(8.0);
-                let slm_frame = egui::Frame::none()
+                let slm_frame = egui::Frame::new()
                     .fill(Theme::BG_DARK)
-                    .rounding(Rounding::same(6))
+                    .corner_radius(CornerRadius::same(6))
                     .inner_margin(Vec2::new(8.0, 6.0));
                 slm_frame.show(ui, |ui| {
                     ui.horizontal(|ui| {

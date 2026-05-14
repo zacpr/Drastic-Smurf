@@ -18,9 +18,9 @@ pub fn render_tasks_module(ui: &mut Ui, state: &mut TasksState) {
     ui.add_space(8.0);
 
     egui::ScrollArea::vertical().show(ui, |ui| {
-        egui::Frame::none()
+        egui::Frame::new()
             .fill(crate::ui::theme::Theme::BG_CARD)
-            .rounding(crate::ui::theme::Theme::CARD_ROUNDING)
+            .corner_radius(crate::ui::theme::Theme::CARD_ROUNDING)
             .inner_margin(crate::ui::theme::Theme::CARD_PADDING)
             .show(ui, |ui| {
                 if state.tasks.is_empty() {

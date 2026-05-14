@@ -12,9 +12,9 @@ pub fn render_status_module(ui: &mut Ui, state: &StatusState) {
 
     egui::ScrollArea::vertical().show(ui, |ui| {
         for (name, health) in &state.health_data {
-            let frame = egui::Frame::none()
+            let frame = egui::Frame::new()
                 .fill(crate::ui::theme::Theme::BG_CARD)
-                .rounding(crate::ui::theme::Theme::CARD_ROUNDING)
+                .corner_radius(crate::ui::theme::Theme::CARD_ROUNDING)
                 .inner_margin(crate::ui::theme::Theme::CARD_PADDING);
             
             frame.show(ui, |ui| {

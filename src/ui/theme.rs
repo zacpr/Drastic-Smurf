@@ -1,4 +1,4 @@
-use egui::{Color32, Rounding, Stroke, Vec2};
+use egui::{Color32, CornerRadius, Vec2};
 
 pub struct Theme;
 
@@ -37,9 +37,9 @@ impl Theme {
     pub const PROGRESS_END: Color32 = Color32::from_rgb(59, 130, 246);    // blue
 
     // Spacing
-    pub const CARD_ROUNDING: Rounding = Rounding::same(12);
-    pub const BUTTON_ROUNDING: Rounding = Rounding::same(8);
-    pub const INPUT_ROUNDING: Rounding = Rounding::same(6);
+    pub const CARD_ROUNDING: CornerRadius = CornerRadius::same(12);
+    pub const BUTTON_ROUNDING: CornerRadius = CornerRadius::same(8);
+    pub const INPUT_ROUNDING: CornerRadius = CornerRadius::same(6);
     pub const CARD_PADDING: Vec2 = Vec2::new(16.0, 16.0);
     pub const SECTION_SPACING: f32 = 12.0;
     pub const ITEM_SPACING: f32 = 8.0;

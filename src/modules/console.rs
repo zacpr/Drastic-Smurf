@@ -7,7 +7,8 @@ pub struct ConsoleState {
     pub path: String,
     pub body: String,
     pub response: String,
-    pub history: Vec<(String, String, String)>,
+    pub history: Vec<(String, String, String, String)>,
+    pub is_loading: bool,
 }
 
 impl ConsoleState {
@@ -20,7 +21,12 @@ impl ConsoleState {
     }
 }
 
-pub fn render_console_module(ui: &mut Ui, state: &mut ConsoleState, clusters: &[String]) {
+pub fn render_console_module(
+    ui: &mut Ui,
+    state: &mut ConsoleState,
+    clusters: &[String],
+    on_send: &mut Option<(String, String, String, Option<String>)>,
+) {
     ui.heading("Elastic Console");
     ui.add_space(16.0);
 
@@ -29,14 +35,14 @@ pub fn render_console_module(ui: &mut Ui, state: &mut ConsoleState, clusters: &[
         return;
     }
 
-    egui::Frame::none()
+    egui::Frame::new()
         .fill(crate::ui::theme::Theme::BG_CARD)
-        .rounding(crate::ui::theme::Theme::CARD_ROUNDING)
+        .corner_radius(crate::ui::theme::Theme::CARD_ROUNDING)
         .inner_margin(crate::ui::theme::Theme::CARD_PADDING)
         .show(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.label("Cluster:");
-                egui::ComboBox::from_id_source("console_cluster")
+                egui::ComboBox::from_id_salt("console_cluster")
                     .selected_text(&state.selected_cluster)
                     .show_ui(ui, |ui| {
                         for cluster in clusters {
@@ -45,7 +51,7 @@ pub fn render_console_module(ui: &mut Ui, state: &mut ConsoleState, clusters: &[
                     });
                 
                 ui.label("Method:");
-                egui::ComboBox::from_id_source("console_method")
+                egui::ComboBox::from_id_salt("console_method")
                     .selected_text(&state.method)
                     .show_ui(ui, |ui| {
                         for m in ["GET", "POST", "PUT", "DELETE", "HEAD"] {
@@ -58,9 +64,29 @@ pub fn render_console_module(ui: &mut Ui, state: &mut ConsoleState, clusters: &[
             ui.horizontal(|ui| {
                 ui.label("Path:");
                 ui.text_edit_singleline(&mut state.path);
-                if ui.button("Send").clicked() {
-                    state.history.push((state.method.clone(), state.path.clone(), state.body.clone()));
-                    state.response = "Request sent... (not yet implemented)".to_string();
+                let button = ui.button("Send");
+                if state.is_loading {
+                    ui.spinner();
+                }
+                if button.clicked() && !state.is_loading {
+                    state.is_loading = true;
+                    state.history.push((
+                        state.selected_cluster.clone(),
+                        state.method.clone(),
+                        state.path.clone(),
+                        state.body.clone(),
+                    ));
+                    let body = if state.body.trim().is_empty() {
+                        None
+                    } else {
+                        Some(state.body.clone())
+                    };
+                    *on_send = Some((
+                        state.selected_cluster.clone(),
+                        state.method.clone(),
+                        state.path.clone(),
+                        body,
+                    ));
                 }
             });
 
@@ -72,7 +98,12 @@ pub fn render_console_module(ui: &mut Ui, state: &mut ConsoleState, clusters: &[
             );
 
             ui.add_space(8.0);
-            ui.label("Response:");
+            ui.horizontal(|ui| {
+                ui.label("Response:");
+                if ui.small_button("Clear").clicked() {
+                    state.response.clear();
+                }
+            });
             ui.add_sized(
                 [ui.available_width(), 200.0],
                 egui::TextEdit::multiline(&mut state.response).code_editor(),

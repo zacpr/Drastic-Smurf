@@ -1,4 +1,4 @@
-use egui::{Color32, Mesh, Pos2, Rect, Rounding, Shape, Stroke, Ui, Vec2, Widget};
+use egui::{Color32, CornerRadius, Mesh, Pos2, Rect, Shape, Stroke, Ui, Vec2, Widget};
 
 use crate::ui::theme::Theme;
 
@@ -55,7 +55,7 @@ impl Widget for GradientProgressBar {
         let (rect, response) = ui.allocate_exact_size(Vec2::new(self.width, self.height), egui::Sense::hover());
 
         if ui.is_rect_visible(rect) {
-            let rounding = Rounding::same((self.height / 2.0).round() as u8);
+            let rounding = CornerRadius::same((self.height / 2.0).round() as u8);
             let track_rect = rect;
             ui.painter().rect_filled(track_rect, rounding, Theme::BG_INPUT);
 
@@ -143,16 +143,13 @@ impl StatePill {
 
 impl Widget for StatePill {
     fn ui(self, ui: &mut Ui) -> egui::Response {
-        let text = egui::RichText::new(&self.text)
-            .color(Theme::TEXT_PRIMARY)
-            .size(11.0);
         let galley = ui.painter().layout_no_wrap(self.text.clone(), egui::FontId::default(), Theme::TEXT_PRIMARY);
         let padding = Vec2::new(8.0, 4.0);
         let desired_size = galley.size() + padding * 2.0;
         let (rect, response) = ui.allocate_exact_size(desired_size, egui::Sense::hover());
 
         if ui.is_rect_visible(rect) {
-            ui.painter().rect_filled(rect, Rounding::same(4), self.color);
+            ui.painter().rect_filled(rect, CornerRadius::same(4), self.color);
             let text_pos = rect.min + padding;
             ui.painter().galley(text_pos, galley, Theme::TEXT_PRIMARY);
         }

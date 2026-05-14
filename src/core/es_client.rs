@@ -129,6 +129,14 @@ impl EsClient {
     pub async fn cat_indices(&self) -> Result<Vec<CatIndex>, EsError> {
         self.exec(self.request(reqwest::Method::GET, "/_cat/indices?format=json&bytes=b")).await
     }
+
+    pub async fn execute(&self, method: reqwest::Method, path: &str, body: Option<String>) -> Result<serde_json::Value, EsError> {
+        let mut req = self.request(method, path);
+        if let Some(b) = body {
+            req = req.body(b);
+        }
+        self.exec(req).await
+    }
 }
 
 // --- Response Models ---
