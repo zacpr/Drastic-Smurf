@@ -28,7 +28,7 @@ impl ClusterManager {
         let config = crate::core::config::AppConfig::load()?;
         let mut clusters = self.clusters.lock().unwrap();
         *clusters = config.clusters;
-        
+
         let mut clients = self.clients.lock().unwrap();
         clients.clear();
         for cluster in clusters.iter() {

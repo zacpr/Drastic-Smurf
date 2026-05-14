@@ -2,11 +2,14 @@ use std::collections::VecDeque;
 
 use std::time::{Duration, Instant};
 
-use egui::{CornerRadius, Vec2};
 use crate::core::config::ClusterConfig;
 use crate::core::es_client::{EsClient, SnapshotInfo};
 use crate::ui::theme::Theme;
-use crate::ui::widgets::{human_bytes, human_duration, human_speed, ConnectionDot, GradientProgressBar, MiniSparkline, StatePill};
+use crate::ui::widgets::{
+    ConnectionDot, GradientProgressBar, MiniSparkline, StatePill, human_bytes, human_duration,
+    human_speed,
+};
+use egui::{CornerRadius, Vec2};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SnapshotState {
@@ -193,9 +196,22 @@ impl SnapshotHistory {
         if self.speed_samples.is_empty() {
             return (0.0, 0.0, 0.0);
         }
-        let avg = self.speed_samples.iter().map(|s| s.bytes_per_sec).sum::<f64>() / self.speed_samples.len() as f64;
-        let min = self.speed_samples.iter().map(|s| s.bytes_per_sec).fold(f64::INFINITY, f64::min);
-        let max = self.speed_samples.iter().map(|s| s.bytes_per_sec).fold(f64::NEG_INFINITY, f64::max);
+        let avg = self
+            .speed_samples
+            .iter()
+            .map(|s| s.bytes_per_sec)
+            .sum::<f64>()
+            / self.speed_samples.len() as f64;
+        let min = self
+            .speed_samples
+            .iter()
+            .map(|s| s.bytes_per_sec)
+            .fold(f64::INFINITY, f64::min);
+        let max = self
+            .speed_samples
+            .iter()
+            .map(|s| s.bytes_per_sec)
+            .fold(f64::NEG_INFINITY, f64::max);
         (avg, min, max)
     }
 
@@ -204,7 +220,10 @@ impl SnapshotHistory {
     }
 }
 
-pub async fn fetch_cluster_snapshot(client: &EsClient, config: &ClusterConfig) -> ClusterSnapshotStatus {
+pub async fn fetch_cluster_snapshot(
+    client: &EsClient,
+    config: &ClusterConfig,
+) -> ClusterSnapshotStatus {
     let mut status = ClusterSnapshotStatus {
         config: config.clone(),
         reachable: false,
@@ -248,10 +267,12 @@ pub async fn fetch_cluster_snapshot(client: &EsClient, config: &ClusterConfig) -
                     end_time_in_millis: None,
                     duration_in_millis: None,
                     indices: None,
-                    shards: info.shards_stats.as_ref().map(|s| crate::core::es_client::ShardStats {
-                        total: s.total,
-                        failed: s.failed,
-                        successful: s.done,
+                    shards: info.shards_stats.as_ref().map(|s| {
+                        crate::core::es_client::ShardStats {
+                            total: s.total,
+                            failed: s.failed,
+                            successful: s.done,
+                        }
                     }),
                     failures: None,
                 });
@@ -269,7 +290,11 @@ pub async fn fetch_cluster_snapshot(client: &EsClient, config: &ClusterConfig) -
                     Ok(detailed) if !detailed.snapshots.is_empty() => {
                         let detail = &detailed.snapshots[0];
                         if let Some(stats) = &detail.stats {
-                            let total_bytes = stats.incremental.as_ref().map(|i| i.size_in_bytes).unwrap_or(stats.total_size_in_bytes);
+                            let total_bytes = stats
+                                .incremental
+                                .as_ref()
+                                .map(|i| i.size_in_bytes)
+                                .unwrap_or(stats.total_size_in_bytes);
                             let processed_bytes = stats.processed_size_in_bytes;
                             let total_files = stats.number_of_files;
                             let processed_files = stats.processed_files;
@@ -291,10 +316,21 @@ pub async fn fetch_cluster_snapshot(client: &EsClient, config: &ClusterConfig) -
                                 total_bytes,
                                 processed_files,
                                 total_files,
-                                start_time: info.start_time_in_millis.map(|ms| Instant::now() - Duration::from_millis(ms as u64)),
-                                has_byte_stats: stats.incremental.is_some() || stats.total_size_in_bytes > 0,
-                                processed_shards: detail.shards_stats.as_ref().map(|s| s.done).unwrap_or(0),
-                                total_shards: detail.shards_stats.as_ref().map(|s| s.total).unwrap_or(0),
+                                start_time: info
+                                    .start_time_in_millis
+                                    .map(|ms| Instant::now() - Duration::from_millis(ms as u64)),
+                                has_byte_stats: stats.incremental.is_some()
+                                    || stats.total_size_in_bytes > 0,
+                                processed_shards: detail
+                                    .shards_stats
+                                    .as_ref()
+                                    .map(|s| s.done)
+                                    .unwrap_or(0),
+                                total_shards: detail
+                                    .shards_stats
+                                    .as_ref()
+                                    .map(|s| s.total)
+                                    .unwrap_or(0),
                                 ..Default::default()
                             });
                         }
@@ -315,7 +351,12 @@ pub async fn fetch_cluster_snapshot(client: &EsClient, config: &ClusterConfig) -
                 if let Some((_, detail)) = resp.policies.into_iter().next() {
                     status.slm_last_run = detail.last_success.and_then(|s| s.time);
                     status.slm_next_run = detail.next_execution;
-                    status.slm_in_progress = detail.stats.as_ref().and_then(|s| s.total_snapshots_taken).unwrap_or(0) > 0;
+                    status.slm_in_progress = detail
+                        .stats
+                        .as_ref()
+                        .and_then(|s| s.total_snapshots_taken)
+                        .unwrap_or(0)
+                        > 0;
                 }
             }
             _ => {}
@@ -365,7 +406,12 @@ fn render_cluster_card(
         // Header
         ui.horizontal(|ui| {
             ui.add(ConnectionDot::new(status.reachable).size(10.0));
-            ui.label(egui::RichText::new(&status.config.name).strong().size(16.0).color(Theme::TEXT_PRIMARY));
+            ui.label(
+                egui::RichText::new(&status.config.name)
+                    .strong()
+                    .size(16.0)
+                    .color(Theme::TEXT_PRIMARY),
+            );
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.small_button("🗑").clicked() {
                     *on_delete = Some(status.config.name.clone());
@@ -376,7 +422,11 @@ fn render_cluster_card(
             });
         });
 
-        ui.label(egui::RichText::new(&status.config.host).size(11.0).color(Theme::TEXT_MUTED));
+        ui.label(
+            egui::RichText::new(&status.config.host)
+                .size(11.0)
+                .color(Theme::TEXT_MUTED),
+        );
         ui.add_space(8.0);
 
         if let Some(ref err) = status.error_message {
@@ -385,18 +435,33 @@ fn render_cluster_card(
             let state = SnapshotState::from_str(&info.state);
             ui.horizontal(|ui| {
                 ui.add(StatePill::new(state.as_str(), state.color()));
-                ui.label(egui::RichText::new(&info.snapshot).monospace().size(11.0).color(Theme::TEXT_SECONDARY));
-                if ui.small_button("📋").on_hover_text("Copy snapshot name").clicked() {
+                ui.label(
+                    egui::RichText::new(&info.snapshot)
+                        .monospace()
+                        .size(11.0)
+                        .color(Theme::TEXT_SECONDARY),
+                );
+                if ui
+                    .small_button("📋")
+                    .on_hover_text("Copy snapshot name")
+                    .clicked()
+                {
                     ui.ctx().copy_text(info.snapshot.clone());
                 }
             });
 
             if let Some(ref stats) = status.snapshot_stats {
                 ui.add_space(8.0);
-                ui.add(GradientProgressBar::new(stats.progress_pct / 100.0).width(card_width - 32.0));
+                ui.add(
+                    GradientProgressBar::new(stats.progress_pct / 100.0).width(card_width - 32.0),
+                );
                 ui.add_space(4.0);
                 ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new(format!("{:.1}%", stats.progress_pct)).size(11.0).color(Theme::TEXT_SECONDARY));
+                    ui.label(
+                        egui::RichText::new(format!("{:.1}%", stats.progress_pct))
+                            .size(11.0)
+                            .color(Theme::TEXT_SECONDARY),
+                    );
                 });
 
                 ui.add_space(8.0);
@@ -404,35 +469,101 @@ fn render_cluster_card(
                     .num_columns(2)
                     .spacing([40.0, 4.0])
                     .show(ui, |ui| {
-                        ui.label(egui::RichText::new("Data:").color(Theme::TEXT_MUTED).size(11.0));
-                        ui.label(egui::RichText::new(format!("{} / {}", stats.processed_human(), stats.total_human())).color(Theme::TEXT_PRIMARY).size(11.0));
+                        ui.label(
+                            egui::RichText::new("Data:")
+                                .color(Theme::TEXT_MUTED)
+                                .size(11.0),
+                        );
+                        ui.label(
+                            egui::RichText::new(format!(
+                                "{} / {}",
+                                stats.processed_human(),
+                                stats.total_human()
+                            ))
+                            .color(Theme::TEXT_PRIMARY)
+                            .size(11.0),
+                        );
                         ui.end_row();
 
-                        ui.label(egui::RichText::new("Files:").color(Theme::TEXT_MUTED).size(11.0));
-                        ui.label(egui::RichText::new(format!("{} / {}", stats.processed_files, stats.total_files)).color(Theme::TEXT_PRIMARY).size(11.0));
+                        ui.label(
+                            egui::RichText::new("Files:")
+                                .color(Theme::TEXT_MUTED)
+                                .size(11.0),
+                        );
+                        ui.label(
+                            egui::RichText::new(format!(
+                                "{} / {}",
+                                stats.processed_files, stats.total_files
+                            ))
+                            .color(Theme::TEXT_PRIMARY)
+                            .size(11.0),
+                        );
                         ui.end_row();
 
                         if stats.total_shards > 0 {
-                            ui.label(egui::RichText::new("Shards:").color(Theme::TEXT_MUTED).size(11.0));
-                            ui.label(egui::RichText::new(format!("{} / {}", stats.processed_shards, stats.total_shards)).color(Theme::TEXT_PRIMARY).size(11.0));
+                            ui.label(
+                                egui::RichText::new("Shards:")
+                                    .color(Theme::TEXT_MUTED)
+                                    .size(11.0),
+                            );
+                            ui.label(
+                                egui::RichText::new(format!(
+                                    "{} / {}",
+                                    stats.processed_shards, stats.total_shards
+                                ))
+                                .color(Theme::TEXT_PRIMARY)
+                                .size(11.0),
+                            );
                             ui.end_row();
                         }
 
-                        ui.label(egui::RichText::new("ETA:").color(Theme::TEXT_MUTED).size(11.0));
-                        ui.label(egui::RichText::new(stats.eta_human()).color(Theme::TEXT_PRIMARY).size(11.0));
+                        ui.label(
+                            egui::RichText::new("ETA:")
+                                .color(Theme::TEXT_MUTED)
+                                .size(11.0),
+                        );
+                        ui.label(
+                            egui::RichText::new(stats.eta_human())
+                                .color(Theme::TEXT_PRIMARY)
+                                .size(11.0),
+                        );
                         ui.end_row();
 
-                        ui.label(egui::RichText::new("Speed:").color(Theme::TEXT_MUTED).size(11.0));
-                        ui.label(egui::RichText::new(stats.current_speed_human()).color(Theme::TEXT_PRIMARY).size(11.0));
+                        ui.label(
+                            egui::RichText::new("Speed:")
+                                .color(Theme::TEXT_MUTED)
+                                .size(11.0),
+                        );
+                        ui.label(
+                            egui::RichText::new(stats.current_speed_human())
+                                .color(Theme::TEXT_PRIMARY)
+                                .size(11.0),
+                        );
                         ui.end_row();
 
-                        ui.label(egui::RichText::new("Avg:").color(Theme::TEXT_MUTED).size(11.0));
-                        ui.label(egui::RichText::new(stats.avg_speed_human()).color(Theme::TEXT_PRIMARY).size(11.0));
+                        ui.label(
+                            egui::RichText::new("Avg:")
+                                .color(Theme::TEXT_MUTED)
+                                .size(11.0),
+                        );
+                        ui.label(
+                            egui::RichText::new(stats.avg_speed_human())
+                                .color(Theme::TEXT_PRIMARY)
+                                .size(11.0),
+                        );
                         ui.end_row();
 
                         if let Some(ref shards) = info.shards {
-                            ui.label(egui::RichText::new("Failed:").color(Theme::TEXT_MUTED).size(11.0));
-                            ui.label(egui::RichText::new(shards.failed.to_string()).color(Theme::DANGER).size(11.0));
+                            ui.label(
+                                egui::RichText::new("Failed:")
+                                    .color(Theme::TEXT_MUTED)
+                                    .size(11.0),
+                            );
+                            ui.label(
+                                egui::RichText::new(shards.failed.to_string())
+                                    .color(Theme::DANGER)
+                                    .size(11.0),
+                            );
                             ui.end_row();
                         }
                     });
@@ -442,11 +573,19 @@ fn render_cluster_card(
                     let speeds = history.speed_history();
                     if speeds.len() >= 2 {
                         ui.add_space(8.0);
-                        ui.add(MiniSparkline::new(speeds).width(card_width - 32.0).height(40.0));
+                        ui.add(
+                            MiniSparkline::new(speeds)
+                                .width(card_width - 32.0)
+                                .height(40.0),
+                        );
                     }
                 }
             } else {
-                ui.label(egui::RichText::new("No active snapshot").color(Theme::TEXT_MUTED).size(12.0));
+                ui.label(
+                    egui::RichText::new("No active snapshot")
+                        .color(Theme::TEXT_MUTED)
+                        .size(12.0),
+                );
             }
 
             // SLM info
@@ -458,12 +597,24 @@ fn render_cluster_card(
                     .inner_margin(Vec2::new(8.0, 6.0));
                 slm_frame.show(ui, |ui| {
                     ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("SLM:").size(10.0).color(Theme::TEXT_MUTED));
+                        ui.label(
+                            egui::RichText::new("SLM:")
+                                .size(10.0)
+                                .color(Theme::TEXT_MUTED),
+                        );
                         if let Some(ref last) = status.slm_last_run {
-                            ui.label(egui::RichText::new(format!("Last: {}", last)).size(10.0).color(Theme::TEXT_SECONDARY));
+                            ui.label(
+                                egui::RichText::new(format!("Last: {}", last))
+                                    .size(10.0)
+                                    .color(Theme::TEXT_SECONDARY),
+                            );
                         }
                         if let Some(ref next) = status.slm_next_run {
-                            ui.label(egui::RichText::new(format!("Next: {}", next)).size(10.0).color(Theme::TEXT_SECONDARY));
+                            ui.label(
+                                egui::RichText::new(format!("Next: {}", next))
+                                    .size(10.0)
+                                    .color(Theme::TEXT_SECONDARY),
+                            );
                         }
                         if status.slm_in_progress {
                             ui.add(StatePill::new("RUNNING", Theme::SNAPSHOT_IN_PROGRESS));
@@ -472,7 +623,11 @@ fn render_cluster_card(
                 });
             }
         } else {
-            ui.label(egui::RichText::new("No snapshot information available").color(Theme::TEXT_MUTED).size(12.0));
+            ui.label(
+                egui::RichText::new("No snapshot information available")
+                    .color(Theme::TEXT_MUTED)
+                    .size(12.0),
+            );
         }
     });
 }

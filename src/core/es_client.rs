@@ -30,9 +30,8 @@ pub struct EsClient {
 
 impl EsClient {
     pub fn new(config: &ClusterConfig) -> Result<Self> {
-        let password = auth::get_password(&config.name)?
-            .unwrap_or_default();
-        
+        let password = auth::get_password(&config.name)?.unwrap_or_default();
+
         let mut builder = ClientBuilder::new()
             .timeout(Duration::from_secs(30))
             .connect_timeout(Duration::from_secs(10));
@@ -44,8 +43,7 @@ impl EsClient {
                 builder
             }
             CaCert::Custom(path) => {
-                let cert = std::fs::read(path)
-                    .context("Failed to read custom CA certificate")?;
+                let cert = std::fs::read(path).context("Failed to read custom CA certificate")?;
                 let cert = reqwest::Certificate::from_pem(&cert)
                     .context("Invalid custom CA certificate")?;
                 builder.add_root_certificate(cert)
@@ -56,8 +54,7 @@ impl EsClient {
             builder = builder.danger_accept_invalid_certs(true);
         }
 
-        let client = builder.build()
-            .context("Failed to build HTTP client")?;
+        let client = builder.build().context("Failed to build HTTP client")?;
 
         Ok(Self {
             config: config.clone(),
@@ -81,21 +78,26 @@ impl EsClient {
     }
 
     async fn exec<T: DeserializeOwned>(&self, req: RequestBuilder) -> Result<T, EsError> {
-        let resp = req.send().await
+        let resp = req
+            .send()
+            .await
             .map_err(|e| EsError::Unreachable(e.to_string()))?;
-        
+
         let status = resp.status();
         if !status.is_success() {
             let text = resp.text().await.unwrap_or_default();
-            return Err(EsError::Http { status, message: text });
+            return Err(EsError::Http {
+                status,
+                message: text,
+            });
         }
 
-        resp.json().await
-            .map_err(|e| EsError::Parse(e.to_string()))
+        resp.json().await.map_err(|e| EsError::Parse(e.to_string()))
     }
 
     pub async fn cluster_health(&self) -> Result<ClusterHealth, EsError> {
-        self.exec(self.request(reqwest::Method::GET, "/_cluster/health")).await
+        self.exec(self.request(reqwest::Method::GET, "/_cluster/health"))
+            .await
     }
 
     pub async fn snapshot_current(&self, repo: &str) -> Result<SnapshotResponse, EsError> {
@@ -104,10 +106,15 @@ impl EsClient {
     }
 
     pub async fn snapshot_status_all(&self) -> Result<SnapshotStatusResponse, EsError> {
-        self.exec(self.request(reqwest::Method::GET, "/_snapshot/_status")).await
+        self.exec(self.request(reqwest::Method::GET, "/_snapshot/_status"))
+            .await
     }
 
-    pub async fn snapshot_status(&self, repo: &str, snapshot: &str) -> Result<SnapshotStatusResponse, EsError> {
+    pub async fn snapshot_status(
+        &self,
+        repo: &str,
+        snapshot: &str,
+    ) -> Result<SnapshotStatusResponse, EsError> {
         let path = format!("/_snapshot/{}/{}/_status", repo, snapshot);
         self.exec(self.request(reqwest::Method::GET, &path)).await
     }
@@ -127,14 +134,21 @@ impl EsClient {
     }
 
     pub async fn cat_indices(&self) -> Result<Vec<CatIndex>, EsError> {
-        self.exec(self.request(reqwest::Method::GET, "/_cat/indices?format=json&bytes=b")).await
+        self.exec(self.request(reqwest::Method::GET, "/_cat/indices?format=json&bytes=b"))
+            .await
     }
 
     pub async fn cluster_stats(&self) -> Result<ClusterStats, EsError> {
-        self.exec(self.request(reqwest::Method::GET, "/_cluster/stats")).await
+        self.exec(self.request(reqwest::Method::GET, "/_cluster/stats"))
+            .await
     }
 
-    pub async fn execute(&self, method: reqwest::Method, path: &str, body: Option<String>) -> Result<serde_json::Value, EsError> {
+    pub async fn execute(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        body: Option<String>,
+    ) -> Result<serde_json::Value, EsError> {
         let mut req = self.request(method, path);
         if let Some(b) = body {
             req = req.body(b);

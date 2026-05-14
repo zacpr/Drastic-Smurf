@@ -1,6 +1,6 @@
-use egui::Ui;
 use crate::core::es_client::TaskInfo;
 use crate::ui::widgets::human_nanos;
+use egui::Ui;
 
 #[derive(Debug, Clone, Default)]
 pub struct TasksState {
@@ -44,7 +44,12 @@ pub fn render_tasks_module(ui: &mut Ui, state: &mut TasksState) {
                             if !state.filter.is_empty() {
                                 let f = state.filter.to_lowercase();
                                 if !task.action.to_lowercase().contains(&f)
-                                    && !task.description.as_ref().map(|d| d.to_lowercase()).unwrap_or_default().contains(&f)
+                                    && !task
+                                        .description
+                                        .as_ref()
+                                        .map(|d| d.to_lowercase())
+                                        .unwrap_or_default()
+                                        .contains(&f)
                                 {
                                     continue;
                                 }

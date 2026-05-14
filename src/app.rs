@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::mpsc::{Receiver, Sender, channel};
 use std::time::Instant;
 
 use eframe::egui;
@@ -7,10 +7,12 @@ use eframe::egui;
 use crate::core::cluster_manager::ClusterManager;
 use crate::core::config::ClusterConfig;
 use crate::core::es_client::{ClusterHealth, EsClient};
-use crate::modules::console::{render_console_module, ConsoleState};
-use crate::modules::snapshot::{fetch_cluster_snapshot, render_snapshot_module, ClusterSnapshotStatus, SnapshotHistory};
-use crate::modules::status::{render_status_module, StatusState};
-use crate::modules::tasks::{render_tasks_module, TasksState};
+use crate::modules::console::{ConsoleState, render_console_module};
+use crate::modules::snapshot::{
+    ClusterSnapshotStatus, SnapshotHistory, fetch_cluster_snapshot, render_snapshot_module,
+};
+use crate::modules::status::{StatusState, render_status_module};
+use crate::modules::tasks::{TasksState, render_tasks_module};
 use crate::ui::theme::Theme;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -139,7 +141,9 @@ impl DrasticSmurfApp {
                     tokio::spawn(async move {
                         let tasks = client4.tasks(Some("*reindex*,*snapshot*")).await.ok();
                         if let Some(t) = tasks {
-                            let items: Vec<_> = t.nodes.into_values()
+                            let items: Vec<_> = t
+                                .nodes
+                                .into_values()
                                 .flat_map(|n| n.tasks.into_values())
                                 .collect();
                             let _ = tx4.send(RefreshMsg::TasksResult(name4, items));
@@ -160,24 +164,34 @@ impl DrasticSmurfApp {
                     // Update speed history
                     if let Some(ref stats) = status.snapshot_stats {
                         let history = self.snapshot_histories.entry(name.clone()).or_default();
-                        let (bps, _sps) = history.update(stats.processed_bytes, stats.processed_shards);
+                        let (bps, _sps) =
+                            history.update(stats.processed_bytes, stats.processed_shards);
                         let (window_avg, min_bps, max_bps) = history.window_stats();
-                        
+
                         // Find and update the status
-                        if let Some(existing) = self.snapshot_statuses.iter_mut().find(|s| s.config.name == name) {
-                            existing.snapshot_stats = Some(crate::modules::snapshot::SnapshotStats {
-                                current_speed_bps: bps,
-                                avg_speed_bps: window_avg,
-                                window_avg_speed_bps: window_avg,
-                                min_speed_bps: min_bps,
-                                max_speed_bps: max_bps,
-                                ..stats.clone()
-                            });
+                        if let Some(existing) = self
+                            .snapshot_statuses
+                            .iter_mut()
+                            .find(|s| s.config.name == name)
+                        {
+                            existing.snapshot_stats =
+                                Some(crate::modules::snapshot::SnapshotStats {
+                                    current_speed_bps: bps,
+                                    avg_speed_bps: window_avg,
+                                    window_avg_speed_bps: window_avg,
+                                    min_speed_bps: min_bps,
+                                    max_speed_bps: max_bps,
+                                    ..stats.clone()
+                                });
                         } else {
                             self.snapshot_statuses.push(status);
                         }
                     } else {
-                        if let Some(existing) = self.snapshot_statuses.iter_mut().find(|s| s.config.name == name) {
+                        if let Some(existing) = self
+                            .snapshot_statuses
+                            .iter_mut()
+                            .find(|s| s.config.name == name)
+                        {
                             *existing = status;
                         } else {
                             self.snapshot_statuses.push(status);
@@ -185,14 +199,24 @@ impl DrasticSmurfApp {
                     }
                 }
                 RefreshMsg::HealthResult(name, health) => {
-                    if let Some(existing) = self.status_state.health_data.iter_mut().find(|(n, _)| n == &name) {
+                    if let Some(existing) = self
+                        .status_state
+                        .health_data
+                        .iter_mut()
+                        .find(|(n, _)| n == &name)
+                    {
                         existing.1 = health;
                     } else {
                         self.status_state.health_data.push((name, health));
                     }
                 }
                 RefreshMsg::StatsResult(name, stats) => {
-                    if let Some(existing) = self.status_state.stats_data.iter_mut().find(|(n, _)| n == &name) {
+                    if let Some(existing) = self
+                        .status_state
+                        .stats_data
+                        .iter_mut()
+                        .find(|(n, _)| n == &name)
+                    {
                         existing.1 = stats;
                     } else {
                         self.status_state.stats_data.push((name, stats));
@@ -206,7 +230,9 @@ impl DrasticSmurfApp {
                 }
                 RefreshMsg::ConsoleResult(result) => {
                     self.console_state.response = match result {
-                        Ok(val) => serde_json::to_string_pretty(&val).unwrap_or_else(|e| e.to_string()),
+                        Ok(val) => {
+                            serde_json::to_string_pretty(&val).unwrap_or_else(|e| e.to_string())
+                        }
                         Err(e) => format!("Error: {}", e),
                     };
                     self.console_state.is_loading = false;
@@ -228,24 +254,49 @@ impl DrasticSmurfApp {
             ui.set_min_width(sidebar_width);
             ui.set_max_width(sidebar_width);
 
-            ui.heading(egui::RichText::new("DRASTIC SMURF").color(Theme::ACCENT).size(18.0));
-            ui.label(egui::RichText::new("ES Multi-Tool").color(Theme::TEXT_MUTED).size(11.0));
+            ui.heading(
+                egui::RichText::new("DRASTIC SMURF")
+                    .color(Theme::ACCENT)
+                    .size(18.0),
+            );
+            ui.label(
+                egui::RichText::new("ES Multi-Tool")
+                    .color(Theme::TEXT_MUTED)
+                    .size(11.0),
+            );
             ui.add_space(20.0);
 
-            ui.label(egui::RichText::new("Clusters").strong().color(Theme::TEXT_SECONDARY).size(12.0));
+            ui.label(
+                egui::RichText::new("Clusters")
+                    .strong()
+                    .color(Theme::TEXT_SECONDARY)
+                    .size(12.0),
+            );
             ui.add_space(4.0);
 
             let clusters = self.cluster_manager.clusters();
             for cluster in &clusters {
                 ui.horizontal(|ui| {
-                    let connected = self.status_state.health_data.iter().any(|(n, h)| n == &cluster.name && h.is_some());
+                    let connected = self
+                        .status_state
+                        .health_data
+                        .iter()
+                        .any(|(n, h)| n == &cluster.name && h.is_some());
                     ui.add(crate::ui::widgets::ConnectionDot::new(connected).size(8.0));
-                    ui.label(egui::RichText::new(&cluster.name).color(Theme::TEXT_PRIMARY).size(13.0));
+                    ui.label(
+                        egui::RichText::new(&cluster.name)
+                            .color(Theme::TEXT_PRIMARY)
+                            .size(13.0),
+                    );
                 });
             }
 
             if clusters.is_empty() {
-                ui.label(egui::RichText::new("No clusters configured").color(Theme::TEXT_MUTED).size(11.0));
+                ui.label(
+                    egui::RichText::new("No clusters configured")
+                        .color(Theme::TEXT_MUTED)
+                        .size(11.0),
+                );
             }
 
             ui.add_space(12.0);
@@ -264,7 +315,11 @@ impl DrasticSmurfApp {
             ui.checkbox(&mut self.auto_refresh, "Auto Refresh");
             ui.horizontal(|ui| {
                 ui.label("Interval:");
-                ui.add(egui::DragValue::new(&mut self.refresh_interval_secs).speed(1).range(5..=300));
+                ui.add(
+                    egui::DragValue::new(&mut self.refresh_interval_secs)
+                        .speed(1)
+                        .range(5..=300),
+                );
                 ui.label("s");
             });
 
@@ -274,7 +329,11 @@ impl DrasticSmurfApp {
 
             if let Some(last) = self.last_refresh {
                 let ago = last.elapsed().as_secs();
-                ui.label(egui::RichText::new(format!("Last refresh: {}s ago", ago)).size(10.0).color(Theme::TEXT_MUTED));
+                ui.label(
+                    egui::RichText::new(format!("Last refresh: {}s ago", ago))
+                        .size(10.0)
+                        .color(Theme::TEXT_MUTED),
+                );
             }
         });
     }
@@ -307,12 +366,25 @@ impl DrasticSmurfApp {
             Tab::Snapshot => {
                 let mut on_edit = None;
                 let mut on_delete = None;
-                render_snapshot_module(ui, &self.snapshot_statuses, &self.snapshot_histories, &mut on_edit, &mut on_delete);
+                render_snapshot_module(
+                    ui,
+                    &self.snapshot_statuses,
+                    &self.snapshot_histories,
+                    &mut on_edit,
+                    &mut on_delete,
+                );
                 if let Some(name) = on_edit {
-                    if let Some(cluster) = self.cluster_manager.clusters().into_iter().find(|c| c.name == name) {
+                    if let Some(cluster) = self
+                        .cluster_manager
+                        .clusters()
+                        .into_iter()
+                        .find(|c| c.name == name)
+                    {
                         self.editing_cluster = Some(name.clone());
                         self.new_cluster = cluster;
-                        self.new_password = crate::core::auth::get_password(&name).unwrap_or_default().unwrap_or_default();
+                        self.new_password = crate::core::auth::get_password(&name)
+                            .unwrap_or_default()
+                            .unwrap_or_default();
                         self.show_add_cluster = true;
                         self.test_result = None;
                     }
@@ -328,7 +400,12 @@ impl DrasticSmurfApp {
                 render_tasks_module(ui, &mut self.tasks_state);
             }
             Tab::Console => {
-                let names: Vec<String> = self.cluster_manager.clusters().iter().map(|c| c.name.clone()).collect();
+                let names: Vec<String> = self
+                    .cluster_manager
+                    .clusters()
+                    .iter()
+                    .map(|c| c.name.clone())
+                    .collect();
                 if self.console_state.selected_cluster.is_empty() && !names.is_empty() {
                     self.console_state.selected_cluster = names[0].clone();
                 }
@@ -392,7 +469,10 @@ impl DrasticSmurfApp {
                                 tokio::spawn(async move {
                                     let result = c.cluster_health().await;
                                     let msg = match result {
-                                        Ok(h) => format!("Connected! Cluster: {}, Status: {}", h.cluster_name, h.status),
+                                        Ok(h) => format!(
+                                            "Connected! Cluster: {}, Status: {}",
+                                            h.cluster_name, h.status
+                                        ),
                                         Err(e) => format!("Failed: {}", e),
                                     };
                                     let _ = tx.send(RefreshMsg::TestResult(msg));
@@ -419,7 +499,9 @@ impl DrasticSmurfApp {
                             let _ = crate::core::auth::set_password(&name, &self.new_password);
 
                             if let Some(ref old_name) = self.editing_cluster {
-                                let _ = self.cluster_manager.update_cluster(old_name, self.new_cluster.clone());
+                                let _ = self
+                                    .cluster_manager
+                                    .update_cluster(old_name, self.new_cluster.clone());
                             } else {
                                 let _ = self.cluster_manager.add_cluster(self.new_cluster.clone());
                             }
@@ -443,7 +525,10 @@ impl DrasticSmurfApp {
                 .resizable(false)
                 .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
                 .show(ctx, |ui| {
-                    ui.label(format!("Are you sure you want to delete cluster '{}'?", name));
+                    ui.label(format!(
+                        "Are you sure you want to delete cluster '{}'?",
+                        name
+                    ));
                     ui.horizontal(|ui| {
                         if ui.button("Delete").clicked() {
                             let _ = self.cluster_manager.remove_cluster(&name);
@@ -479,7 +564,9 @@ impl eframe::App for DrasticSmurfApp {
                         "HEAD" => reqwest::Method::HEAD,
                         _ => reqwest::Method::GET,
                     };
-                    let result = client.execute(method, &path, body).await
+                    let result = client
+                        .execute(method, &path, body)
+                        .await
                         .map_err(|e| e.to_string());
                     let _ = tx.send(RefreshMsg::ConsoleResult(result));
                     ctx.request_repaint();

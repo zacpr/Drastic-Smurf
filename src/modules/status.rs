@@ -1,6 +1,6 @@
-use egui::Ui;
 use crate::core::es_client::{ClusterHealth, ClusterStats};
 use crate::ui::widgets::human_bytes;
+use egui::Ui;
 
 #[derive(Debug, Clone, Default)]
 pub struct StatusState {
@@ -14,13 +14,17 @@ pub fn render_status_module(ui: &mut Ui, state: &StatusState) {
 
     egui::ScrollArea::vertical().show(ui, |ui| {
         for (i, (name, health)) in state.health_data.iter().enumerate() {
-            let stats = state.stats_data.iter().find(|(n, _)| n == name).and_then(|(_, s)| s.clone());
-            
+            let stats = state
+                .stats_data
+                .iter()
+                .find(|(n, _)| n == name)
+                .and_then(|(_, s)| s.clone());
+
             let frame = egui::Frame::new()
                 .fill(crate::ui::theme::Theme::BG_CARD)
                 .corner_radius(crate::ui::theme::Theme::CARD_ROUNDING)
                 .inner_margin(crate::ui::theme::Theme::CARD_PADDING);
-            
+
             frame.show(ui, |ui| {
                 ui.set_min_width(300.0);
                 ui.horizontal(|ui| {
@@ -32,7 +36,7 @@ pub fn render_status_module(ui: &mut Ui, state: &StatusState) {
                         ui.colored_label(crate::ui::theme::Theme::DANGER, "Unreachable");
                     }
                 });
-                
+
                 if let Some(h) = health {
                     ui.horizontal(|ui| {
                         ui.label(format!("Nodes: {}", h.number_of_nodes));
@@ -63,9 +67,11 @@ pub fn render_status_module(ui: &mut Ui, state: &StatusState) {
                         }
                         if let Some(ref jvm) = nodes.jvm {
                             ui.horizontal(|ui| {
-                                ui.label(format!("JVM Heap: {} / {}", 
-                                    human_bytes(jvm.used_heap_in_bytes), 
-                                    human_bytes(jvm.max_heap_in_bytes)));
+                                ui.label(format!(
+                                    "JVM Heap: {} / {}",
+                                    human_bytes(jvm.used_heap_in_bytes),
+                                    human_bytes(jvm.max_heap_in_bytes)
+                                ));
                             });
                         }
                     }

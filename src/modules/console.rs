@@ -46,10 +46,14 @@ pub fn render_console_module(
                     .selected_text(&state.selected_cluster)
                     .show_ui(ui, |ui| {
                         for cluster in clusters {
-                            ui.selectable_value(&mut state.selected_cluster, cluster.clone(), cluster);
+                            ui.selectable_value(
+                                &mut state.selected_cluster,
+                                cluster.clone(),
+                                cluster,
+                            );
                         }
                     });
-                
+
                 ui.label("Method:");
                 egui::ComboBox::from_id_salt("console_method")
                     .selected_text(&state.method)

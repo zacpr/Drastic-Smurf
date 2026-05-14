@@ -52,16 +52,19 @@ impl GradientProgressBar {
 
 impl Widget for GradientProgressBar {
     fn ui(self, ui: &mut Ui) -> egui::Response {
-        let (rect, response) = ui.allocate_exact_size(Vec2::new(self.width, self.height), egui::Sense::hover());
+        let (rect, response) =
+            ui.allocate_exact_size(Vec2::new(self.width, self.height), egui::Sense::hover());
 
         if ui.is_rect_visible(rect) {
             let rounding = CornerRadius::same((self.height / 2.0).round() as u8);
             let track_rect = rect;
-            ui.painter().rect_filled(track_rect, rounding, Theme::BG_INPUT);
+            ui.painter()
+                .rect_filled(track_rect, rounding, Theme::BG_INPUT);
 
             let fill_width = track_rect.width() * self.progress;
             if fill_width > 0.0 {
-                let fill_rect = Rect::from_min_size(track_rect.min, Vec2::new(fill_width, track_rect.height()));
+                let fill_rect =
+                    Rect::from_min_size(track_rect.min, Vec2::new(fill_width, track_rect.height()));
                 let mut mesh = Mesh::default();
                 let left = fill_rect.left();
                 let right = fill_rect.right();
@@ -121,7 +124,8 @@ impl Widget for ConnectionDot {
             } else {
                 Theme::DANGER
             };
-            ui.painter().circle_filled(rect.center(), rect.width() / 2.0, color);
+            ui.painter()
+                .circle_filled(rect.center(), rect.width() / 2.0, color);
         }
         response
     }
@@ -143,13 +147,18 @@ impl StatePill {
 
 impl Widget for StatePill {
     fn ui(self, ui: &mut Ui) -> egui::Response {
-        let galley = ui.painter().layout_no_wrap(self.text.clone(), egui::FontId::default(), Theme::TEXT_PRIMARY);
+        let galley = ui.painter().layout_no_wrap(
+            self.text.clone(),
+            egui::FontId::default(),
+            Theme::TEXT_PRIMARY,
+        );
         let padding = Vec2::new(8.0, 4.0);
         let desired_size = galley.size() + padding * 2.0;
         let (rect, response) = ui.allocate_exact_size(desired_size, egui::Sense::hover());
 
         if ui.is_rect_visible(rect) {
-            ui.painter().rect_filled(rect, CornerRadius::same(4), self.color);
+            ui.painter()
+                .rect_filled(rect, CornerRadius::same(4), self.color);
             let text_pos = rect.min + padding;
             ui.painter().galley(text_pos, galley, Theme::TEXT_PRIMARY);
         }
@@ -192,13 +201,15 @@ impl MiniSparkline {
 
 impl Widget for MiniSparkline {
     fn ui(self, ui: &mut Ui) -> egui::Response {
-        let (rect, response) = ui.allocate_exact_size(Vec2::new(self.width, self.height), egui::Sense::hover());
+        let (rect, response) =
+            ui.allocate_exact_size(Vec2::new(self.width, self.height), egui::Sense::hover());
         if ui.is_rect_visible(rect) && self.data.len() >= 2 {
             let min = self.data.iter().cloned().fold(f64::INFINITY, f64::min);
             let max = self.data.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
             let range = if max == min { 1.0 } else { max - min };
 
-            let points: Vec<Pos2> = self.data
+            let points: Vec<Pos2> = self
+                .data
                 .iter()
                 .enumerate()
                 .map(|(i, &v)| {
@@ -209,7 +220,8 @@ impl Widget for MiniSparkline {
                 .collect();
 
             // Draw line
-            ui.painter().add(Shape::line(points.clone(), Stroke::new(1.5, self.color)));
+            ui.painter()
+                .add(Shape::line(points.clone(), Stroke::new(1.5, self.color)));
 
             // Draw area under line
             let mut path = points.clone();
@@ -217,7 +229,8 @@ impl Widget for MiniSparkline {
             path.push(Pos2::new(rect.left(), rect.bottom()));
             let mut fill_color = self.color;
             fill_color = fill_color.gamma_multiply(0.2);
-            ui.painter().add(Shape::convex_polygon(path, fill_color, Stroke::NONE));
+            ui.painter()
+                .add(Shape::convex_polygon(path, fill_color, Stroke::NONE));
 
             // Dot at latest point
             if let Some(last) = points.last() {
