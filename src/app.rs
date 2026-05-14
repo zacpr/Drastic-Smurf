@@ -268,6 +268,10 @@ impl DrasticSmurfApp {
                 ui.label("s");
             });
 
+            if ui.button("🔄 Refresh Now").clicked() {
+                self.trigger_refresh(ui.ctx());
+            }
+
             if let Some(last) = self.last_refresh {
                 let ago = last.elapsed().as_secs();
                 ui.label(egui::RichText::new(format!("Last refresh: {}s ago", ago)).size(10.0).color(Theme::TEXT_MUTED));
