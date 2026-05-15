@@ -576,8 +576,14 @@ fn render_cluster_card(
                 let mut row_items: Vec<(&str, String)> = Vec::new();
 
                 if stats.has_byte_stats {
-                    row_items.push(("Data", format!("{} / {}", stats.processed_human(), stats.total_human())));
-                    row_items.push(("Files", format!("{} / {}", stats.processed_files, stats.total_files)));
+                    row_items.push((
+                        "Data",
+                        format!("{} / {}", stats.processed_human(), stats.total_human()),
+                    ));
+                    row_items.push((
+                        "Files",
+                        format!("{} / {}", stats.processed_files, stats.total_files),
+                    ));
                 }
 
                 if stats.total_shards > 0 {
@@ -589,7 +595,11 @@ fn render_cluster_card(
                     row_items.push(("Shards", shards_val));
                 }
 
-                let eta_label = if stats.has_byte_stats { "ETA" } else { "ETA (est.)" };
+                let eta_label = if stats.has_byte_stats {
+                    "ETA"
+                } else {
+                    "ETA (est.)"
+                };
                 row_items.push((eta_label, stats.eta_human()));
                 row_items.push(("Speed", stats.current_speed_human()));
                 row_items.push(("Avg", stats.avg_speed_human()));
