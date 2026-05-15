@@ -1,5 +1,6 @@
 use crate::core::es_client::{ClusterHealth, ClusterStats};
-use crate::ui::widgets::human_bytes;
+use crate::ui::theme::Theme;
+use crate::ui::widgets::{ConnectionDot, human_bytes};
 use egui::Ui;
 
 #[derive(Debug, Clone, Default)]
@@ -12,72 +13,163 @@ pub fn render_status_module(ui: &mut Ui, state: &StatusState) {
     ui.heading("Cluster Status");
     ui.add_space(16.0);
 
+    let min_card_width = 400.0;
+    let card_spacing = 16.0;
+    let available_width = ui.available_width();
+    let cols = if available_width >= min_card_width * 2.0 + card_spacing {
+        2
+    } else {
+        1
+    };
+    let col_width = (available_width - (cols - 1) as f32 * card_spacing) / cols as f32;
+
     egui::ScrollArea::vertical().show(ui, |ui| {
-        for (i, (name, health)) in state.health_data.iter().enumerate() {
-            let stats = state
-                .stats_data
-                .iter()
-                .find(|(n, _)| n == name)
-                .and_then(|(_, s)| s.clone());
+        if state.health_data.is_empty() {
+            ui.label(
+                egui::RichText::new("No clusters configured. Add a cluster to begin monitoring.")
+                    .color(Theme::TEXT_MUTED)
+                    .size(14.0),
+            );
+            return;
+        }
 
-            let frame = egui::Frame::new()
-                .fill(crate::ui::theme::Theme::BG_CARD)
-                .corner_radius(crate::ui::theme::Theme::CARD_ROUNDING)
-                .inner_margin(crate::ui::theme::Theme::CARD_PADDING);
-
-            frame.show(ui, |ui| {
-                ui.set_min_width(300.0);
-                ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new(name).strong().size(16.0));
-                    if let Some(h) = health {
-                        let color = crate::ui::theme::Theme::health_color(&h.status);
-                        ui.colored_label(color, &h.status);
-                    } else {
-                        ui.colored_label(crate::ui::theme::Theme::DANGER, "Unreachable");
-                    }
-                });
-
-                if let Some(h) = health {
-                    ui.horizontal(|ui| {
-                        ui.label(format!("Nodes: {}", h.number_of_nodes));
-                        ui.label(format!("Active Shards: {}", h.active_shards));
-                        ui.label(format!("Unassigned: {}", h.unassigned_shards));
-                    });
+        ui.horizontal(|ui| {
+            for col in 0..cols {
+                let col_idx = col;
+                ui.allocate_ui_with_layout(
+                    egui::Vec2::new(col_width, ui.available_height()),
+                    egui::Layout::top_down(egui::Align::Min),
+                    |ui| {
+                        for (i, (name, health)) in state.health_data.iter().enumerate() {
+                            if i % cols == col_idx {
+                                let stats = state
+                                    .stats_data
+                                    .iter()
+                                    .find(|(n, _)| n == name)
+                                    .and_then(|(_, s)| s.clone());
+                                render_status_card(ui, name, health, stats, col_width);
+                                ui.add_space(card_spacing);
+                            }
+                        }
+                    },
+                );
+                if col + 1 < cols {
+                    ui.add_space(card_spacing);
                 }
+            }
+        });
+    });
+}
 
-                if let Some(s) = stats {
-                    ui.add_space(4.0);
-                    if let Some(ref indices) = s.indices {
-                        ui.horizontal(|ui| {
-                            ui.label(format!("Indices: {}", indices.count));
-                            if let Some(ref docs) = indices.docs {
-                                ui.label(format!("Docs: {}", docs.count));
-                            }
-                            if let Some(ref store) = indices.store {
-                                ui.label(format!("Store: {}", human_bytes(store.size_in_bytes)));
-                            }
-                        });
-                    }
-                    if let Some(ref nodes) = s.nodes {
-                        if let Some(ref count) = nodes.count {
-                            ui.horizontal(|ui| {
-                                ui.label(format!("Total Nodes: {}", count.total));
-                                ui.label(format!("Data: {}", count.data));
-                            });
-                        }
-                        if let Some(ref jvm) = nodes.jvm {
-                            ui.horizontal(|ui| {
-                                ui.label(format!(
-                                    "JVM Heap: {} / {}",
-                                    human_bytes(jvm.used_heap_in_bytes),
-                                    human_bytes(jvm.max_heap_in_bytes)
-                                ));
-                            });
-                        }
-                    }
+fn render_status_card(
+    ui: &mut Ui,
+    name: &str,
+    health: &Option<ClusterHealth>,
+    stats: Option<ClusterStats>,
+    col_width: f32,
+) {
+    let frame = egui::Frame::new()
+        .fill(Theme::BG_CARD)
+        .corner_radius(Theme::CARD_ROUNDING)
+        .inner_margin(Theme::CARD_PADDING);
+
+    frame.show(ui, |ui| {
+        ui.set_min_width(col_width - Theme::CARD_PADDING.x * 2.0);
+        ui.set_max_width(col_width - Theme::CARD_PADDING.x * 2.0);
+
+        // Header
+        ui.horizontal(|ui| {
+            let connected = health.is_some();
+            ui.add(ConnectionDot::new(connected).size(10.0));
+            ui.vertical(|ui| {
+                ui.label(
+                    egui::RichText::new(name)
+                        .strong()
+                        .size(17.0)
+                        .color(Theme::TEXT_PRIMARY),
+                );
+            });
+
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if let Some(h) = health {
+                    let color = Theme::health_color(&h.status);
+                    ui.add(crate::ui::widgets::StatePill::new(&h.status, color));
+                } else {
+                    ui.add(crate::ui::widgets::StatePill::new("Unreachable", Theme::DANGER));
                 }
             });
-            ui.add_space(8.0);
+        });
+        ui.add_space(8.0);
+
+        if let Some(h) = health {
+            // Stats grid (2 columns)
+            let mut items: Vec<(&str, String)> = Vec::new();
+            items.push(("Nodes", h.number_of_nodes.to_string()));
+            items.push(("Active Shards", h.active_shards.to_string()));
+            items.push(("Unassigned", h.unassigned_shards.to_string()));
+            items.push(("Relocating", h.relocating_shards.to_string()));
+
+            if let Some(s) = stats {
+                if let Some(ref indices) = s.indices {
+                    items.push(("Indices", indices.count.to_string()));
+                    if let Some(ref docs) = indices.docs {
+                        items.push(("Docs", docs.count.to_string()));
+                    }
+                    if let Some(ref store) = indices.store {
+                        items.push(("Store", human_bytes(store.size_in_bytes)));
+                    }
+                }
+                if let Some(ref nodes) = s.nodes {
+                    if let Some(ref count) = nodes.count {
+                        items.push(("Data Nodes", count.data.to_string()));
+                    }
+                    if let Some(ref jvm) = nodes.jvm {
+                        items.push((
+                            "JVM Heap",
+                            format!(
+                                "{} / {}",
+                                human_bytes(jvm.used_heap_in_bytes),
+                                human_bytes(jvm.max_heap_in_bytes)
+                            ),
+                        ));
+                    }
+                }
+            }
+
+            for pair in items.chunks(2) {
+                ui.horizontal(|ui| {
+                    ui.set_width(ui.available_width());
+                    let half = ui.available_width() / 2.0 - 8.0;
+                    for (j, (label, value)) in pair.iter().enumerate() {
+                        if j > 0 {
+                            ui.add_space(16.0);
+                        }
+                        ui.allocate_ui_with_layout(
+                            egui::Vec2::new(half, 18.0),
+                            egui::Layout::left_to_right(egui::Align::Center),
+                            |ui| {
+                                ui.label(
+                                    egui::RichText::new(format!("{}: ", label))
+                                        .color(Theme::TEXT_MUTED)
+                                        .size(11.0),
+                                );
+                                ui.label(
+                                    egui::RichText::new(value.clone())
+                                        .color(Theme::TEXT_PRIMARY)
+                                        .size(11.0)
+                                        .strong(),
+                                );
+                            },
+                        );
+                    }
+                });
+            }
+        } else {
+            ui.label(
+                egui::RichText::new("Cluster is unreachable")
+                    .color(Theme::DANGER)
+                    .size(12.0),
+            );
         }
     });
 }

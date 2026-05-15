@@ -1,119 +1,137 @@
-# AGENTS.md — Elasticsearch Multi-Tool (DRASTIC SMURF)
+# AGENTS.md — DRASTIC SMURF
 
 ## Project Overview
 
-**Status:** Planning phase — no source code, build system, or directory structure exists yet.  
-**Goal:** Build an extensible desktop GUI for interacting with and monitoring multiple Elasticsearch clusters. The app must support multiple clusters with separate credentials and potentially different authentication methods. It will maintain cluster information and authentication centrally, and expose a tabbed interface for interacting with various modules.
+**Status:** Active development — core architecture complete, all four planned modules have working skeletons.  
+**Goal:** An extensible desktop GUI for monitoring and interacting with multiple Elasticsearch clusters. Supports multiple clusters with separate credentials, a tabbed modular interface, and secure credential storage.
 
-The project directory currently contains only `theplan.md`, which describes the intended feature set and module breakdown.
+### Technology Stack
 
-### Expected Modules
+- **Rust** (edition 2024)
+- **egui** + **eframe** (immediate-mode GUI, wgpu backend)
+- **tokio** (async runtime)
+- **reqwest** (async HTTP client)
+- **serde/serde_json** (JSON parsing)
+- **keyring** (OS-native secret storage)
 
-| Module | Description |
-|--------|-------------|
-| **Snapshot Monitoring** | Replicate or port the functionality from `/home/zac/app_dev/es-snap-mon/` — track ongoing Elasticsearch snapshot backups across clusters, translate stats into human-readable progress, bytes, ETA, and speed. |
-| **Cluster Task Monitoring** | Provide a way to monitor reindex operations and other Elasticsearch task types, with filtering per task type. |
-| **Cluster Status Monitoring** | Provide status and health information in a dashboard format. Capable of showing an overview of all clusters, a selected subset, or a more detailed single-cluster view. |
-| **Elastic/Kibana Console** | Functionality similar to the Kibana DevTools console, allowing the user to interact with the Elasticsearch API without re-entering credentials or cluster details for each request. |
+### Modules
 
-### Reference Project
-
-A prior implementation of the snapshot monitoring module exists at `/home/zac/app_dev/es-snap-mon/`. It is written in **Python 3.9+** using **CustomTkinter**, **Requests**, and **Keyring**. That codebase can serve as a functional reference for:
-
-- Elasticsearch API endpoints (`_snapshot`, `_slm/policy`, `_cluster/health`, `_status`, etc.)
-- JSON response parsing and human-readable stat translation
-- Secure credential storage patterns
-- Dark-themed dashboard UI patterns (cards, progress bars, sparklines)
-
-**Important:** This new project is *not* a direct continuation of `es-snap-mon`. It is a fresh project with broader scope, a modular tabbed architecture, and a strong preference for a different technology stack.
+| Module | Status | Description |
+|--------|--------|-------------|
+| **Snapshot Monitoring** | ✅ Functional | Cards with progress bars, speed/ETA, sparklines, SLM policy info. Modeled after `es-snap-mon`. Responsive 1→2 column layout. |
+| **Cluster Status** | ✅ Functional | Health dashboard with nodes, shards, indices, docs, store size, JVM heap. Responsive 1→2 column layout. |
+| **Task Monitoring** | ✅ Functional | Filterable task grid (cluster, action, description, running time, cancellable). |
+| **Elastic Console** | ✅ Functional | Method/path/body request builder with response viewer. Inherits cluster credentials. |
 
 ---
 
-## Technology Stack
-
-**Not finalized yet.** Performance and responsiveness are key requirements. The plan explicitly states:
-
-> "if feasible the project should be written in rust"
-
-Candidate stacks under consideration:
-
-- **Rust** + **egui** / **iced** / **Tauri** — preferred direction due to performance goals.
-- **Rust** + **Tauri** (Web frontend in TypeScript) — if a web-based UI is desired.
-- **Python** + a modern GUI framework — fallback if Rust feasibility is blocked.
-
-The chosen stack must support:
-1. Asynchronous HTTP requests to multiple Elasticsearch clusters concurrently.
-2. Secure cross-platform secret storage for passwords and API tokens.
-3. A tabbed, modular UI where each module can be developed and loaded independently.
-4. JSON parsing and dynamic rendering of Elasticsearch API responses.
-
----
-
-## Project Layout (Proposed)
-
-Until a stack is chosen, no directory structure exists. A typical layout once development starts might look like:
+## Project Layout
 
 ```
-├── src/                 # Application source code
-│   ├── core/            # Shared cluster management, auth, and ES client
-│   ├── modules/         # Individual feature modules (snapshot, tasks, status, console)
-│   └── ui/              # Main window, tab container, shared widgets
-├── tests/               # Unit and integration tests
-├── docs/                # Additional documentation
-├── config/              # Example configuration files
-├── Cargo.toml           # or pyproject.toml, package.json, etc.
-└── README.md            # Human-facing documentation
+src/
+├── app.rs              # Main app state, tab switching, refresh orchestration
+├── main.rs             # Entry point, eframe setup
+├── core/
+│   ├── auth.rs         # Keyring-based password/API token storage
+│   ├── cluster_manager.rs  # Cluster CRUD, client caching, tunnel lifecycle
+│   ├── config.rs       # ClusterConfig, AppConfig, save/load
+│   ├── es_client.rs    # Async ES HTTP client + all response models
+│   ├── mod.rs
+│   └── ssh_tunnel.rs   # SSH tunnel spawning via `ssh -L`
+├── modules/
+│   ├── console.rs      # Elastic Console tab
+│   ├── snapshot.rs     # Snapshot Monitoring tab
+│   ├── status.rs       # Cluster Status tab
+│   ├── tasks.rs        # Task Monitoring tab
+│   └── mod.rs
+└── ui/
+    ├── theme.rs        # Color palette, health/snapshot state colors
+    ├── widgets.rs      # GradientProgressBar, MiniSparkline, ConnectionDot, StatePill
+    └── mod.rs
 ```
 
 ---
 
 ## Build and Test Commands
 
-**Not applicable yet.** Once a stack is selected, add the standard commands here (e.g., `cargo build`, `cargo test`, `pip install -e .`, `npm run build`).
+```bash
+# Check
+$ cargo check --all-targets
+
+# Build debug
+$ cargo build
+
+# Build release
+$ cargo build --release
+
+# Run
+$ cargo run
+```
+
+### Packaging (requires release binary)
+
+```bash
+# Debian/Ubuntu
+$ cargo deb
+
+# RHEL/Fedora
+$ cargo generate-rpm
+```
 
 ---
 
-## Code Style Guidelines
+## Code Style
 
-**Not defined yet.** Decide and document formatting rules once the stack is chosen:
-
-- **Rust:** `rustfmt` + `clippy`
-- **Python:** `black` / `ruff`
-- **TypeScript:** `prettier` / `eslint`
+- **rustfmt** for formatting
+- **clippy** for linting (`cargo clippy --all-targets`)
+- Aim for zero warnings on `cargo check --all-targets`
+- Prefer `#[allow(dead_code)]` on API/model code that is intentionally reserved for future use, rather than deleting it.
 
 ---
 
-## Testing Instructions
+## Testing
 
-**Not defined yet.** Plan to include:
+- **Unit tests** — planned for JSON parsing, stat translation, utility functions
+- **Integration tests** — planned against a local Elasticsearch instance or mock HTTP server
+- **UI tests** — limited; egui does not have a built-in UI testing framework
 
-- **Unit tests** for JSON parsing, stat translation, and utility functions.
-- **Integration tests** against a local Elasticsearch instance or a mock HTTP server.
-- **UI tests** if the chosen framework supports them.
-- **End-to-end tests** for the cluster credential flow and tab switching.
+*(No tests are currently implemented — this is a known gap.)*
 
 ---
 
 ## Security Considerations
 
-- **Do not commit credentials.** Cluster passwords, API keys, and certificates must never be hard-coded in source.
-- Use OS-native secret storage (Keychain, Windows Credential Manager, libsecret / keyring) for all sensitive credentials.
-- Validate TLS certificates when connecting to production clusters. Allow per-cluster overrides only for development/testing.
-- Support custom CA bundles for clusters with private certificates.
-- Consider least-privilege Elasticsearch users for each module (e.g., `monitor` + `snapshot` roles for snapshot monitoring only).
-- The **Elastic/Kibana Console** module will execute arbitrary API calls on behalf of the user — ensure it inherits the same cluster credentials securely and does not log or expose secrets.
+- **Do not commit credentials.** Passwords and API keys are stored in the OS keyring.
+- Use `directories` crate for config storage (`~/.config/drastic-smurf/` on Linux).
+- TLS verification is on by default; per-cluster override available.
+- Custom CA certificate support is partially implemented (`CaCert::Custom` works; `CaCert::Bundled` is a TODO).
+- API token auth methods are stubbed in `auth.rs` but not yet wired into `EsClient`.
 
 ---
 
-## Next Steps for Agents
+## CI / Release
 
-1. **Confirm the technology stack with the user.** Rust is strongly preferred, but feasibility (team expertise, ES client libraries, GUI framework maturity) should be validated.
-2. **Initialize the project** with the appropriate package manager and build tool (e.g., `cargo init`, `npm init`, `poetry init`).
-3. **Implement the core layer first:**
-   - Cluster configuration model (name, host, credentials, SSL settings).
-   - Secure credential storage abstraction.
-   - Async Elasticsearch HTTP client with basic auth and SSL support.
-4. **Build a minimal proof-of-life:** query one cluster's `_cluster/health` endpoint and display the result in the UI.
-5. **Port snapshot monitoring** as the first module, using `es-snap-mon` as a reference for API usage and stat calculations.
-6. **Add the remaining modules** (task monitoring, cluster status dashboard, console) incrementally behind a tabbed interface.
-7. **Add tests and CI** once the core modules are stable.
+### GitHub Actions Workflows
+
+| Workflow | Trigger | What it does |
+|----------|---------|--------------|
+| `ci.yml` | Push/PR to `main`/`master` | `cargo check`, `cargo test`, `cargo fmt --check`, `cargo clippy` |
+| `release.yml` | Tag push (`v*.*.*`) | cargo-dist builds archives + MSI + shell/PowerShell installers, creates GitHub Release |
+| `packages.yml` | Release published | Builds `.deb` (cargo-deb) and `.rpm` (cargo-generate-rpm), uploads to release |
+
+### Releasing
+
+1. Bump version in `Cargo.toml` (and `Cargo.lock` via `cargo check`)
+2. Commit and tag: `git tag v0.x.y`
+3. Push tag: `git push origin v0.x.y`
+4. cargo-dist creates the release automatically; `packages.yml` appends `.deb` and `.rpm`
+
+---
+
+## Next Steps / Known Gaps
+
+1. **Tests** — Add unit tests for `human_bytes`, `human_duration`, snapshot stat calculations, and config roundtrips.
+2. **Status module depth** — Currently shows a flat card list. The plan calls for an overview of all clusters, selected subset view, and detailed single-cluster view.
+3. **Task type filtering** — Text search exists, but task-type dropdown filtering is not implemented.
+4. **Console enhancements** — No request history navigation, JSON syntax highlighting, or response folding.
+5. **AGENTS.md upkeep** — Update this file whenever modules, build steps, or security boundaries change.

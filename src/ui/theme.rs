@@ -2,6 +2,7 @@ use egui::{Color32, CornerRadius, Vec2};
 
 pub struct Theme;
 
+#[allow(dead_code)]
 impl Theme {
     // Backgrounds
     pub const BG_DARKEST: Color32 = Color32::from_rgb(15, 23, 42); // slate-900

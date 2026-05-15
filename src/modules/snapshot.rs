@@ -68,16 +68,21 @@ pub struct SnapshotStats {
     pub total_bytes: u64,
     pub processed_files: u32,
     pub total_files: u32,
+    #[allow(dead_code)]
     pub start_time: Option<Instant>,
     pub current_speed_bps: f64,
     pub avg_speed_bps: f64,
     pub has_byte_stats: bool,
     pub processed_shards: u32,
     pub total_shards: u32,
+    #[allow(dead_code)]
     pub current_shard_rate: f64,
+    #[allow(dead_code)]
     pub avg_shard_rate: f64,
     pub window_avg_speed_bps: f64,
+    #[allow(dead_code)]
     pub min_speed_bps: f64,
+    #[allow(dead_code)]
     pub max_speed_bps: f64,
 }
 
@@ -141,6 +146,7 @@ pub struct ClusterSnapshotStatus {
 pub struct SpeedSample {
     pub timestamp: Instant,
     pub bytes_per_sec: f64,
+    #[allow(dead_code)]
     pub shards_per_sec: f64,
 }
 
@@ -376,11 +382,47 @@ pub fn render_snapshot_module(
     ui.heading("Snapshot Monitoring");
     ui.add_space(16.0);
 
+    let min_card_width = 420.0;
+    let card_spacing = 16.0;
+    let available_width = ui.available_width();
+    let cols = if available_width >= min_card_width * 2.0 + card_spacing {
+        2
+    } else {
+        1
+    };
+    let col_width = (available_width - (cols - 1) as f32 * card_spacing) / cols as f32;
+
     egui::ScrollArea::vertical().show(ui, |ui| {
-        ui.horizontal_wrapped(|ui| {
-            for status in statuses {
-                render_cluster_card(ui, status, histories, on_edit, on_delete);
-                ui.add_space(12.0);
+        if statuses.is_empty() {
+            ui.label(
+                egui::RichText::new("No clusters configured. Add a cluster to begin monitoring.")
+                    .color(Theme::TEXT_MUTED)
+                    .size(14.0),
+            );
+            return;
+        }
+
+        // Responsive columns: cards fill vertically within each column
+        ui.horizontal(|ui| {
+            for col in 0..cols {
+                let col_idx = col;
+                ui.allocate_ui_with_layout(
+                    egui::Vec2::new(col_width, ui.available_height()),
+                    egui::Layout::top_down(egui::Align::Min),
+                    |ui| {
+                        for (i, status) in statuses.iter().enumerate() {
+                            if i % cols == col_idx {
+                                render_cluster_card(
+                                    ui, status, histories, on_edit, on_delete, col_width,
+                                );
+                                ui.add_space(card_spacing);
+                            }
+                        }
+                    },
+                );
+                if col + 1 < cols {
+                    ui.add_space(card_spacing);
+                }
             }
         });
     });
@@ -392,58 +434,97 @@ fn render_cluster_card(
     histories: &std::collections::HashMap<String, SnapshotHistory>,
     on_edit: &mut Option<String>,
     on_delete: &mut Option<String>,
+    col_width: f32,
 ) {
-    let card_width = 380.0;
     let frame = egui::Frame::new()
         .fill(Theme::BG_CARD)
         .corner_radius(Theme::CARD_ROUNDING)
         .inner_margin(Theme::CARD_PADDING);
 
     frame.show(ui, |ui| {
-        ui.set_min_width(card_width);
-        ui.set_max_width(card_width);
+        ui.set_min_width(col_width - Theme::CARD_PADDING.x * 2.0);
+        ui.set_max_width(col_width - Theme::CARD_PADDING.x * 2.0);
 
-        // Header
+        // ── Header ──
         ui.horizontal(|ui| {
             ui.add(ConnectionDot::new(status.reachable).size(10.0));
-            ui.label(
-                egui::RichText::new(&status.config.name)
-                    .strong()
-                    .size(16.0)
-                    .color(Theme::TEXT_PRIMARY),
-            );
+            ui.vertical(|ui| {
+                ui.label(
+                    egui::RichText::new(&status.config.name)
+                        .strong()
+                        .size(17.0)
+                        .color(Theme::TEXT_PRIMARY),
+                );
+                let host_clean = status
+                    .config
+                    .host
+                    .replace("https://", "")
+                    .replace("http://", "");
+                ui.label(
+                    egui::RichText::new(host_clean)
+                        .size(10.0)
+                        .color(Theme::TEXT_MUTED),
+                );
+            });
+
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.small_button("🗑").clicked() {
+                let del = ui.add(
+                    egui::Label::new(
+                        egui::RichText::new("Del")
+                            .size(10.0)
+                            .color(Theme::TEXT_MUTED),
+                    )
+                    .sense(egui::Sense::click()),
+                );
+                if del.clicked() {
                     *on_delete = Some(status.config.name.clone());
                 }
-                if ui.small_button("✏").clicked() {
+                if del.hovered() {
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                }
+
+                let edit = ui.add(
+                    egui::Label::new(
+                        egui::RichText::new("Edit")
+                            .size(10.0)
+                            .color(Theme::TEXT_MUTED),
+                    )
+                    .sense(egui::Sense::click()),
+                );
+                if edit.clicked() {
                     *on_edit = Some(status.config.name.clone());
+                }
+                if edit.hovered() {
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                 }
             });
         });
-
-        ui.label(
-            egui::RichText::new(&status.config.host)
-                .size(11.0)
-                .color(Theme::TEXT_MUTED),
-        );
-        ui.add_space(8.0);
+        ui.add_space(6.0);
 
         if let Some(ref err) = status.error_message {
-            ui.colored_label(Theme::DANGER, format!("Error: {}", err));
+            ui.colored_label(Theme::DANGER, format!("⚠ {}", err));
         } else if let Some(ref info) = status.snapshot_info {
             let state = SnapshotState::from_str(&info.state);
+
+            // ── State badge + snapshot name + copy ──
             ui.horizontal(|ui| {
                 ui.add(StatePill::new(state.as_str(), state.color()));
                 ui.label(
                     egui::RichText::new(&info.snapshot)
                         .monospace()
-                        .size(11.0)
+                        .size(12.0)
+                        .strong()
                         .color(Theme::TEXT_SECONDARY),
                 );
                 if ui
-                    .small_button("📋")
-                    .on_hover_text("Copy snapshot name")
+                    .add(
+                        egui::Label::new(
+                            egui::RichText::new("Copy")
+                                .size(10.0)
+                                .color(Theme::TEXT_MUTED),
+                        )
+                        .sense(egui::Sense::click()),
+                    )
                     .clicked()
                 {
                     ui.ctx().copy_text(info.snapshot.clone());
@@ -452,179 +533,158 @@ fn render_cluster_card(
 
             if let Some(ref stats) = status.snapshot_stats {
                 ui.add_space(8.0);
-                ui.add(
-                    GradientProgressBar::new(stats.progress_pct / 100.0).width(card_width - 32.0),
-                );
-                ui.add_space(4.0);
+
+                // ── Progress bar + percentage ──
                 ui.horizontal(|ui| {
-                    ui.label(
-                        egui::RichText::new(format!("{:.1}%", stats.progress_pct))
-                            .size(11.0)
-                            .color(Theme::TEXT_SECONDARY),
+                    let pct_text = format!("{:.1}%", stats.progress_pct);
+                    let galley = ui.painter().layout_no_wrap(
+                        pct_text.clone(),
+                        egui::FontId::proportional(11.0),
+                        Theme::ACCENT,
                     );
+                    let pct_width = galley.size().x + 4.0;
+                    ui.add(
+                        GradientProgressBar::new(stats.progress_pct / 100.0)
+                            .width(ui.available_width() - pct_width - 4.0)
+                            .height(14.0),
+                    );
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.label(
+                            egui::RichText::new(pct_text)
+                                .size(11.0)
+                                .color(Theme::ACCENT)
+                                .strong(),
+                        );
+                    });
                 });
 
-                ui.add_space(8.0);
-                egui::Grid::new(format!("stats_{}", status.config.name))
-                    .num_columns(2)
-                    .spacing([40.0, 4.0])
-                    .show(ui, |ui| {
-                        ui.label(
-                            egui::RichText::new("Data:")
-                                .color(Theme::TEXT_MUTED)
-                                .size(11.0),
-                        );
-                        ui.label(
-                            egui::RichText::new(format!(
-                                "{} / {}",
-                                stats.processed_human(),
-                                stats.total_human()
-                            ))
-                            .color(Theme::TEXT_PRIMARY)
-                            .size(11.0),
-                        );
-                        ui.end_row();
-
-                        ui.label(
-                            egui::RichText::new("Files:")
-                                .color(Theme::TEXT_MUTED)
-                                .size(11.0),
-                        );
-                        ui.label(
-                            egui::RichText::new(format!(
-                                "{} / {}",
-                                stats.processed_files, stats.total_files
-                            ))
-                            .color(Theme::TEXT_PRIMARY)
-                            .size(11.0),
-                        );
-                        ui.end_row();
-
-                        if stats.total_shards > 0 {
-                            ui.label(
-                                egui::RichText::new("Shards:")
-                                    .color(Theme::TEXT_MUTED)
-                                    .size(11.0),
-                            );
-                            ui.label(
-                                egui::RichText::new(format!(
-                                    "{} / {}",
-                                    stats.processed_shards, stats.total_shards
-                                ))
-                                .color(Theme::TEXT_PRIMARY)
-                                .size(11.0),
-                            );
-                            ui.end_row();
-                        }
-
-                        ui.label(
-                            egui::RichText::new("ETA:")
-                                .color(Theme::TEXT_MUTED)
-                                .size(11.0),
-                        );
-                        ui.label(
-                            egui::RichText::new(stats.eta_human())
-                                .color(Theme::TEXT_PRIMARY)
-                                .size(11.0),
-                        );
-                        ui.end_row();
-
-                        ui.label(
-                            egui::RichText::new("Speed:")
-                                .color(Theme::TEXT_MUTED)
-                                .size(11.0),
-                        );
-                        ui.label(
-                            egui::RichText::new(stats.current_speed_human())
-                                .color(Theme::TEXT_PRIMARY)
-                                .size(11.0),
-                        );
-                        ui.end_row();
-
-                        ui.label(
-                            egui::RichText::new("Avg:")
-                                .color(Theme::TEXT_MUTED)
-                                .size(11.0),
-                        );
-                        ui.label(
-                            egui::RichText::new(stats.avg_speed_human())
-                                .color(Theme::TEXT_PRIMARY)
-                                .size(11.0),
-                        );
-                        ui.end_row();
-
-                        if let Some(ref shards) = info.shards {
-                            ui.label(
-                                egui::RichText::new("Failed:")
-                                    .color(Theme::TEXT_MUTED)
-                                    .size(11.0),
-                            );
-                            ui.label(
-                                egui::RichText::new(shards.failed.to_string())
-                                    .color(Theme::DANGER)
-                                    .size(11.0),
-                            );
-                            ui.end_row();
-                        }
-                    });
-
-                // Sparkline
+                // ── Sparkline ──
                 if let Some(history) = histories.get(&status.config.name) {
                     let speeds = history.speed_history();
                     if speeds.len() >= 2 {
-                        ui.add_space(8.0);
+                        ui.add_space(6.0);
                         ui.add(
                             MiniSparkline::new(speeds)
-                                .width(card_width - 32.0)
-                                .height(40.0),
+                                .width(ui.available_width())
+                                .height(50.0),
                         );
                     }
                 }
+
+                // ── Stats grid (2 columns) ──
+                ui.add_space(8.0);
+                let mut row_items: Vec<(&str, String)> = Vec::new();
+
+                if stats.has_byte_stats {
+                    row_items.push(("Data", format!("{} / {}", stats.processed_human(), stats.total_human())));
+                    row_items.push(("Files", format!("{} / {}", stats.processed_files, stats.total_files)));
+                }
+
+                if stats.total_shards > 0 {
+                    let shards_val = if let Some(ref shards) = info.shards {
+                        format!("{}/{}", shards.successful, shards.total)
+                    } else {
+                        format!("{} / {}", stats.processed_shards, stats.total_shards)
+                    };
+                    row_items.push(("Shards", shards_val));
+                }
+
+                let eta_label = if stats.has_byte_stats { "ETA" } else { "ETA (est.)" };
+                row_items.push((eta_label, stats.eta_human()));
+                row_items.push(("Speed", stats.current_speed_human()));
+                row_items.push(("Avg", stats.avg_speed_human()));
+
+                if let Some(ref shards) = info.shards {
+                    if shards.failed > 0 {
+                        row_items.push(("Failed", shards.failed.to_string()));
+                    }
+                }
+
+                // Render in 2-column pairs
+                for pair in row_items.chunks(2) {
+                    ui.horizontal(|ui| {
+                        ui.set_width(ui.available_width());
+                        let half = ui.available_width() / 2.0 - 8.0;
+                        for (j, (label, value)) in pair.iter().enumerate() {
+                            if j > 0 {
+                                ui.add_space(16.0);
+                            }
+                            ui.allocate_ui_with_layout(
+                                egui::Vec2::new(half, 18.0),
+                                egui::Layout::left_to_right(egui::Align::Center),
+                                |ui| {
+                                    let color = if *label == "Failed" {
+                                        Theme::DANGER
+                                    } else {
+                                        Theme::TEXT_PRIMARY
+                                    };
+                                    ui.label(
+                                        egui::RichText::new(format!("{}: ", label))
+                                            .color(Theme::TEXT_MUTED)
+                                            .size(11.0),
+                                    );
+                                    ui.label(
+                                        egui::RichText::new(value.clone())
+                                            .color(color)
+                                            .size(11.0)
+                                            .strong(),
+                                    );
+                                },
+                            );
+                        }
+                    });
+                }
             } else {
+                ui.add_space(8.0);
                 ui.label(
                     egui::RichText::new("No active snapshot")
                         .color(Theme::TEXT_MUTED)
-                        .size(12.0),
+                        .size(13.0),
                 );
             }
 
-            // SLM info
+            // ── SLM section ──
             if status.slm_last_run.is_some() || status.slm_next_run.is_some() {
                 ui.add_space(8.0);
                 let slm_frame = egui::Frame::new()
-                    .fill(Theme::BG_DARK)
-                    .corner_radius(CornerRadius::same(6))
-                    .inner_margin(Vec2::new(8.0, 6.0));
+                    .fill(Theme::BG_DARKEST)
+                    .corner_radius(CornerRadius::same(8))
+                    .inner_margin(Vec2::new(10.0, 8.0));
                 slm_frame.show(ui, |ui| {
-                    ui.horizontal(|ui| {
+                    if status.slm_in_progress {
                         ui.label(
-                            egui::RichText::new("SLM:")
-                                .size(10.0)
-                                .color(Theme::TEXT_MUTED),
+                            egui::RichText::new("SLM policy running")
+                                .size(11.0)
+                                .strong()
+                                .color(Theme::ACCENT),
                         );
-                        if let Some(ref last) = status.slm_last_run {
-                            ui.label(
-                                egui::RichText::new(format!("Last: {}", last))
-                                    .size(10.0)
-                                    .color(Theme::TEXT_SECONDARY),
-                            );
-                        }
-                        if let Some(ref next) = status.slm_next_run {
-                            ui.label(
-                                egui::RichText::new(format!("Next: {}", next))
-                                    .size(10.0)
-                                    .color(Theme::TEXT_SECONDARY),
-                            );
-                        }
-                        if status.slm_in_progress {
-                            ui.add(StatePill::new("RUNNING", Theme::SNAPSHOT_IN_PROGRESS));
-                        }
-                    });
+                    }
+                    if let Some(ref last) = status.slm_last_run {
+                        ui.label(
+                            egui::RichText::new(format!("Last run: {}", last))
+                                .size(11.0)
+                                .color(Theme::TEXT_SECONDARY),
+                        );
+                    }
+                    if let Some(ref next) = status.slm_next_run {
+                        ui.label(
+                            egui::RichText::new(format!("Next run: {}", next))
+                                .size(11.0)
+                                .color(Theme::TEXT_SECONDARY),
+                        );
+                    }
                 });
             }
+        } else if status.reachable {
+            ui.add_space(8.0);
+            ui.label(
+                egui::RichText::new("No snapshot in progress")
+                    .color(Theme::TEXT_MUTED)
+                    .size(13.0),
+            );
         } else {
             ui.label(
-                egui::RichText::new("No snapshot information available")
+                egui::RichText::new("Cluster unreachable")
                     .color(Theme::TEXT_MUTED)
                     .size(12.0),
             );

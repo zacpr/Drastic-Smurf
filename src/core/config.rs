@@ -63,6 +63,7 @@ impl Default for ClusterConfig {
 }
 
 impl ClusterConfig {
+    #[allow(dead_code)]
     pub fn new(
         name: impl Into<String>,
         host: impl Into<String>,

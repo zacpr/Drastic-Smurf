@@ -193,6 +193,7 @@ impl MiniSparkline {
         self
     }
 
+    #[allow(dead_code)]
     pub fn color(mut self, c: Color32) -> Self {
         self.color = c;
         self

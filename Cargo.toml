@@ -1,6 +1,6 @@
 [package]
 name = "drastic-smurf"
-version = "0.1.0"
+version = "0.1.5"
 edition = "2024"
 authors = ["Zac <zac@example.com>"]
 description = "Extensible desktop GUI for monitoring and interacting with multiple Elasticsearch clusters"
@@ -28,3 +28,37 @@ tracing-subscriber = "0.3"
 [profile.release]
 opt-level = 3
 lto = true
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"
+
+[package.metadata.deb]
+name = "drastic-smurf"
+maintainer = "Zac <zac@example.com>"
+copyright = "2026, Zac <zac@example.com>"
+extended-description = "Extensible desktop GUI for monitoring and interacting with multiple Elasticsearch clusters. Features snapshot monitoring, cluster status dashboard, task monitoring, and an Elastic console."
+section = "utils"
+priority = "optional"
+assets = [
+    ["target/release/drastic-smurf", "usr/bin/drastic-smurf", "755"],
+]
+
+[package.metadata.wix]
+upgrade-guid = "FDB98D5B-B94E-4675-A068-A3FA32791583"
+path-guid = "FD64BF1C-B505-4290-9B79-976525C8EB22"
+
+[package.metadata.generate-rpm]
+name = "drastic-smurf"
+summary = "Extensible desktop GUI for monitoring and interacting with multiple Elasticsearch clusters"
+license = "MIT"
+assets = [
+    { source = "target/release/drastic-smurf", dest = "/usr/bin/drastic-smurf", mode = "0755" },
+]
+
+[package.metadata.wix]
+upgrade-guid = "FDB98D5B-B94E-4675-A068-A3FA32791583"
+path-guid = "FD64BF1C-B505-4290-9B79-976525C8EB22"
+license = false
+eula = false

@@ -58,7 +58,6 @@ pub fn render_tasks_module(ui: &mut Ui, state: &mut TasksState) {
                             ui.label(cluster);
                             ui.label(&task.action);
                             ui.label(task.description.as_deref().unwrap_or("—"));
-                            let millis = task.running_time_in_nanos / 1_000_000;
                             ui.label(human_nanos(task.running_time_in_nanos));
                             ui.label(if task.cancellable { "Yes" } else { "No" });
                             ui.end_row();

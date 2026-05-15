@@ -28,6 +28,7 @@ pub fn delete_password(cluster_name: &str) -> Result<()> {
     Ok(())
 }
 
+#[allow(dead_code)]
 pub fn set_api_token(token_name: &str, token: &str) -> Result<()> {
     let entry = Entry::new(APP_NAME, &format!("token:{}", token_name))?;
     entry
@@ -36,6 +37,7 @@ pub fn set_api_token(token_name: &str, token: &str) -> Result<()> {
     Ok(())
 }
 
+#[allow(dead_code)]
 pub fn get_api_token(token_name: &str) -> Result<Option<String>> {
     let entry = Entry::new(APP_NAME, &format!("token:{}", token_name))?;
     match entry.get_password() {
