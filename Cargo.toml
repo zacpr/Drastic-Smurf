@@ -48,6 +48,8 @@ assets = [
 [package.metadata.wix]
 upgrade-guid = "FDB98D5B-B94E-4675-A068-A3FA32791583"
 path-guid = "FD64BF1C-B505-4290-9B79-976525C8EB22"
+license = false
+eula = false
 
 [package.metadata.generate-rpm]
 name = "drastic-smurf"
@@ -56,9 +58,3 @@ license = "MIT"
 assets = [
     { source = "target/release/drastic-smurf", dest = "/usr/bin/drastic-smurf", mode = "0755" },
 ]
-
-[package.metadata.wix]
-upgrade-guid = "FDB98D5B-B94E-4675-A068-A3FA32791583"
-path-guid = "FD64BF1C-B505-4290-9B79-976525C8EB22"
-license = false
-eula = false
