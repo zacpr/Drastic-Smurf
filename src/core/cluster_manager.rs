@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use crate::core::config::ClusterConfig;
+use crate::core::config::{ClusterConfig, SavedCommand};
 use crate::core::es_client::EsClient;
 use crate::core::ssh_tunnel::SshTunnel;
 
@@ -16,6 +16,7 @@ pub struct ClusterManager {
     clusters: Arc<Mutex<Vec<ClusterConfig>>>,
     clients: Arc<Mutex<HashMap<String, EsClient>>>,
     tunnels: Arc<Mutex<HashMap<String, TunnelInfo>>>,
+    saved_commands: Arc<Mutex<Vec<SavedCommand>>>,
 }
 
 impl Default for ClusterManager {
@@ -30,6 +31,7 @@ impl ClusterManager {
             clusters: Arc::new(Mutex::new(Vec::new())),
             clients: Arc::new(Mutex::new(HashMap::new())),
             tunnels: Arc::new(Mutex::new(HashMap::new())),
+            saved_commands: Arc::new(Mutex::new(Vec::new())),
         }
     }
 
@@ -37,6 +39,11 @@ impl ClusterManager {
         let config = crate::core::config::AppConfig::load()?;
         let mut clusters = self.clusters.lock().unwrap();
         *clusters = config.clusters;
+
+        {
+            let mut saved = self.saved_commands.lock().unwrap();
+            *saved = config.saved_commands;
+        }
 
         let mut clients = self.clients.lock().unwrap();
         clients.clear();
@@ -59,10 +66,12 @@ impl ClusterManager {
 
     pub fn save(&self) -> anyhow::Result<()> {
         let clusters = self.clusters.lock().unwrap();
+        let saved = self.saved_commands.lock().unwrap().clone();
         let config = crate::core::config::AppConfig {
             clusters: clusters.clone(),
             auto_refresh: true,
             refresh_interval_secs: 15,
+            saved_commands: saved,
         };
         config.save()?;
         Ok(())
@@ -146,6 +155,21 @@ impl ClusterManager {
 
     pub fn get_client(&self, name: &str) -> Option<EsClient> {
         self.clients.lock().unwrap().get(name).cloned()
+    }
+
+    pub fn saved_commands(&self) -> Vec<SavedCommand> {
+        self.saved_commands.lock().unwrap().clone()
+    }
+
+    pub fn add_saved_command(&self, cmd: SavedCommand) -> anyhow::Result<()> {
+        {
+            let mut saved = self.saved_commands.lock().unwrap();
+            // Avoid duplicates by name
+            saved.retain(|s| s.name != cmd.name);
+            saved.push(cmd);
+        }
+        self.save()?;
+        Ok(())
     }
 
     pub async fn ensure_tunnel(&self, name: &str) -> anyhow::Result<()> {

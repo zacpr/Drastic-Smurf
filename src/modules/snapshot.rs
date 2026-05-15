@@ -239,13 +239,14 @@ pub async fn fetch_cluster_snapshot(
         }
     }
 
-    // Try snapshot current
+    // Try snapshot current across all configured repos
     let mut snapshot_info: Option<SnapshotInfo> = None;
-    if !config.snapshot_repo.is_empty() {
-        let repo = &config.snapshot_repo;
+    for repo in &config.snapshot_repos {
+        if repo.is_empty() { continue; }
         match client.snapshot_current(repo).await {
             Ok(resp) if !resp.snapshots.is_empty() => {
                 snapshot_info = Some(resp.snapshots.into_iter().next().unwrap());
+                break;
             }
             _ => {}
         }
@@ -284,8 +285,8 @@ pub async fn fetch_cluster_snapshot(
     // Get detailed status if in progress
     if let Some(ref info) = snapshot_info {
         if info.state.to_uppercase() == "IN_PROGRESS" || info.state.to_uppercase() == "STARTED" {
-            if !config.snapshot_repo.is_empty() {
-                let repo = &config.snapshot_repo;
+            for repo in &config.snapshot_repos {
+                if repo.is_empty() { continue; }
                 match client.snapshot_status(repo, &info.snapshot).await {
                     Ok(detailed) if !detailed.snapshots.is_empty() => {
                         let detail = &detailed.snapshots[0];
@@ -337,15 +338,16 @@ pub async fn fetch_cluster_snapshot(
                     }
                     _ => {}
                 }
+                break;
             }
         }
     }
 
     status.snapshot_info = snapshot_info;
 
-    // SLM policy
-    if !config.slm_policy.is_empty() {
-        let policy = &config.slm_policy;
+    // SLM policies
+    for policy in &config.slm_policies {
+        if policy.is_empty() { continue; }
         match client.slm_policy(policy).await {
             Ok(resp) => {
                 if let Some((_, detail)) = resp.policies.into_iter().next() {

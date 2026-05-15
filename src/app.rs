@@ -7,7 +7,7 @@ use eframe::egui;
 use crate::core::cluster_manager::ClusterManager;
 use crate::core::config::ClusterConfig;
 use crate::core::es_client::{ClusterHealth, EsClient};
-use crate::modules::console::{ConsoleState, render_console_module};
+use crate::modules::console::{ConsoleState, ConsoleTarget, apply_jq_filter, render_console_module};
 use crate::modules::snapshot::{
     ClusterSnapshotStatus, SnapshotHistory, fetch_cluster_snapshot, render_snapshot_module,
 };
@@ -30,6 +30,8 @@ pub enum RefreshMsg {
     TasksResult(String, Vec<crate::core::es_client::TaskInfo>),
     ConsoleResult(Result<serde_json::Value, String>),
     TestResult(String),
+    TestRepos(Vec<String>),
+    TestPolicies(Vec<String>),
 }
 
 pub struct DrasticSmurfApp {
@@ -51,7 +53,12 @@ pub struct DrasticSmurfApp {
     pub refresh_tx: Sender<RefreshMsg>,
     pub refresh_rx: Receiver<RefreshMsg>,
     pub pending_delete: Option<String>,
-    pub console_send: Option<(String, String, String, Option<String>)>,
+    pub console_send: Option<(String, ConsoleTarget, String, String, Option<String>)>,
+    pub console_save: Option<(String, String, String, String)>,
+    pub show_save_command_dialog: bool,
+    pub save_command_name: String,
+    pub test_available_repos: Vec<String>,
+    pub test_available_policies: Vec<String>,
 }
 
 impl Default for DrasticSmurfApp {
@@ -83,6 +90,11 @@ impl Default for DrasticSmurfApp {
             refresh_rx: rx,
             pending_delete: None,
             console_send: None,
+            console_save: None,
+            show_save_command_dialog: false,
+            save_command_name: String::new(),
+            test_available_repos: Vec::new(),
+            test_available_policies: Vec::new(),
         }
     }
 }
@@ -245,16 +257,33 @@ impl DrasticSmurfApp {
                     }
                 }
                 RefreshMsg::ConsoleResult(result) => {
-                    self.console_state.response = match result {
+                    let raw = match result {
                         Ok(val) => {
                             serde_json::to_string_pretty(&val).unwrap_or_else(|e| e.to_string())
                         }
                         Err(e) => format!("Error: {}", e),
                     };
+                    self.console_state.response = if self.console_state.jq_filter.trim().is_empty() {
+                        raw
+                    } else {
+                        match apply_jq_filter(&raw, &self.console_state.jq_filter) {
+                            Ok(filtered) => filtered,
+                            Err(e) => {
+                                self.console_state.jq_error = Some(e);
+                                raw
+                            }
+                        }
+                    };
                     self.console_state.is_loading = false;
                 }
                 RefreshMsg::TestResult(msg) => {
                     self.test_result = Some(msg);
+                }
+                RefreshMsg::TestRepos(repos) => {
+                    self.test_available_repos = repos;
+                }
+                RefreshMsg::TestPolicies(policies) => {
+                    self.test_available_policies = policies;
                 }
             }
         }
@@ -321,6 +350,8 @@ impl DrasticSmurfApp {
                 self.editing_cluster = None;
                 self.new_cluster = ClusterConfig::default();
                 self.new_password = String::new();
+                self.test_available_repos.clear();
+                self.test_available_policies.clear();
                 self.test_result = None;
             }
 
@@ -403,6 +434,8 @@ impl DrasticSmurfApp {
                             .unwrap_or_default();
                         self.show_add_cluster = true;
                         self.test_result = None;
+                        self.test_available_repos.clear();
+                        self.test_available_policies.clear();
                     }
                 }
                 if let Some(name) = on_delete {
@@ -416,16 +449,24 @@ impl DrasticSmurfApp {
                 render_tasks_module(ui, &mut self.tasks_state);
             }
             Tab::Console => {
-                let names: Vec<String> = self
+                let clusters: Vec<(String, Option<String>)> = self
                     .cluster_manager
                     .clusters()
                     .iter()
-                    .map(|c| c.name.clone())
+                    .map(|c| (c.name.clone(), if c.kibana_host.is_empty() { None } else { Some(c.kibana_host.clone()) }))
                     .collect();
-                if self.console_state.selected_cluster.is_empty() && !names.is_empty() {
-                    self.console_state.selected_cluster = names[0].clone();
+                let saved_commands = self.cluster_manager.saved_commands();
+                if self.console_state.selected_cluster.is_empty() && !clusters.is_empty() {
+                    self.console_state.selected_cluster = clusters[0].0.clone();
                 }
-                render_console_module(ui, &mut self.console_state, &names, &mut self.console_send);
+                render_console_module(
+                    ui,
+                    &mut self.console_state,
+                    &clusters,
+                    &saved_commands,
+                    &mut self.console_send,
+                    &mut self.console_save,
+                );
             }
         }
     }
@@ -457,6 +498,10 @@ impl DrasticSmurfApp {
                     ui.text_edit_singleline(&mut self.new_cluster.host);
                 });
                 ui.horizontal(|ui| {
+                    ui.label("Kibana URL:");
+                    ui.text_edit_singleline(&mut self.new_cluster.kibana_host);
+                });
+                ui.horizontal(|ui| {
                     ui.label("Username:");
                     ui.text_edit_singleline(&mut self.new_cluster.username);
                 });
@@ -464,15 +509,69 @@ impl DrasticSmurfApp {
                     ui.label("Password:");
                     ui.add(egui::TextEdit::singleline(&mut self.new_password).password(true));
                 });
-                ui.horizontal(|ui| {
-                    ui.label("Snapshot Repo:");
-                    ui.text_edit_singleline(&mut self.new_cluster.snapshot_repo);
-                });
-                ui.horizontal(|ui| {
-                    ui.label("SLM Policy:");
-                    ui.text_edit_singleline(&mut self.new_cluster.slm_policy);
-                });
                 ui.checkbox(&mut self.new_cluster.verify_ssl, "Verify SSL");
+
+                ui.add_space(4.0);
+                ui.label("Snapshot Repo(s):");
+                if self.test_available_repos.is_empty() {
+                    ui.label(
+                        egui::RichText::new("Test connection to discover repos")
+                            .color(Theme::TEXT_MUTED)
+                            .size(11.0),
+                    );
+                } else {
+                    egui::Frame::new()
+                        .fill(Theme::BG_DARKEST)
+                        .corner_radius(4)
+                        .inner_margin(8.0)
+                        .show(ui, |ui| {
+                            ui.vertical(|ui| {
+                                for repo in &self.test_available_repos {
+                                    let mut selected = self.new_cluster.snapshot_repos.contains(repo);
+                                    if ui.checkbox(&mut selected, repo).changed() {
+                                        if selected {
+                                            if !self.new_cluster.snapshot_repos.contains(repo) {
+                                                self.new_cluster.snapshot_repos.push(repo.clone());
+                                            }
+                                        } else {
+                                            self.new_cluster.snapshot_repos.retain(|r| r != repo);
+                                        }
+                                    }
+                                }
+                            });
+                        });
+                }
+
+                ui.add_space(4.0);
+                ui.label("SLM Policy(s):");
+                if self.test_available_policies.is_empty() {
+                    ui.label(
+                        egui::RichText::new("Test connection to discover policies")
+                            .color(Theme::TEXT_MUTED)
+                            .size(11.0),
+                    );
+                } else {
+                    egui::Frame::new()
+                        .fill(Theme::BG_DARKEST)
+                        .corner_radius(4)
+                        .inner_margin(8.0)
+                        .show(ui, |ui| {
+                            ui.vertical(|ui| {
+                                for policy in &self.test_available_policies {
+                                    let mut selected = self.new_cluster.slm_policies.contains(policy);
+                                    if ui.checkbox(&mut selected, policy).changed() {
+                                        if selected {
+                                            if !self.new_cluster.slm_policies.contains(policy) {
+                                                self.new_cluster.slm_policies.push(policy.clone());
+                                            }
+                                        } else {
+                                            self.new_cluster.slm_policies.retain(|p| p != policy);
+                                        }
+                                    }
+                                }
+                            });
+                        });
+                }
 
                 ui.add_space(8.0);
                 ui.checkbox(&mut self.new_cluster.ssh_tunnel, "SSH Tunnel");
@@ -497,7 +596,7 @@ impl DrasticSmurfApp {
 
                 ui.add_space(8.0);
                 ui.horizontal(|ui| {
-                    if ui.button("Test Connection").clicked() {
+                    if ui.button("Test Connection / Load Policies").clicked() {
                         let client = EsClient::with_password(&self.new_cluster, &self.new_password);
                         match client {
                             Ok(c) => {
@@ -505,7 +604,7 @@ impl DrasticSmurfApp {
                                 let tx = self.refresh_tx.clone();
                                 tokio::spawn(async move {
                                     let result = c.cluster_health().await;
-                                    let msg = match result {
+                                    let msg = match &result {
                                         Ok(h) => format!(
                                             "Connected! Cluster: {}, Status: {}",
                                             h.cluster_name, h.status
@@ -513,6 +612,12 @@ impl DrasticSmurfApp {
                                         Err(e) => format!("Failed: {}", e),
                                     };
                                     let _ = tx.send(RefreshMsg::TestResult(msg));
+                                    if result.is_ok() {
+                                        let repos = c.snapshot_repos().await.unwrap_or_default();
+                                        let _ = tx.send(RefreshMsg::TestRepos(repos));
+                                        let policies = c.slm_policies().await.unwrap_or_default();
+                                        let _ = tx.send(RefreshMsg::TestPolicies(policies));
+                                    }
                                     ctx.request_repaint();
                                 });
                                 self.test_result = Some("Testing...".to_string());
@@ -524,7 +629,14 @@ impl DrasticSmurfApp {
                     }
 
                     if let Some(ref result) = self.test_result {
-                        ui.label(result);
+                        let color = if result.starts_with("Connected!") {
+                            Theme::SUCCESS
+                        } else if result.starts_with("Failed:") || result.starts_with("Client error:") {
+                            Theme::DANGER
+                        } else {
+                            Theme::TEXT_PRIMARY
+                        };
+                        ui.colored_label(color, result);
                     }
                 });
 
@@ -588,7 +700,11 @@ impl eframe::App for DrasticSmurfApp {
         self.process_refresh_results();
 
         // Handle console send
-        if let Some((cluster_name, method, path, body)) = self.console_send.take() {
+        if let Some((cluster_name, target, method, path, body)) = self.console_send.take() {
+            let clusters = self.cluster_manager.clusters();
+            let kibana_host = clusters.iter().find(|c| c.name == cluster_name).and_then(|c| {
+                if c.kibana_host.is_empty() { None } else { Some(c.kibana_host.clone()) }
+            });
             if let Some(client) = self.cluster_manager.get_client(&cluster_name) {
                 let tx = self.refresh_tx.clone();
                 let ctx = ctx.clone();
@@ -601,14 +717,33 @@ impl eframe::App for DrasticSmurfApp {
                         "HEAD" => reqwest::Method::HEAD,
                         _ => reqwest::Method::GET,
                     };
-                    let result = client
-                        .execute(method, &path, body)
-                        .await
-                        .map_err(|e| e.to_string());
+                    let result = match target {
+                        ConsoleTarget::Elasticsearch => client
+                            .execute(method, &path, body)
+                            .await
+                            .map_err(|e| e.to_string()),
+                        ConsoleTarget::Kibana => {
+                            match kibana_host {
+                                Some(url) => client
+                                    .kibana_execute(&url, method, &path, body)
+                                    .await
+                                    .map_err(|e| e.to_string()),
+                                None => Err("No Kibana URL configured for this cluster".to_string()),
+                            }
+                        }
+                    };
                     let _ = tx.send(RefreshMsg::ConsoleResult(result));
                     ctx.request_repaint();
                 });
             }
+        }
+
+        // Handle console save
+        if let Some((method, path, body, target)) = self.console_save.take() {
+            self.show_save_command_dialog = true;
+            self.save_command_name = format!("{} {}", method, path);
+            // Store temporarily for when dialog confirms
+            self.console_save = Some((method, path, body, target));
         }
 
         // Auto refresh
@@ -645,5 +780,45 @@ impl eframe::App for DrasticSmurfApp {
         // Dialogs
         self.render_add_cluster_dialog(ctx);
         self.render_delete_confirmation(ctx);
+        self.render_save_command_dialog(ctx);
+    }
+}
+
+impl DrasticSmurfApp {
+    fn render_save_command_dialog(&mut self, ctx: &egui::Context) {
+        if !self.show_save_command_dialog {
+            return;
+        }
+        egui::Window::new("Save Command")
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
+            .show(ctx, |ui| {
+                ui.set_min_width(300.0);
+                ui.label("Command name:");
+                ui.text_edit_singleline(&mut self.save_command_name);
+                ui.add_space(12.0);
+                ui.horizontal(|ui| {
+                    if ui.button("Save").clicked() {
+                        if let Some((method, path, body, target)) = self.console_save.take() {
+                            let cmd = crate::core::config::SavedCommand {
+                                name: self.save_command_name.clone(),
+                                target,
+                                method,
+                                path,
+                                body,
+                            };
+                            let _ = self.cluster_manager.add_saved_command(cmd);
+                        }
+                        self.show_save_command_dialog = false;
+                        self.save_command_name.clear();
+                    }
+                    if ui.button("Cancel").clicked() {
+                        self.console_save = None;
+                        self.show_save_command_dialog = false;
+                        self.save_command_name.clear();
+                    }
+                });
+            });
     }
 }

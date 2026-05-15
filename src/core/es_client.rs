@@ -170,6 +170,28 @@ impl EsClient {
             .await
     }
 
+    pub async fn snapshot_repos(&self) -> Result<Vec<String>, EsError> {
+        let val: serde_json::Value = self
+            .exec(self.request(reqwest::Method::GET, "/_snapshot"))
+            .await?;
+        let repos = val
+            .as_object()
+            .map(|m| m.keys().cloned().collect::<Vec<_>>())
+            .unwrap_or_default();
+        Ok(repos)
+    }
+
+    pub async fn slm_policies(&self) -> Result<Vec<String>, EsError> {
+        let val: serde_json::Value = self
+            .exec(self.request(reqwest::Method::GET, "/_slm/policy"))
+            .await?;
+        let policies = val
+            .as_object()
+            .map(|m| m.keys().cloned().collect::<Vec<_>>())
+            .unwrap_or_default();
+        Ok(policies)
+    }
+
     pub async fn execute(
         &self,
         method: reqwest::Method,
@@ -177,6 +199,32 @@ impl EsClient {
         body: Option<String>,
     ) -> Result<serde_json::Value, EsError> {
         let mut req = self.request(method, path);
+        if let Some(b) = body {
+            req = req.body(b);
+        }
+        self.exec(req).await
+    }
+
+    pub async fn kibana_execute(
+        &self,
+        kibana_host: &str,
+        method: reqwest::Method,
+        path: &str,
+        body: Option<String>,
+    ) -> Result<serde_json::Value, EsError> {
+        let host = kibana_host.trim();
+        let host = if host.starts_with("http://") || host.starts_with("https://") {
+            host.to_string()
+        } else {
+            format!("http://{}", host)
+        };
+        let url = format!("{}{}", host.trim_end_matches('/'), path);
+        let mut req = self
+            .client
+            .request(method, &url)
+            .basic_auth(&self.config.username, Some(&self.password))
+            .header("Content-Type", "application/json")
+            .header("kbn-xsrf", "true");
         if let Some(b) = body {
             req = req.body(b);
         }
