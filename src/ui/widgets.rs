@@ -1,11 +1,13 @@
 use egui::{Color32, CornerRadius, Mesh, Pos2, Rect, Shape, Stroke, Ui, Vec2, Widget};
 
+use crate::ui::animations::shimmer_overlay;
 use crate::ui::theme::Theme;
 
 pub struct GradientProgressBar {
     progress: f32,
     height: f32,
     width: f32,
+    shimmer: bool,
 }
 
 impl GradientProgressBar {
@@ -14,7 +16,13 @@ impl GradientProgressBar {
             progress: progress.clamp(0.0, 1.0),
             height: 12.0,
             width: 200.0,
+            shimmer: false,
         }
+    }
+
+    pub fn shimmer(mut self, on: bool) -> Self {
+        self.shimmer = on;
+        self
     }
 
     pub fn height(mut self, h: f32) -> Self {
@@ -28,10 +36,10 @@ impl GradientProgressBar {
     }
 
     fn gradient_color(t: f32) -> Color32 {
-        let c1 = Theme::PROGRESS_START;
-        let c2 = Theme::PROGRESS_MID1;
-        let c3 = Theme::PROGRESS_MID2;
-        let c4 = Theme::PROGRESS_END;
+        let c1 = Theme::progress_start();
+        let c2 = Theme::progress_mid1();
+        let c3 = Theme::progress_mid2();
+        let c4 = Theme::progress_end();
 
         let (a, b, local_t) = if t < 0.33 {
             (c1, c2, t / 0.33)
@@ -59,7 +67,7 @@ impl Widget for GradientProgressBar {
             let rounding = CornerRadius::same((self.height / 2.0).round() as u8);
             let track_rect = rect;
             ui.painter()
-                .rect_filled(track_rect, rounding, Theme::BG_INPUT);
+                .rect_filled(track_rect, rounding, Theme::bg_input());
 
             let fill_width = track_rect.width() * self.progress;
             if fill_width > 0.0 {
@@ -89,6 +97,10 @@ impl Widget for GradientProgressBar {
                     mesh.add_triangle(vi, vi + 2, vi + 3);
                 }
                 ui.painter().add(Shape::mesh(mesh));
+
+                if self.shimmer {
+                    shimmer_overlay(ui, fill_rect, 0.5, 1.0);
+                }
             }
         }
 
@@ -120,9 +132,9 @@ impl Widget for ConnectionDot {
         let (rect, response) = ui.allocate_exact_size(Vec2::splat(self.size), egui::Sense::hover());
         if ui.is_rect_visible(rect) {
             let color = if self.connected {
-                Theme::SUCCESS
+                Theme::success()
             } else {
-                Theme::DANGER
+                Theme::danger()
             };
             ui.painter()
                 .circle_filled(rect.center(), rect.width() / 2.0, color);
@@ -150,7 +162,7 @@ impl Widget for StatePill {
         let galley = ui.painter().layout_no_wrap(
             self.text.clone(),
             egui::FontId::default(),
-            Theme::TEXT_PRIMARY,
+            Theme::text_primary(),
         );
         let padding = Vec2::new(8.0, 4.0);
         let desired_size = galley.size() + padding * 2.0;
@@ -160,7 +172,7 @@ impl Widget for StatePill {
             ui.painter()
                 .rect_filled(rect, CornerRadius::same(4), self.color);
             let text_pos = rect.min + padding;
-            ui.painter().galley(text_pos, galley, Theme::TEXT_PRIMARY);
+            ui.painter().galley(text_pos, galley, Theme::text_primary());
         }
         response
     }
@@ -179,7 +191,7 @@ impl MiniSparkline {
             data,
             width: 120.0,
             height: 30.0,
-            color: Theme::ACCENT,
+            color: Theme::accent(),
         }
     }
 

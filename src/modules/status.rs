@@ -1,7 +1,7 @@
 use crate::core::es_client::{ClusterHealth, ClusterStats};
 use crate::ui::theme::Theme;
 use crate::ui::widgets::{ConnectionDot, human_bytes};
-use egui::Ui;
+use egui::{Color32, Ui};
 
 #[derive(Debug, Clone, Default)]
 pub struct StatusState {
@@ -9,7 +9,7 @@ pub struct StatusState {
     pub stats_data: Vec<(String, Option<ClusterStats>)>,
 }
 
-pub fn render_status_module(ui: &mut Ui, state: &StatusState) {
+pub fn render_status_module(ui: &mut Ui, state: &StatusState, hover_effects: bool) {
     ui.heading("Cluster Status");
     ui.add_space(16.0);
 
@@ -27,7 +27,7 @@ pub fn render_status_module(ui: &mut Ui, state: &StatusState) {
         if state.health_data.is_empty() {
             ui.label(
                 egui::RichText::new("No clusters configured. Add a cluster to begin monitoring.")
-                    .color(Theme::TEXT_MUTED)
+                    .color(Theme::text_muted())
                     .size(14.0),
             );
             return;
@@ -47,7 +47,7 @@ pub fn render_status_module(ui: &mut Ui, state: &StatusState) {
                                     .iter()
                                     .find(|(n, _)| n == name)
                                     .and_then(|(_, s)| s.clone());
-                                render_status_card(ui, name, health, stats, col_width);
+                                render_status_card(ui, name, health, stats, col_width, hover_effects);
                                 ui.add_space(card_spacing);
                             }
                         }
@@ -67,13 +67,15 @@ fn render_status_card(
     health: &Option<ClusterHealth>,
     stats: Option<ClusterStats>,
     col_width: f32,
+    hover_effects: bool,
 ) {
     let frame = egui::Frame::new()
-        .fill(Theme::BG_CARD)
+        .fill(Theme::bg_card())
         .corner_radius(Theme::CARD_ROUNDING)
-        .inner_margin(Theme::CARD_PADDING);
+        .inner_margin(Theme::CARD_PADDING)
+        .stroke(egui::Stroke::new(1.0, Theme::bg_input()));
 
-    frame.show(ui, |ui| {
+    let response = frame.show(ui, |ui| {
         ui.set_min_width(col_width - Theme::CARD_PADDING.x * 2.0);
         ui.set_max_width(col_width - Theme::CARD_PADDING.x * 2.0);
 
@@ -86,7 +88,7 @@ fn render_status_card(
                     egui::RichText::new(name)
                         .strong()
                         .size(17.0)
-                        .color(Theme::TEXT_PRIMARY),
+                        .color(Theme::text_primary()),
                 );
             });
 
@@ -97,7 +99,7 @@ fn render_status_card(
                 } else {
                     ui.add(crate::ui::widgets::StatePill::new(
                         "Unreachable",
-                        Theme::DANGER,
+                        Theme::danger(),
                     ));
                 }
             });
@@ -153,12 +155,12 @@ fn render_status_card(
                             |ui| {
                                 ui.label(
                                     egui::RichText::new(format!("{}: ", label))
-                                        .color(Theme::TEXT_MUTED)
+                                        .color(Theme::text_muted())
                                         .size(11.0),
                                 );
                                 ui.label(
                                     egui::RichText::new(value.clone())
-                                        .color(Theme::TEXT_PRIMARY)
+                                        .color(Theme::text_primary())
                                         .size(11.0)
                                         .strong(),
                                 );
@@ -170,9 +172,32 @@ fn render_status_card(
         } else {
             ui.label(
                 egui::RichText::new("Cluster is unreachable")
-                    .color(Theme::DANGER)
+                    .color(Theme::danger())
                     .size(12.0),
             );
         }
     });
+
+    if hover_effects {
+        let rect = response.response.rect;
+        let hovered = response.response.hovered();
+        let glow_alpha = ui.ctx().animate_value_with_time(
+            ui.id().with(name).with("hover_glow"),
+            if hovered { 0.12 } else { 0.0 },
+            0.15,
+        );
+        if glow_alpha > 0.0 {
+            let accent = Theme::accent();
+            let glow_color = Color32::from_rgba_premultiplied(
+                accent.r(), accent.g(), accent.b(),
+                (glow_alpha * 255.0) as u8,
+            );
+            ui.painter().rect_stroke(
+                rect.expand(1.0),
+                Theme::CARD_ROUNDING,
+                egui::Stroke::new(1.0, glow_color),
+                egui::StrokeKind::Middle,
+            );
+        }
+    }
 }

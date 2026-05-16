@@ -7,6 +7,7 @@ use eframe::egui;
 use crate::core::cluster_manager::ClusterManager;
 use crate::core::config::ClusterConfig;
 use crate::core::es_client::{ClusterHealth, EsClient};
+use crate::modules::appearance::{AppearanceState, render_appearance_module};
 use crate::modules::clusters::{ClustersState, render_clusters_module};
 use crate::modules::console::{ConsoleState, render_console_module};
 use crate::modules::snapshot::{
@@ -15,6 +16,7 @@ use crate::modules::snapshot::{
 use crate::modules::status::{StatusState, render_status_module};
 use crate::modules::tasks::{TasksState, render_tasks_module};
 use crate::ui::theme::Theme;
+use crate::ui::vfx;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Tab {
@@ -23,6 +25,7 @@ pub enum Tab {
     Status,
     Tasks,
     Console,
+    Appearance,
 }
 
 pub enum RefreshMsg {
@@ -43,6 +46,7 @@ pub struct DrasticSmurfApp {
     pub tasks_state: TasksState,
     pub console_state: ConsoleState,
     pub clusters_state: ClustersState,
+    pub appearance_state: AppearanceState,
     pub auto_refresh: bool,
     pub refresh_interval_secs: u64,
     pub last_refresh: Option<Instant>,
@@ -56,6 +60,8 @@ pub struct DrasticSmurfApp {
     pub pending_delete: Option<String>,
     pub console_send: Option<(String, String, String, Option<String>)>,
     pub clusters_import: Option<crate::core::config::AppConfig>,
+    pub theme: crate::ui::theme::AppTheme,
+    pub vfx: crate::core::config::VfxSettings,
 }
 
 impl Default for DrasticSmurfApp {
@@ -72,6 +78,10 @@ impl Default for DrasticSmurfApp {
             console_state.selected_cluster = first.clone();
         }
 
+        // Load config to get theme/vfx
+        let config = crate::core::config::AppConfig::load().unwrap_or_default();
+        crate::ui::theme::Theme::set(config.theme.clone());
+
         let mut app = Self {
             cluster_manager: manager.clone(),
             current_tab: Tab::Snapshot,
@@ -81,6 +91,10 @@ impl Default for DrasticSmurfApp {
             tasks_state: TasksState::default(),
             console_state,
             clusters_state: ClustersState::default(),
+            appearance_state: AppearanceState {
+                selected_preset: config.theme.name.clone(),
+                ..Default::default()
+            },
             auto_refresh: manager.auto_refresh(),
             refresh_interval_secs: manager.refresh_interval_secs(),
             last_refresh: None,
@@ -94,6 +108,8 @@ impl Default for DrasticSmurfApp {
             pending_delete: None,
             console_send: None,
             clusters_import: None,
+            theme: config.theme,
+            vfx: config.vfx,
         };
 
         // Pre-populate module state from cached cluster data
@@ -387,7 +403,7 @@ impl DrasticSmurfApp {
     fn render_sidebar(&mut self, ui: &mut egui::Ui) {
         let sidebar_width = 220.0;
         let frame = egui::Frame::new()
-            .fill(Theme::BG_DARKEST)
+            .fill(Theme::bg_darkest())
             .inner_margin(egui::Vec2::new(12.0, 16.0));
 
         frame.show(ui, |ui| {
@@ -396,12 +412,12 @@ impl DrasticSmurfApp {
 
             ui.heading(
                 egui::RichText::new("DRASTIC SMURF")
-                    .color(Theme::ACCENT)
+                    .color(Theme::accent())
                     .size(18.0),
             );
             ui.label(
                 egui::RichText::new("ES Multi-Tool")
-                    .color(Theme::TEXT_MUTED)
+                    .color(Theme::text_muted())
                     .size(11.0),
             );
             ui.add_space(20.0);
@@ -409,7 +425,7 @@ impl DrasticSmurfApp {
             ui.label(
                 egui::RichText::new("Clusters")
                     .strong()
-                    .color(Theme::TEXT_SECONDARY)
+                    .color(Theme::text_secondary())
                     .size(12.0),
             );
             ui.add_space(4.0);
@@ -425,7 +441,7 @@ impl DrasticSmurfApp {
                     ui.add(crate::ui::widgets::ConnectionDot::new(connected).size(8.0));
                     ui.label(
                         egui::RichText::new(&cluster.name)
-                            .color(Theme::TEXT_PRIMARY)
+                            .color(Theme::text_primary())
                             .size(13.0),
                     );
                 });
@@ -434,7 +450,7 @@ impl DrasticSmurfApp {
             if clusters.is_empty() {
                 ui.label(
                     egui::RichText::new("No clusters configured")
-                        .color(Theme::TEXT_MUTED)
+                        .color(Theme::text_muted())
                         .size(11.0),
                 );
             }
@@ -491,7 +507,7 @@ impl DrasticSmurfApp {
                 ui.label(
                     egui::RichText::new(format!("Last refresh: {}s ago", ago))
                         .size(10.0)
-                        .color(Theme::TEXT_MUTED),
+                        .color(Theme::text_muted()),
                 );
             }
         });
@@ -505,13 +521,14 @@ impl DrasticSmurfApp {
                 ("Status", Tab::Status),
                 ("Tasks", Tab::Tasks),
                 ("Console", Tab::Console),
+                ("Appearance", Tab::Appearance),
             ] {
                 let is_active = self.current_tab == tab;
                 let text = egui::RichText::new(label).size(14.0);
                 let text = if is_active {
-                    text.color(Theme::ACCENT).strong()
+                    text.color(Theme::accent()).strong()
                 } else {
-                    text.color(Theme::TEXT_SECONDARY)
+                    text.color(Theme::text_secondary())
                 };
                 if ui.selectable_label(is_active, text).clicked() {
                     self.current_tab = tab;
@@ -591,6 +608,7 @@ impl DrasticSmurfApp {
                     &self.snapshot_histories,
                     &mut on_edit,
                     &mut on_delete,
+                    self.vfx.shimmer_effects,
                 );
                 if let Some(name) = on_edit {
                     if let Some(cluster) = self
@@ -613,7 +631,7 @@ impl DrasticSmurfApp {
                 }
             }
             Tab::Status => {
-                render_status_module(ui, &self.status_state);
+                render_status_module(ui, &self.status_state, self.vfx.hover_effects);
             }
             Tab::Tasks => {
                 render_tasks_module(ui, &mut self.tasks_state);
@@ -669,6 +687,24 @@ impl DrasticSmurfApp {
                     if !self.console_state.saved_queries.is_empty() {
                         self.console_state.saved_queries.clear();
                     }
+                }
+            }
+            Tab::Appearance => {
+                let mut theme_changed = false;
+                let mut vfx_changed = false;
+                render_appearance_module(
+                    ui,
+                    &mut self.appearance_state,
+                    &mut self.theme,
+                    &mut self.vfx,
+                    &mut theme_changed,
+                    &mut vfx_changed,
+                );
+                if theme_changed || vfx_changed {
+                    let _ = self.cluster_manager.save_theme_and_vfx(
+                        self.theme.clone(),
+                        self.vfx.clone(),
+                    );
                 }
             }
         }
@@ -828,6 +864,9 @@ impl DrasticSmurfApp {
 
 impl eframe::App for DrasticSmurfApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Apply theme to egui context
+        ctx.set_visuals(self.theme.to_egui_visuals());
+
         // Process async results
         self.process_refresh_results();
 
@@ -876,9 +915,13 @@ impl eframe::App for DrasticSmurfApp {
             }
         }
 
+        // Background VFX
+        let screen_rect = ctx.screen_rect();
+        vfx::paint_background(ctx, &self.vfx, screen_rect);
+
         // Main layout
         egui::CentralPanel::default()
-            .frame(egui::Frame::new().fill(Theme::BG_DARK))
+            .frame(egui::Frame::new().fill(Theme::bg_dark()))
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
                     // Sidebar

@@ -42,7 +42,7 @@ pub fn render_console_module(
     }
 
     egui::Frame::new()
-        .fill(crate::ui::theme::Theme::BG_CARD)
+        .fill(crate::ui::theme::Theme::bg_card())
         .corner_radius(crate::ui::theme::Theme::CARD_ROUNDING)
         .inner_margin(crate::ui::theme::Theme::CARD_PADDING)
         .show(ui, |ui| {

@@ -1,6 +1,6 @@
 [package]
 name = "drastic-smurf"
-version = "0.1.6"
+version = "0.1.7"
 edition = "2024"
 authors = ["Zac <zac@example.com>"]
 description = "Extensible desktop GUI for monitoring and interacting with multiple Elasticsearch clusters"
@@ -17,6 +17,7 @@ reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-feature
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 chrono = { version = "0.4", features = ["serde"] }
+hex = "0.4"
 keyring = { version = "3.6" }
 directories = "6.0"
 anyhow = "1.0"

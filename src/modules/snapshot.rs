@@ -52,11 +52,11 @@ impl SnapshotState {
 
     pub fn color(&self) -> egui::Color32 {
         match self {
-            Self::Success => Theme::SNAPSHOT_SUCCESS,
-            Self::InProgress => Theme::SNAPSHOT_IN_PROGRESS,
-            Self::Failed => Theme::SNAPSHOT_FAILED,
-            Self::Partial => Theme::SNAPSHOT_PARTIAL,
-            _ => Theme::TEXT_MUTED,
+            Self::Success => Theme::snapshot_success(),
+            Self::InProgress => Theme::snapshot_in_progress(),
+            Self::Failed => Theme::snapshot_failed(),
+            Self::Partial => Theme::snapshot_partial(),
+            _ => Theme::text_muted(),
         }
     }
 }
@@ -373,6 +373,7 @@ pub fn render_snapshot_module(
     histories: &std::collections::HashMap<String, SnapshotHistory>,
     on_edit: &mut Option<String>,
     on_delete: &mut Option<String>,
+    shimmer: bool,
 ) {
     ui.heading("Snapshot Monitoring");
     ui.add_space(16.0);
@@ -391,7 +392,7 @@ pub fn render_snapshot_module(
         if statuses.is_empty() {
             ui.label(
                 egui::RichText::new("No clusters configured. Add a cluster to begin monitoring.")
-                    .color(Theme::TEXT_MUTED)
+                    .color(Theme::text_muted())
                     .size(14.0),
             );
             return;
@@ -408,7 +409,7 @@ pub fn render_snapshot_module(
                         for (i, status) in statuses.iter().enumerate() {
                             if i % cols == col_idx {
                                 render_cluster_card(
-                                    ui, status, histories, on_edit, on_delete, col_width,
+                                    ui, status, histories, on_edit, on_delete, col_width, shimmer,
                                 );
                                 ui.add_space(card_spacing);
                             }
@@ -430,9 +431,10 @@ fn render_cluster_card(
     on_edit: &mut Option<String>,
     on_delete: &mut Option<String>,
     col_width: f32,
+    shimmer: bool,
 ) {
     let frame = egui::Frame::new()
-        .fill(Theme::BG_CARD)
+        .fill(Theme::bg_card())
         .corner_radius(Theme::CARD_ROUNDING)
         .inner_margin(Theme::CARD_PADDING);
 
@@ -448,7 +450,7 @@ fn render_cluster_card(
                     egui::RichText::new(&status.config.name)
                         .strong()
                         .size(17.0)
-                        .color(Theme::TEXT_PRIMARY),
+                        .color(Theme::text_primary()),
                 );
                 let host_clean = status
                     .config
@@ -458,7 +460,7 @@ fn render_cluster_card(
                 ui.label(
                     egui::RichText::new(host_clean)
                         .size(10.0)
-                        .color(Theme::TEXT_MUTED),
+                        .color(Theme::text_muted()),
                 );
             });
 
@@ -467,7 +469,7 @@ fn render_cluster_card(
                     egui::Label::new(
                         egui::RichText::new("Del")
                             .size(10.0)
-                            .color(Theme::TEXT_MUTED),
+                            .color(Theme::text_muted()),
                     )
                     .sense(egui::Sense::click()),
                 );
@@ -482,7 +484,7 @@ fn render_cluster_card(
                     egui::Label::new(
                         egui::RichText::new("Edit")
                             .size(10.0)
-                            .color(Theme::TEXT_MUTED),
+                            .color(Theme::text_muted()),
                     )
                     .sense(egui::Sense::click()),
                 );
@@ -497,7 +499,7 @@ fn render_cluster_card(
         ui.add_space(6.0);
 
         if let Some(ref err) = status.error_message {
-            ui.colored_label(Theme::DANGER, format!("⚠ {}", err));
+            ui.colored_label(Theme::danger(), format!("⚠ {}", err));
         } else if let Some(ref info) = status.snapshot_info {
             let state = SnapshotState::from_str(&info.state);
 
@@ -509,14 +511,14 @@ fn render_cluster_card(
                         .monospace()
                         .size(12.0)
                         .strong()
-                        .color(Theme::TEXT_SECONDARY),
+                        .color(Theme::text_secondary()),
                 );
                 if ui
                     .add(
                         egui::Label::new(
                             egui::RichText::new("Copy")
                                 .size(10.0)
-                                .color(Theme::TEXT_MUTED),
+                                .color(Theme::text_muted()),
                         )
                         .sense(egui::Sense::click()),
                     )
@@ -535,19 +537,20 @@ fn render_cluster_card(
                     let galley = ui.painter().layout_no_wrap(
                         pct_text.clone(),
                         egui::FontId::proportional(11.0),
-                        Theme::ACCENT,
+                        Theme::accent(),
                     );
                     let pct_width = galley.size().x + 4.0;
                     ui.add(
                         GradientProgressBar::new(stats.progress_pct / 100.0)
                             .width(ui.available_width() - pct_width - 4.0)
-                            .height(14.0),
+                            .height(14.0)
+                            .shimmer(shimmer),
                     );
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.label(
                             egui::RichText::new(pct_text)
                                 .size(11.0)
-                                .color(Theme::ACCENT)
+                                .color(Theme::accent())
                                 .strong(),
                         );
                     });
@@ -619,13 +622,13 @@ fn render_cluster_card(
                                 egui::Layout::left_to_right(egui::Align::Center),
                                 |ui| {
                                     let color = if *label == "Failed" {
-                                        Theme::DANGER
+                                        Theme::danger()
                                     } else {
-                                        Theme::TEXT_PRIMARY
+                                        Theme::text_primary()
                                     };
                                     ui.label(
                                         egui::RichText::new(format!("{}: ", label))
-                                            .color(Theme::TEXT_MUTED)
+                                            .color(Theme::text_muted())
                                             .size(11.0),
                                     );
                                     ui.label(
@@ -643,7 +646,7 @@ fn render_cluster_card(
                 ui.add_space(8.0);
                 ui.label(
                     egui::RichText::new("No active snapshot")
-                        .color(Theme::TEXT_MUTED)
+                        .color(Theme::text_muted())
                         .size(13.0),
                 );
             }
@@ -652,7 +655,7 @@ fn render_cluster_card(
             if status.slm_last_run.is_some() || status.slm_next_run.is_some() {
                 ui.add_space(8.0);
                 let slm_frame = egui::Frame::new()
-                    .fill(Theme::BG_DARKEST)
+                    .fill(Theme::bg_darkest())
                     .corner_radius(CornerRadius::same(8))
                     .inner_margin(Vec2::new(10.0, 8.0));
                 slm_frame.show(ui, |ui| {
@@ -661,21 +664,21 @@ fn render_cluster_card(
                             egui::RichText::new("SLM policy running")
                                 .size(11.0)
                                 .strong()
-                                .color(Theme::ACCENT),
+                                .color(Theme::accent()),
                         );
                     }
                     if let Some(ref last) = status.slm_last_run {
                         ui.label(
                             egui::RichText::new(format!("Last run: {}", last))
                                 .size(11.0)
-                                .color(Theme::TEXT_SECONDARY),
+                                .color(Theme::text_secondary()),
                         );
                     }
                     if let Some(ref next) = status.slm_next_run {
                         ui.label(
                             egui::RichText::new(format!("Next run: {}", next))
                                 .size(11.0)
-                                .color(Theme::TEXT_SECONDARY),
+                                .color(Theme::text_secondary()),
                         );
                     }
                 });
@@ -684,13 +687,13 @@ fn render_cluster_card(
             ui.add_space(8.0);
             ui.label(
                 egui::RichText::new("No snapshot in progress")
-                    .color(Theme::TEXT_MUTED)
+                    .color(Theme::text_muted())
                     .size(13.0),
             );
         } else {
             ui.label(
                 egui::RichText::new("Cluster unreachable")
-                    .color(Theme::TEXT_MUTED)
+                    .color(Theme::text_muted())
                     .size(12.0),
             );
         }

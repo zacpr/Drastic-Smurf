@@ -19,6 +19,8 @@ pub struct ClusterManager {
     cluster_data: Arc<Mutex<HashMap<String, crate::core::config::ClusterData>>>,
     auto_refresh: Arc<Mutex<bool>>,
     refresh_interval_secs: Arc<Mutex<u64>>,
+    theme: Arc<Mutex<crate::ui::theme::AppTheme>>,
+    vfx: Arc<Mutex<crate::core::config::VfxSettings>>,
 }
 
 impl Default for ClusterManager {
@@ -36,6 +38,8 @@ impl ClusterManager {
             cluster_data: Arc::new(Mutex::new(HashMap::new())),
             auto_refresh: Arc::new(Mutex::new(true)),
             refresh_interval_secs: Arc::new(Mutex::new(15)),
+            theme: Arc::new(Mutex::new(crate::ui::theme::AppTheme::default())),
+            vfx: Arc::new(Mutex::new(crate::core::config::VfxSettings::default())),
         }
     }
 
@@ -56,6 +60,14 @@ impl ClusterManager {
         {
             let mut ri = self.refresh_interval_secs.lock().unwrap();
             *ri = config.refresh_interval_secs;
+        }
+        {
+            let mut t = self.theme.lock().unwrap();
+            *t = config.theme;
+        }
+        {
+            let mut v = self.vfx.lock().unwrap();
+            *v = config.vfx;
         }
 
         let clusters = self.clusters.lock().unwrap();
@@ -83,14 +95,34 @@ impl ClusterManager {
         let data = self.cluster_data.lock().unwrap();
         let auto_refresh = *self.auto_refresh.lock().unwrap();
         let refresh_interval_secs = *self.refresh_interval_secs.lock().unwrap();
+        let theme = self.theme.lock().unwrap().clone();
+        let vfx = self.vfx.lock().unwrap().clone();
         let config = crate::core::config::AppConfig {
             clusters: clusters.clone(),
             cluster_data: data.clone(),
             auto_refresh,
             refresh_interval_secs,
+            theme,
+            vfx,
         };
         config.save()?;
         Ok(())
+    }
+
+    pub fn save_theme_and_vfx(
+        &self,
+        theme: crate::ui::theme::AppTheme,
+        vfx: crate::core::config::VfxSettings,
+    ) -> anyhow::Result<()> {
+        {
+            let mut t = self.theme.lock().unwrap();
+            *t = theme;
+        }
+        {
+            let mut v = self.vfx.lock().unwrap();
+            *v = vfx;
+        }
+        self.save()
     }
 
     pub fn clusters(&self) -> Vec<ClusterConfig> {

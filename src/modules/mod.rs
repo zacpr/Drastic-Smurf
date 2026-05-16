@@ -1,3 +1,4 @@
+pub mod appearance;
 pub mod clusters;
 pub mod console;
 pub mod snapshot;

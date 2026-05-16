@@ -5,6 +5,55 @@ use anyhow::Result;
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 
+use crate::ui::theme::AppTheme;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VfxSettings {
+    #[serde(default = "default_background_effect")]
+    pub background_effect: BackgroundEffect,
+    #[serde(default = "default_background_intensity")]
+    pub background_intensity: f32,
+    #[serde(default = "default_animation_speed")]
+    pub animation_speed: f32,
+    #[serde(default = "default_true")]
+    pub hover_effects: bool,
+    #[serde(default = "default_true")]
+    pub shimmer_effects: bool,
+    #[serde(default = "default_false")]
+    pub cursor_glow: bool,
+    #[serde(default = "default_parallax")]
+    pub parallax_amount: f32,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub enum BackgroundEffect {
+    #[default]
+    None,
+    Gradient,
+    Mesh,
+}
+
+impl Default for VfxSettings {
+    fn default() -> Self {
+        Self {
+            background_effect: BackgroundEffect::Gradient,
+            background_intensity: 0.15,
+            animation_speed: 1.0,
+            hover_effects: true,
+            shimmer_effects: true,
+            cursor_glow: false,
+            parallax_amount: 0.2,
+        }
+    }
+}
+
+fn default_background_effect() -> BackgroundEffect { BackgroundEffect::Gradient }
+fn default_background_intensity() -> f32 { 0.15 }
+fn default_animation_speed() -> f32 { 1.0 }
+fn default_true() -> bool { true }
+fn default_false() -> bool { false }
+fn default_parallax() -> f32 { 0.2 }
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum CaCert {
     System,
@@ -131,6 +180,10 @@ pub struct AppConfig {
     pub auto_refresh: bool,
     #[serde(default = "default_refresh_interval_secs")]
     pub refresh_interval_secs: u64,
+    #[serde(default)]
+    pub theme: AppTheme,
+    #[serde(default)]
+    pub vfx: VfxSettings,
 }
 
 fn default_refresh_interval_secs() -> u64 {

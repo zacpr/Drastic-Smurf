@@ -84,11 +84,11 @@ pub fn render_clusters_module(
                 || (state.editing_cluster.is_none() && state.selected_cluster.is_none());
 
             egui::Frame::new()
-                .fill(Theme::BG_CARD)
+                .fill(Theme::bg_card())
                 .corner_radius(Theme::CARD_ROUNDING)
                 .inner_margin(Theme::CARD_PADDING)
                 .stroke(if is_selected {
-                    egui::Stroke::new(1.5, Theme::ACCENT)
+                    egui::Stroke::new(1.5, Theme::accent())
                 } else {
                     egui::Stroke::NONE
                 })
@@ -104,12 +104,12 @@ pub fn render_clusters_module(
                                     egui::RichText::new(&cluster.name)
                                         .strong()
                                         .size(14.0)
-                                        .color(Theme::TEXT_PRIMARY),
+                                        .color(Theme::text_primary()),
                                 );
                                 ui.label(
                                     egui::RichText::new(format!("@ {}", cluster.host))
                                         .size(12.0)
-                                        .color(Theme::TEXT_MUTED),
+                                        .color(Theme::text_muted()),
                                 );
                             })
                             .response;
@@ -163,7 +163,7 @@ pub fn render_clusters_module(
                             ui.label(
                                 egui::RichText::new(summaries.join(" · "))
                                     .size(11.0)
-                                    .color(Theme::TEXT_MUTED),
+                                    .color(Theme::text_muted()),
                             );
                         }
                     }
@@ -184,7 +184,7 @@ pub fn render_clusters_module(
         if state.editing_cluster.is_none() && state.selected_cluster.is_none() && clusters.is_empty()
         {
             egui::Frame::new()
-                .fill(Theme::BG_CARD)
+                .fill(Theme::bg_card())
                 .corner_radius(Theme::CARD_ROUNDING)
                 .inner_margin(Theme::CARD_PADDING)
                 .show(ui, |ui| {
@@ -192,7 +192,7 @@ pub fn render_clusters_module(
                         egui::RichText::new("New Cluster")
                             .strong()
                             .size(14.0)
-                            .color(Theme::TEXT_PRIMARY),
+                            .color(Theme::text_primary()),
                     );
                     ui.add_space(8.0);
                     render_edit_form(ui, state, on_save);
@@ -260,9 +260,9 @@ fn render_edit_form(
 
     if let Some(ref result) = state.test_result {
         let color = if result.contains("Success") || result.contains("success") {
-            Theme::SUCCESS
+            Theme::success()
         } else {
-            Theme::DANGER
+            Theme::danger()
         };
         ui.label(egui::RichText::new(result).color(color).size(12.0));
     }
@@ -291,7 +291,7 @@ fn render_import_section(
     on_import: &mut Option<crate::core::config::AppConfig>,
 ) {
     egui::Frame::new()
-        .fill(Theme::BG_CARD)
+        .fill(Theme::bg_card())
         .corner_radius(Theme::CARD_ROUNDING)
         .inner_margin(Theme::CARD_PADDING)
         .show(ui, |ui| {
@@ -305,7 +305,7 @@ fn render_import_section(
             ui.checkbox(&mut state.import_include_data, "Include module data (queries, history, cache)");
 
             if let Some(ref err) = state.import_error {
-                ui.label(egui::RichText::new(err).color(Theme::DANGER));
+                ui.label(egui::RichText::new(err).color(Theme::danger()));
             }
 
             ui.add_space(8.0);
@@ -357,7 +357,7 @@ fn render_export_section(
     cluster_data: &std::collections::HashMap<String, ClusterData>,
 ) {
     egui::Frame::new()
-        .fill(Theme::BG_CARD)
+        .fill(Theme::bg_card())
         .corner_radius(Theme::CARD_ROUNDING)
         .inner_margin(Theme::CARD_PADDING)
         .show(ui, |ui| {
@@ -376,10 +376,10 @@ fn render_export_section(
             ui.checkbox(&mut state.export_include_snapshots, "Snapshot cache");
 
             if let Some(ref err) = state.export_error {
-                ui.label(egui::RichText::new(err).color(Theme::DANGER));
+                ui.label(egui::RichText::new(err).color(Theme::danger()));
             }
             if let Some(ref success) = state.export_success {
-                ui.label(egui::RichText::new(success).color(Theme::SUCCESS));
+                ui.label(egui::RichText::new(success).color(Theme::success()));
             }
 
             ui.add_space(8.0);
@@ -412,6 +412,8 @@ fn perform_export(
         cluster_data: std::collections::HashMap::new(),
         auto_refresh: true,
         refresh_interval_secs: 15,
+        theme: crate::ui::theme::AppTheme::default(),
+        vfx: crate::core::config::VfxSettings::default(),
     };
 
     for cluster in clusters {
