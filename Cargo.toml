@@ -17,7 +17,7 @@ reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-feature
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 chrono = { version = "0.4", features = ["serde"] }
-keyring = { version = "3.6", features = ["linux-native"] }
+keyring = { version = "3.6" }
 directories = "6.0"
 anyhow = "1.0"
 thiserror = "2.0"
