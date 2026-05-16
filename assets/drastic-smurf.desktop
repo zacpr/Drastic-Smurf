@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Drastic Smurf
+Comment=Monitor and interact with multiple Elasticsearch clusters
+Exec=drastic-smurf
+Type=Application
+Terminal=false
+Categories=System;Monitor;Network;
+Icon=utilities-system-monitor

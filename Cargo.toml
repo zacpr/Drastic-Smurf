@@ -43,6 +43,7 @@ section = "utils"
 priority = "optional"
 assets = [
     ["target/release/drastic-smurf", "usr/bin/drastic-smurf", "755"],
+    ["assets/drastic-smurf.desktop", "usr/share/applications/drastic-smurf.desktop", "644"],
 ]
 
 [package.metadata.wix]
@@ -57,4 +58,5 @@ summary = "Extensible desktop GUI for monitoring and interacting with multiple E
 license = "MIT"
 assets = [
     { source = "target/release/drastic-smurf", dest = "/usr/bin/drastic-smurf", mode = "0755" },
+    { source = "assets/drastic-smurf.desktop", dest = "/usr/share/applications/drastic-smurf.desktop", mode = "0644" },
 ]
