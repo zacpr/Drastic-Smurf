@@ -11,13 +11,16 @@ A fast, native desktop GUI for monitoring and interacting with multiple Elastics
 
 | Module | What it does |
 |--------|-------------|
+| **Clusters** | Centralized cluster management — add, edit, test connections, import/export config |
 | **Snapshot Monitoring** | Live snapshot progress with speed tracking, ETA, sparklines, and SLM policy status |
 | **Cluster Status** | At-a-glance health dashboard — nodes, shards, indices, docs, JVM heap |
 | **Task Monitoring** | Watch reindex, snapshot, and other cluster tasks in real time with filtering |
-| **Elastic Console** | Send raw API requests to any configured cluster without re-entering credentials |
+| **Elastic Console** | Send raw API requests with saved queries, without re-entering credentials |
 
 - **Multi-cluster** — manage separate credentials and auth per cluster
 - **Secure** — passwords stored in your OS keyring, never on disk
+- **Persistent** — module data (queries, history, cache) survives restarts
+- **Import / Export** — move your cluster config between machines via JSON
 - **SSH Tunnels** — connect through jump hosts automatically
 - **Dark theme** — easy on the eyes for long monitoring sessions
 
@@ -59,7 +62,7 @@ sudo apt-get install libwayland-dev libxkbcommon-dev   # Debian/Ubuntu
 ## Quick Start
 
 1. **Launch the app**
-2. Click **+ Add Cluster** in the sidebar
+2. Go to the **Clusters** tab and click **Add Cluster**
 3. Fill in:
    - **Name** — e.g. `Production`
    - **Host** — e.g. `https://elastic.example.com:9200`
@@ -68,7 +71,7 @@ sudo apt-get install libwayland-dev libxkbcommon-dev   # Debian/Ubuntu
 4. Click **Test Connection**, then **Save**
 5. Switch between tabs to monitor snapshots, status, tasks, or open the console
 
-Clusters are saved to `~/.config/drastic-smurf/config.json` and passwords are stored in your OS keyring.
+Clusters are saved to `~/.config/drastic-smurf/config.json`. Passwords are stored in your OS keyring. Module data (saved queries, status history, tasks cache, snapshot cache) is stored alongside the config.
 
 ---
 
