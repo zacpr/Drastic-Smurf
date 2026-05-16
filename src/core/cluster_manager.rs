@@ -1,9 +1,13 @@
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use crate::core::config::ClusterConfig;
 use crate::core::es_client::EsClient;
 use crate::core::ssh_tunnel::SshTunnel;
+
+const SAVE_DEBOUNCE: Duration = Duration::from_secs(5);
 
 #[derive(Debug, Clone)]
 pub struct TunnelInfo {
@@ -21,6 +25,8 @@ pub struct ClusterManager {
     refresh_interval_secs: Arc<Mutex<u64>>,
     theme: Arc<Mutex<crate::ui::theme::AppTheme>>,
     vfx: Arc<Mutex<crate::core::config::VfxSettings>>,
+    dirty: Arc<AtomicBool>,
+    save_after: Arc<Mutex<Option<Instant>>>,
 }
 
 impl Default for ClusterManager {
@@ -40,6 +46,8 @@ impl ClusterManager {
             refresh_interval_secs: Arc::new(Mutex::new(15)),
             theme: Arc::new(Mutex::new(crate::ui::theme::AppTheme::default())),
             vfx: Arc::new(Mutex::new(crate::core::config::VfxSettings::default())),
+            dirty: Arc::new(AtomicBool::new(false)),
+            save_after: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -104,8 +112,35 @@ impl ClusterManager {
             refresh_interval_secs,
             theme,
             vfx,
+            ..Default::default()
         };
         config.save()?;
+        Ok(())
+    }
+
+    pub fn mark_dirty(&self) {
+        self.dirty.store(true, Ordering::Relaxed);
+        let mut after = self.save_after.lock().unwrap();
+        *after = Some(Instant::now() + SAVE_DEBOUNCE);
+    }
+
+    pub fn save_if_due(&self) -> anyhow::Result<()> {
+        if !self.dirty.load(Ordering::Relaxed) {
+            return Ok(());
+        }
+        let should_save = {
+            let after = self.save_after.lock().unwrap();
+            match *after {
+                Some(t) => Instant::now() >= t,
+                None => true,
+            }
+        };
+        if should_save {
+            self.save()?;
+            self.dirty.store(false, Ordering::Relaxed);
+            let mut after = self.save_after.lock().unwrap();
+            *after = None;
+        }
         Ok(())
     }
 
@@ -122,7 +157,8 @@ impl ClusterManager {
             let mut v = self.vfx.lock().unwrap();
             *v = vfx;
         }
-        self.save()
+        self.mark_dirty();
+        Ok(())
     }
 
     pub fn clusters(&self) -> Vec<ClusterConfig> {
@@ -149,7 +185,7 @@ impl ClusterManager {
                 }
             }
         }
-        self.save()?;
+        self.mark_dirty();
         Ok(())
     }
 
@@ -192,7 +228,7 @@ impl ClusterManager {
                 let _ = crate::core::auth::delete_password(old_name);
             }
         }
-        self.save()?;
+        self.mark_dirty();
         Ok(())
     }
 
@@ -208,7 +244,7 @@ impl ClusterManager {
         self.kill_tunnel(name);
         let _ = crate::core::auth::delete_password(name);
         self.remove_cluster_data(name);
-        self.save()?;
+        self.mark_dirty();
         Ok(())
     }
 
@@ -222,6 +258,7 @@ impl ClusterManager {
 
     pub fn set_auto_refresh(&self, value: bool) {
         *self.auto_refresh.lock().unwrap() = value;
+        self.mark_dirty();
     }
 
     pub fn refresh_interval_secs(&self) -> u64 {
@@ -230,6 +267,7 @@ impl ClusterManager {
 
     pub fn set_refresh_interval_secs(&self, value: u64) {
         *self.refresh_interval_secs.lock().unwrap() = value;
+        self.mark_dirty();
     }
 
     pub fn get_cluster_data(&self, name: &str) -> Option<crate::core::config::ClusterData> {
@@ -242,6 +280,7 @@ impl ClusterManager {
 
     pub fn set_cluster_data(&self, name: &str, data: crate::core::config::ClusterData) {
         self.cluster_data.lock().unwrap().insert(name.to_string(), data);
+        self.mark_dirty();
     }
 
     pub fn remove_cluster_data(&self, name: &str) {

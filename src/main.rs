@@ -9,10 +9,21 @@ mod ui;
 async fn main() -> eframe::Result<()> {
     tracing_subscriber::fmt::init();
 
+    let config = crate::core::config::AppConfig::load().unwrap_or_default();
+
+    let mut viewport = egui::ViewportBuilder::default()
+        .with_inner_size([
+            config.window_width.unwrap_or(1280.0),
+            config.window_height.unwrap_or(800.0),
+        ])
+        .with_min_inner_size([800.0, 600.0]);
+
+    if let (Some(x), Some(y)) = (config.window_pos_x, config.window_pos_y) {
+        viewport = viewport.with_position([x, y]);
+    }
+
     let options = NativeOptions {
-        viewport: egui::ViewportBuilder::default()
-            .with_inner_size([1280.0, 800.0])
-            .with_min_inner_size([800.0, 600.0]),
+        viewport,
         ..Default::default()
     };
 

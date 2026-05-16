@@ -95,6 +95,11 @@ pub fn render_appearance_module(
             ui.heading("Visual Effects");
             ui.add_space(8.0);
 
+            if ui.checkbox(&mut vfx.reduce_motion, "Reduce Motion (disable animations for accessibility/battery)").changed() {
+                *on_vfx_changed = true;
+            }
+            ui.add_space(4.0);
+
             ui.label("Background Effect:");
             ui.horizontal(|ui| {
                 if ui.selectable_value(&mut vfx.background_effect, BackgroundEffect::None, "None").changed() {

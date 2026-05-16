@@ -20,7 +20,11 @@ fn paint_gradient(ctx: &Context, rect: Rect, settings: &VfxSettings) {
         return;
     }
 
-    let time = ctx.input(|i| i.time as f32) * settings.animation_speed * 0.1;
+    let time = if settings.reduce_motion {
+        0.0
+    } else {
+        ctx.input(|i| i.time as f32) * settings.animation_speed * 0.1
+    };
 
     let accent = Theme::accent();
 
@@ -79,7 +83,11 @@ fn paint_mesh(ctx: &Context, rect: Rect, settings: &VfxSettings) {
         return;
     }
 
-    let time = ctx.input(|i| i.time as f32) * settings.animation_speed * 0.05;
+    let time = if settings.reduce_motion {
+        0.0
+    } else {
+        ctx.input(|i| i.time as f32) * settings.animation_speed * 0.05
+    };
     let accent = Theme::accent();
 
     // Draw a subtle grid/mesh of lines

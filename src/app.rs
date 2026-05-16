@@ -16,6 +16,7 @@ use crate::modules::snapshot::{
 use crate::modules::status::{StatusState, render_status_module};
 use crate::modules::tasks::{TasksState, render_tasks_module};
 use crate::ui::theme::Theme;
+use crate::ui::toasts::Toasts;
 use crate::ui::vfx;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -62,13 +63,19 @@ pub struct DrasticSmurfApp {
     pub clusters_import: Option<crate::core::config::AppConfig>,
     pub theme: crate::ui::theme::AppTheme,
     pub vfx: crate::core::config::VfxSettings,
+    pub window_size: [f32; 2],
+    pub window_pos: Option<[f32; 2]>,
+    pub toasts: Toasts,
+    pub cluster_filter: String,
 }
 
 impl Default for DrasticSmurfApp {
     fn default() -> Self {
         let (tx, rx) = channel();
         let manager = ClusterManager::new();
-        let _ = manager.load();
+        if let Err(e) = manager.load() {
+            tracing::warn!("Failed to load config: {}", e);
+        }
 
         let clusters = manager.clusters();
         let cluster_names: Vec<String> = clusters.iter().map(|c| c.name.clone()).collect();
@@ -110,6 +117,16 @@ impl Default for DrasticSmurfApp {
             clusters_import: None,
             theme: config.theme,
             vfx: config.vfx,
+            window_size: [
+                config.window_width.unwrap_or(1280.0),
+                config.window_height.unwrap_or(800.0),
+            ],
+            window_pos: match (config.window_pos_x, config.window_pos_y) {
+                (Some(x), Some(y)) => Some([x, y]),
+                _ => None,
+            },
+            toasts: Toasts::default(),
+            cluster_filter: String::new(),
         };
 
         // Pre-populate module state from cached cluster data
@@ -353,7 +370,6 @@ impl DrasticSmurfApp {
             data.status_history.push(snapshot);
             self.cluster_manager.set_cluster_data(name, data);
         }
-        let _ = self.cluster_manager.save();
     }
 
     fn save_tasks_cache(&self, name: &str, tasks: Vec<crate::core::es_client::TaskInfo>) {
@@ -372,7 +388,6 @@ impl DrasticSmurfApp {
             data.tasks_cache.push(entry);
             self.cluster_manager.set_cluster_data(name, data);
         }
-        let _ = self.cluster_manager.save();
     }
 
     fn save_snapshot_cache(&self, name: &str, status: &ClusterSnapshotStatus) {
@@ -397,7 +412,14 @@ impl DrasticSmurfApp {
             data.snapshot_cache.push(entry);
             self.cluster_manager.set_cluster_data(name, data);
         }
-        let _ = self.cluster_manager.save();
+    }
+
+    fn cluster_matches_filter(&self, name: &str) -> bool {
+        if self.cluster_filter.is_empty() {
+            return true;
+        }
+        name.to_lowercase()
+            .contains(&self.cluster_filter.to_lowercase())
     }
 
     fn render_sidebar(&mut self, ui: &mut egui::Ui) {
@@ -430,8 +452,18 @@ impl DrasticSmurfApp {
             );
             ui.add_space(4.0);
 
+            ui.add(
+                egui::TextEdit::singleline(&mut self.cluster_filter)
+                    .hint_text("🔍 Filter clusters...")
+                    .desired_width(f32::INFINITY),
+            );
+            ui.add_space(4.0);
+
             let clusters = self.cluster_manager.clusters();
             for cluster in &clusters {
+                if !self.cluster_matches_filter(&cluster.name) {
+                    continue;
+                }
                 ui.horizontal(|ui| {
                     let connected = self
                         .status_state
@@ -495,7 +527,6 @@ impl DrasticSmurfApp {
             if auto_refresh_changed || interval_changed {
                 self.cluster_manager.set_auto_refresh(self.auto_refresh);
                 self.cluster_manager.set_refresh_interval_secs(self.refresh_interval_secs);
-                let _ = self.cluster_manager.save();
             }
 
             if ui.button("🔄 Refresh Now").clicked() {
@@ -558,11 +589,17 @@ impl DrasticSmurfApp {
                     &mut on_import,
                 );
                 if let Some((old_name, config, password)) = on_save {
-                    let _ = crate::core::auth::set_password(&config.name, &password);
+                    if let Err(e) = crate::core::auth::set_password(&config.name, &password) {
+                        self.toasts.error(format!("Failed to save password: {}", e));
+                    }
                     if let Some(old) = old_name {
-                        let _ = self.cluster_manager.update_cluster(&old, config);
+                        if let Err(e) = self.cluster_manager.update_cluster(&old, config) {
+                            self.toasts.error(format!("Failed to update cluster: {}", e));
+                        }
                     } else {
-                        let _ = self.cluster_manager.add_cluster(config);
+                        if let Err(e) = self.cluster_manager.add_cluster(config) {
+                            self.toasts.error(format!("Failed to add cluster: {}", e));
+                        }
                     }
                 }
                 if let Some(name) = on_delete {
@@ -602,13 +639,18 @@ impl DrasticSmurfApp {
             Tab::Snapshot => {
                 let mut on_edit = None;
                 let mut on_delete = None;
+                let filtered_statuses: Vec<_> = self.snapshot_statuses
+                    .iter()
+                    .filter(|s| self.cluster_matches_filter(&s.config.name))
+                    .cloned()
+                    .collect();
                 render_snapshot_module(
                     ui,
-                    &self.snapshot_statuses,
+                    &filtered_statuses,
                     &self.snapshot_histories,
                     &mut on_edit,
                     &mut on_delete,
-                    self.vfx.shimmer_effects,
+                    self.vfx.shimmer_effects && !self.vfx.reduce_motion,
                 );
                 if let Some(name) = on_edit {
                     if let Some(cluster) = self
@@ -631,16 +673,34 @@ impl DrasticSmurfApp {
                 }
             }
             Tab::Status => {
-                render_status_module(ui, &self.status_state, self.vfx.hover_effects);
+                let filtered_state = StatusState {
+                    health_data: self.status_state.health_data.iter()
+                        .filter(|(n, _)| self.cluster_matches_filter(n))
+                        .cloned()
+                        .collect(),
+                    stats_data: self.status_state.stats_data.iter()
+                        .filter(|(n, _)| self.cluster_matches_filter(n))
+                        .cloned()
+                        .collect(),
+                };
+                render_status_module(ui, &filtered_state, self.vfx.hover_effects && !self.vfx.reduce_motion);
             }
             Tab::Tasks => {
-                render_tasks_module(ui, &mut self.tasks_state);
+                let mut filtered_tasks_state = TasksState {
+                    tasks: self.tasks_state.tasks.iter()
+                        .filter(|(n, _)| self.cluster_matches_filter(n))
+                        .cloned()
+                        .collect(),
+                    filter: self.tasks_state.filter.clone(),
+                };
+                render_tasks_module(ui, &mut filtered_tasks_state);
             }
             Tab::Console => {
                 let names: Vec<String> = self
                     .cluster_manager
                     .clusters()
                     .iter()
+                    .filter(|c| self.cluster_matches_filter(&c.name))
                     .map(|c| c.name.clone())
                     .collect();
                 if self.console_state.selected_cluster.is_empty() && !names.is_empty() {
@@ -673,7 +733,6 @@ impl DrasticSmurfApp {
                     if let Some(data) = self.cluster_manager.get_cluster_data(cluster) {
                         self.console_state.saved_queries = data.saved_queries;
                     }
-                    let _ = self.cluster_manager.save();
                 }
                 // Load saved queries when cluster selection changes
                 let selected = &self.console_state.selected_cluster;
@@ -701,10 +760,12 @@ impl DrasticSmurfApp {
                     &mut vfx_changed,
                 );
                 if theme_changed || vfx_changed {
-                    let _ = self.cluster_manager.save_theme_and_vfx(
+                    if let Err(e) = self.cluster_manager.save_theme_and_vfx(
                         self.theme.clone(),
                         self.vfx.clone(),
-                    );
+                    ) {
+                        self.toasts.error(format!("Failed to save appearance settings: {}", e));
+                    }
                 }
             }
         }
@@ -813,14 +874,21 @@ impl DrasticSmurfApp {
                     if ui.button("Save").clicked() {
                         if !self.new_cluster.name.is_empty() && !self.new_cluster.host.is_empty() {
                             let name = self.new_cluster.name.clone();
-                            let _ = crate::core::auth::set_password(&name, &self.new_password);
+                            if let Err(e) = crate::core::auth::set_password(&name, &self.new_password) {
+                                self.toasts.error(format!("Failed to save password: {}", e));
+                            }
 
                             if let Some(ref old_name) = self.editing_cluster {
-                                let _ = self
+                                if let Err(e) = self
                                     .cluster_manager
-                                    .update_cluster(old_name, self.new_cluster.clone());
+                                    .update_cluster(old_name, self.new_cluster.clone())
+                                {
+                                    self.toasts.error(format!("Failed to update cluster: {}", e));
+                                }
                             } else {
-                                let _ = self.cluster_manager.add_cluster(self.new_cluster.clone());
+                                if let Err(e) = self.cluster_manager.add_cluster(self.new_cluster.clone()) {
+                                    self.toasts.error(format!("Failed to add cluster: {}", e));
+                                }
                             }
                             self.show_add_cluster = false;
                             self.editing_cluster = None;
@@ -848,7 +916,9 @@ impl DrasticSmurfApp {
                     ));
                     ui.horizontal(|ui| {
                         if ui.button("Delete").clicked() {
-                            let _ = self.cluster_manager.remove_cluster(&name);
+                            if let Err(e) = self.cluster_manager.remove_cluster(&name) {
+                                self.toasts.error(format!("Failed to remove cluster: {}", e));
+                            }
                             self.snapshot_statuses.retain(|s| s.config.name != name);
                             self.status_state.health_data.retain(|(n, _)| n != &name);
                             self.pending_delete = None;
@@ -873,12 +943,13 @@ impl eframe::App for DrasticSmurfApp {
         // Handle clusters import
         if let Some(imported) = self.clusters_import.take() {
             for cluster in imported.clusters {
-                let _ = self.cluster_manager.add_cluster(cluster);
+                if let Err(e) = self.cluster_manager.add_cluster(cluster) {
+                    self.toasts.error(format!("Failed to import cluster: {}", e));
+                }
             }
             for (name, data) in imported.cluster_data {
                 self.cluster_manager.set_cluster_data(&name, data);
             }
-            let _ = self.cluster_manager.save();
         }
 
         // Handle console send
@@ -943,5 +1014,37 @@ impl eframe::App for DrasticSmurfApp {
         // Dialogs
         self.render_add_cluster_dialog(ctx);
         self.render_delete_confirmation(ctx);
+
+        // Track window size/position for persistence
+        if let Some(rect) = ctx.input(|i| i.viewport().inner_rect) {
+            let size = rect.size();
+            self.window_size = [size.x, size.y];
+            self.window_pos = Some([rect.min.x, rect.min.y]);
+        }
+
+        // Debounced config save
+        if let Err(e) = self.cluster_manager.save_if_due() {
+            self.toasts.error(format!("Failed to save config: {}", e));
+        }
+
+        // Render toasts on top of everything
+        self.toasts.render(ctx);
+    }
+
+    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        if let Err(e) = self.cluster_manager.save() {
+            tracing::warn!("Failed to save config on exit: {}", e);
+        }
+        // Save window state directly
+        let mut config = crate::core::config::AppConfig::load().unwrap_or_default();
+        config.window_width = Some(self.window_size[0]);
+        config.window_height = Some(self.window_size[1]);
+        if let Some(pos) = self.window_pos {
+            config.window_pos_x = Some(pos[0]);
+            config.window_pos_y = Some(pos[1]);
+        }
+        if let Err(e) = config.save() {
+            tracing::warn!("Failed to save window state: {}", e);
+        }
     }
 }

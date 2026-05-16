@@ -414,6 +414,7 @@ fn perform_export(
         refresh_interval_secs: 15,
         theme: crate::ui::theme::AppTheme::default(),
         vfx: crate::core::config::VfxSettings::default(),
+        ..Default::default()
     };
 
     for cluster in clusters {

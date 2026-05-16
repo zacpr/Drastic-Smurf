@@ -23,6 +23,8 @@ pub struct VfxSettings {
     pub cursor_glow: bool,
     #[serde(default = "default_parallax")]
     pub parallax_amount: f32,
+    #[serde(default = "default_false")]
+    pub reduce_motion: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
@@ -43,6 +45,7 @@ impl Default for VfxSettings {
             shimmer_effects: true,
             cursor_glow: false,
             parallax_amount: 0.2,
+            reduce_motion: false,
         }
     }
 }
@@ -184,6 +187,14 @@ pub struct AppConfig {
     pub theme: AppTheme,
     #[serde(default)]
     pub vfx: VfxSettings,
+    #[serde(default)]
+    pub window_width: Option<f32>,
+    #[serde(default)]
+    pub window_height: Option<f32>,
+    #[serde(default)]
+    pub window_pos_x: Option<f32>,
+    #[serde(default)]
+    pub window_pos_y: Option<f32>,
 }
 
 fn default_refresh_interval_secs() -> u64 {
