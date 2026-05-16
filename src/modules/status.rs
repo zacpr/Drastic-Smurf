@@ -95,7 +95,10 @@ fn render_status_card(
                     let color = Theme::health_color(&h.status);
                     ui.add(crate::ui::widgets::StatePill::new(&h.status, color));
                 } else {
-                    ui.add(crate::ui::widgets::StatePill::new("Unreachable", Theme::DANGER));
+                    ui.add(crate::ui::widgets::StatePill::new(
+                        "Unreachable",
+                        Theme::DANGER,
+                    ));
                 }
             });
         });
