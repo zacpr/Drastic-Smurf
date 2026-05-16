@@ -16,6 +16,9 @@ pub struct ClusterManager {
     clusters: Arc<Mutex<Vec<ClusterConfig>>>,
     clients: Arc<Mutex<HashMap<String, EsClient>>>,
     tunnels: Arc<Mutex<HashMap<String, TunnelInfo>>>,
+    cluster_data: Arc<Mutex<HashMap<String, crate::core::config::ClusterData>>>,
+    auto_refresh: Arc<Mutex<bool>>,
+    refresh_interval_secs: Arc<Mutex<u64>>,
 }
 
 impl Default for ClusterManager {
@@ -30,14 +33,32 @@ impl ClusterManager {
             clusters: Arc::new(Mutex::new(Vec::new())),
             clients: Arc::new(Mutex::new(HashMap::new())),
             tunnels: Arc::new(Mutex::new(HashMap::new())),
+            cluster_data: Arc::new(Mutex::new(HashMap::new())),
+            auto_refresh: Arc::new(Mutex::new(true)),
+            refresh_interval_secs: Arc::new(Mutex::new(15)),
         }
     }
 
     pub fn load(&self) -> anyhow::Result<()> {
         let config = crate::core::config::AppConfig::load()?;
-        let mut clusters = self.clusters.lock().unwrap();
-        *clusters = config.clusters;
+        {
+            let mut clusters = self.clusters.lock().unwrap();
+            *clusters = config.clusters;
+        }
+        {
+            let mut data = self.cluster_data.lock().unwrap();
+            *data = config.cluster_data;
+        }
+        {
+            let mut ar = self.auto_refresh.lock().unwrap();
+            *ar = config.auto_refresh;
+        }
+        {
+            let mut ri = self.refresh_interval_secs.lock().unwrap();
+            *ri = config.refresh_interval_secs;
+        }
 
+        let clusters = self.clusters.lock().unwrap();
         let mut clients = self.clients.lock().unwrap();
         clients.clear();
         for cluster in clusters.iter() {
@@ -59,10 +80,14 @@ impl ClusterManager {
 
     pub fn save(&self) -> anyhow::Result<()> {
         let clusters = self.clusters.lock().unwrap();
+        let data = self.cluster_data.lock().unwrap();
+        let auto_refresh = *self.auto_refresh.lock().unwrap();
+        let refresh_interval_secs = *self.refresh_interval_secs.lock().unwrap();
         let config = crate::core::config::AppConfig {
             clusters: clusters.clone(),
-            auto_refresh: true,
-            refresh_interval_secs: 15,
+            cluster_data: data.clone(),
+            auto_refresh,
+            refresh_interval_secs,
         };
         config.save()?;
         Ok(())
@@ -124,6 +149,16 @@ impl ClusterManager {
         // Remove old tunnel if name changed
         if old_name != config.name {
             self.kill_tunnel(old_name);
+            // Migrate cluster data to new name
+            if let Some(data) = self.get_cluster_data(old_name) {
+                self.set_cluster_data(&config.name, data);
+                self.remove_cluster_data(old_name);
+            }
+            // Migrate keyring password
+            if let Ok(Some(pwd)) = crate::core::auth::get_password(old_name) {
+                let _ = crate::core::auth::set_password(&config.name, &pwd);
+                let _ = crate::core::auth::delete_password(old_name);
+            }
         }
         self.save()?;
         Ok(())
@@ -140,12 +175,45 @@ impl ClusterManager {
         }
         self.kill_tunnel(name);
         let _ = crate::core::auth::delete_password(name);
+        self.remove_cluster_data(name);
         self.save()?;
         Ok(())
     }
 
     pub fn get_client(&self, name: &str) -> Option<EsClient> {
         self.clients.lock().unwrap().get(name).cloned()
+    }
+
+    pub fn auto_refresh(&self) -> bool {
+        *self.auto_refresh.lock().unwrap()
+    }
+
+    pub fn set_auto_refresh(&self, value: bool) {
+        *self.auto_refresh.lock().unwrap() = value;
+    }
+
+    pub fn refresh_interval_secs(&self) -> u64 {
+        *self.refresh_interval_secs.lock().unwrap()
+    }
+
+    pub fn set_refresh_interval_secs(&self, value: u64) {
+        *self.refresh_interval_secs.lock().unwrap() = value;
+    }
+
+    pub fn get_cluster_data(&self, name: &str) -> Option<crate::core::config::ClusterData> {
+        self.cluster_data.lock().unwrap().get(name).cloned()
+    }
+
+    pub fn all_cluster_data(&self) -> std::collections::HashMap<String, crate::core::config::ClusterData> {
+        self.cluster_data.lock().unwrap().clone()
+    }
+
+    pub fn set_cluster_data(&self, name: &str, data: crate::core::config::ClusterData) {
+        self.cluster_data.lock().unwrap().insert(name.to_string(), data);
+    }
+
+    pub fn remove_cluster_data(&self, name: &str) {
+        self.cluster_data.lock().unwrap().remove(name);
     }
 
     pub async fn ensure_tunnel(&self, name: &str) -> anyhow::Result<()> {

@@ -1,0 +1,441 @@
+use egui::{Ui, Widget};
+
+use crate::core::config::{ClusterConfig, ClusterData};
+use crate::ui::theme::Theme;
+use crate::ui::widgets::ConnectionDot;
+
+#[derive(Debug, Clone, Default)]
+pub struct ClustersState {
+    pub selected_cluster: Option<String>,
+    pub editing_cluster: Option<String>,
+    pub edit_form: ClusterConfig,
+    pub edit_password: String,
+    pub test_result: Option<String>,
+    pub show_import: bool,
+    pub import_path: String,
+    pub import_include_data: bool,
+    pub import_error: Option<String>,
+    pub show_export: bool,
+    pub export_path: String,
+    pub export_include_queries: bool,
+    pub export_include_status: bool,
+    pub export_include_tasks: bool,
+    pub export_include_snapshots: bool,
+    pub export_error: Option<String>,
+    pub export_success: Option<String>,
+}
+
+pub fn render_clusters_module(
+    ui: &mut Ui,
+    state: &mut ClustersState,
+    clusters: &[ClusterConfig],
+    cluster_data: &std::collections::HashMap<String, ClusterData>,
+    on_save: &mut Option<(Option<String>, ClusterConfig, String)>,
+    on_delete: &mut Option<String>,
+    on_test: &mut Option<(String, String)>,
+    on_import: &mut Option<crate::core::config::AppConfig>,
+) {
+    ui.heading("Clusters");
+    ui.add_space(16.0);
+
+    if clusters.is_empty() {
+        ui.label("No clusters configured. Click 'Add Cluster' below to get started.");
+        ui.add_space(16.0);
+    }
+
+    // --- Action buttons ---
+    ui.horizontal(|ui| {
+        if ui.button("➕ Add Cluster").clicked() {
+            state.selected_cluster = None;
+            state.editing_cluster = None;
+            state.edit_form = ClusterConfig::default();
+            state.edit_password.clear();
+            state.test_result = None;
+        }
+        if ui.button("📥 Import").clicked() {
+            state.show_import = !state.show_import;
+            state.show_export = false;
+        }
+        if ui.button("📤 Export").clicked() {
+            state.show_export = !state.show_export;
+            state.show_import = false;
+        }
+    });
+
+    ui.add_space(16.0);
+
+    // --- Import section ---
+    if state.show_import {
+        render_import_section(ui, state, clusters, on_import);
+        ui.add_space(16.0);
+    }
+
+    // --- Export section ---
+    if state.show_export {
+        render_export_section(ui, state, clusters, cluster_data);
+        ui.add_space(16.0);
+    }
+
+    // --- Cluster list ---
+    egui::ScrollArea::vertical().show(ui, |ui| {
+        for cluster in clusters {
+            let is_selected = state.selected_cluster.as_ref() == Some(&cluster.name);
+            let _is_editing = state.editing_cluster.as_ref() == Some(&cluster.name)
+                || (state.editing_cluster.is_none() && state.selected_cluster.is_none());
+
+            egui::Frame::new()
+                .fill(Theme::BG_CARD)
+                .corner_radius(Theme::CARD_ROUNDING)
+                .inner_margin(Theme::CARD_PADDING)
+                .stroke(if is_selected {
+                    egui::Stroke::new(1.5, Theme::ACCENT)
+                } else {
+                    egui::Stroke::NONE
+                })
+                .show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.set_width(ui.available_width());
+
+                        // Selection click area
+                        let response = ui
+                            .horizontal(|ui| {
+                                ConnectionDot::new(true).ui(ui);
+                                ui.label(
+                                    egui::RichText::new(&cluster.name)
+                                        .strong()
+                                        .size(14.0)
+                                        .color(Theme::TEXT_PRIMARY),
+                                );
+                                ui.label(
+                                    egui::RichText::new(format!("@ {}", cluster.host))
+                                        .size(12.0)
+                                        .color(Theme::TEXT_MUTED),
+                                );
+                            })
+                            .response;
+
+                        if response.clicked() {
+                            state.selected_cluster = Some(cluster.name.clone());
+                            state.editing_cluster = None;
+                            state.test_result = None;
+                        }
+
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if ui.small_button("🗑").clicked() {
+                                *on_delete = Some(cluster.name.clone());
+                            }
+                            if ui.small_button("✏️").clicked() {
+                                state.selected_cluster = Some(cluster.name.clone());
+                                state.editing_cluster = Some(cluster.name.clone());
+                                state.edit_form = cluster.clone();
+                                state.edit_password = crate::core::auth::get_password(&cluster.name)
+                                    .ok()
+                                    .flatten()
+                                    .unwrap_or_default();
+                                state.test_result = None;
+                            }
+                            if ui.small_button("🔌 Test").clicked() {
+                                let pwd = crate::core::auth::get_password(&cluster.name)
+                                    .ok()
+                                    .flatten()
+                                    .unwrap_or_default();
+                                *on_test = Some((cluster.name.clone(), pwd));
+                            }
+                        });
+                    });
+
+                    // Data summary
+                    if let Some(data) = cluster_data.get(&cluster.name) {
+                        let mut summaries = Vec::new();
+                        if !data.saved_queries.is_empty() {
+                            summaries.push(format!("{} queries", data.saved_queries.len()));
+                        }
+                        if !data.status_history.is_empty() {
+                            summaries.push(format!("{} status snapshots", data.status_history.len()));
+                        }
+                        if !data.tasks_cache.is_empty() {
+                            summaries.push(format!("{} task caches", data.tasks_cache.len()));
+                        }
+                        if !data.snapshot_cache.is_empty() {
+                            summaries.push(format!("{} snapshot caches", data.snapshot_cache.len()));
+                        }
+                        if !summaries.is_empty() {
+                            ui.label(
+                                egui::RichText::new(summaries.join(" · "))
+                                    .size(11.0)
+                                    .color(Theme::TEXT_MUTED),
+                            );
+                        }
+                    }
+
+                    // Edit form inline
+                    if is_selected && state.editing_cluster.is_some() {
+                        ui.add_space(8.0);
+                        ui.separator();
+                        ui.add_space(8.0);
+                        render_edit_form(ui, state, on_save);
+                    }
+                });
+
+            ui.add_space(8.0);
+        }
+
+        // Add new cluster form (when no cluster selected and editing)
+        if state.editing_cluster.is_none() && state.selected_cluster.is_none() && clusters.is_empty()
+        {
+            egui::Frame::new()
+                .fill(Theme::BG_CARD)
+                .corner_radius(Theme::CARD_ROUNDING)
+                .inner_margin(Theme::CARD_PADDING)
+                .show(ui, |ui| {
+                    ui.label(
+                        egui::RichText::new("New Cluster")
+                            .strong()
+                            .size(14.0)
+                            .color(Theme::TEXT_PRIMARY),
+                    );
+                    ui.add_space(8.0);
+                    render_edit_form(ui, state, on_save);
+                });
+        }
+    });
+}
+
+fn render_edit_form(
+    ui: &mut Ui,
+    state: &mut ClustersState,
+    on_save: &mut Option<(Option<String>, ClusterConfig, String)>,
+) {
+    let form = &mut state.edit_form;
+
+    ui.horizontal(|ui| {
+        ui.label("Name:");
+        ui.text_edit_singleline(&mut form.name);
+    });
+    ui.horizontal(|ui| {
+        ui.label("Host:");
+        ui.text_edit_singleline(&mut form.host);
+    });
+    ui.horizontal(|ui| {
+        ui.label("Username:");
+        ui.text_edit_singleline(&mut form.username);
+    });
+    ui.horizontal(|ui| {
+        ui.label("Password:");
+        ui.add(egui::TextEdit::singleline(&mut state.edit_password).password(true));
+    });
+    ui.horizontal(|ui| {
+        ui.label("Snapshot Repo:");
+        ui.text_edit_singleline(&mut form.snapshot_repo);
+    });
+    ui.horizontal(|ui| {
+        ui.label("SLM Policy:");
+        ui.text_edit_singleline(&mut form.slm_policy);
+    });
+    ui.horizontal(|ui| {
+        ui.checkbox(&mut form.verify_ssl, "Verify SSL");
+    });
+    ui.horizontal(|ui| {
+        ui.checkbox(&mut form.ssh_tunnel, "SSH Tunnel");
+    });
+
+    if form.ssh_tunnel {
+        ui.horizontal(|ui| {
+            ui.label("SSH Host:");
+            ui.text_edit_singleline(&mut form.ssh_host);
+        });
+        ui.horizontal(|ui| {
+            ui.label("SSH User:");
+            ui.text_edit_singleline(&mut form.ssh_user);
+        });
+        ui.horizontal(|ui| {
+            ui.label("SSH Port:");
+            let mut port_str = form.ssh_port.to_string();
+            ui.text_edit_singleline(&mut port_str);
+            if let Ok(p) = port_str.parse::<u16>() {
+                form.ssh_port = p;
+            }
+        });
+    }
+
+    if let Some(ref result) = state.test_result {
+        let color = if result.contains("Success") || result.contains("success") {
+            Theme::SUCCESS
+        } else {
+            Theme::DANGER
+        };
+        ui.label(egui::RichText::new(result).color(color).size(12.0));
+    }
+
+    ui.add_space(8.0);
+    ui.horizontal(|ui| {
+        if ui.button("💾 Save").clicked() {
+            let old_name = state.editing_cluster.clone();
+            *on_save = Some((old_name, form.clone(), state.edit_password.clone()));
+            state.editing_cluster = None;
+            state.selected_cluster = Some(form.name.clone());
+            state.test_result = None;
+        }
+        if ui.button("Cancel").clicked() {
+            state.editing_cluster = None;
+            state.selected_cluster = None;
+            state.test_result = None;
+        }
+    });
+}
+
+fn render_import_section(
+    ui: &mut Ui,
+    state: &mut ClustersState,
+    existing_clusters: &[ClusterConfig],
+    on_import: &mut Option<crate::core::config::AppConfig>,
+) {
+    egui::Frame::new()
+        .fill(Theme::BG_CARD)
+        .corner_radius(Theme::CARD_ROUNDING)
+        .inner_margin(Theme::CARD_PADDING)
+        .show(ui, |ui| {
+            ui.heading("Import Clusters");
+            ui.add_space(8.0);
+
+            ui.horizontal(|ui| {
+                ui.label("Path:");
+                ui.text_edit_singleline(&mut state.import_path);
+            });
+            ui.checkbox(&mut state.import_include_data, "Include module data (queries, history, cache)");
+
+            if let Some(ref err) = state.import_error {
+                ui.label(egui::RichText::new(err).color(Theme::DANGER));
+            }
+
+            ui.add_space(8.0);
+            if ui.button("Import").clicked() {
+                state.import_error = None;
+                match perform_import(state, existing_clusters) {
+                    Ok(config) => {
+                        *on_import = Some(config);
+                        state.import_error = Some(format!(
+                            "Imported {} cluster(s).",
+                            on_import.as_ref().map(|c| c.clusters.len()).unwrap_or(0)
+                        ));
+                        state.import_path.clear();
+                    }
+                    Err(e) => {
+                        state.import_error = Some(format!("Import failed: {}", e));
+                    }
+                }
+            }
+        });
+}
+
+fn perform_import(
+    state: &ClustersState,
+    existing_clusters: &[ClusterConfig],
+) -> anyhow::Result<crate::core::config::AppConfig> {
+    let contents = std::fs::read_to_string(&state.import_path)?;
+    let mut imported: crate::core::config::AppConfig = serde_json::from_str(&contents)?;
+
+    let existing_names: std::collections::HashSet<String> =
+        existing_clusters.iter().map(|c| c.name.clone()).collect();
+
+    // Filter out duplicates
+    imported.clusters.retain(|c| !existing_names.contains(&c.name));
+    imported.cluster_data.retain(|name, _| !existing_names.contains(name));
+
+    // If user doesn't want module data, clear it
+    if !state.import_include_data {
+        imported.cluster_data.clear();
+    }
+
+    Ok(imported)
+}
+
+fn render_export_section(
+    ui: &mut Ui,
+    state: &mut ClustersState,
+    clusters: &[ClusterConfig],
+    cluster_data: &std::collections::HashMap<String, ClusterData>,
+) {
+    egui::Frame::new()
+        .fill(Theme::BG_CARD)
+        .corner_radius(Theme::CARD_ROUNDING)
+        .inner_margin(Theme::CARD_PADDING)
+        .show(ui, |ui| {
+            ui.heading("Export Clusters");
+            ui.add_space(8.0);
+
+            ui.horizontal(|ui| {
+                ui.label("Path:");
+                ui.text_edit_singleline(&mut state.export_path);
+            });
+
+            ui.label("Include:");
+            ui.checkbox(&mut state.export_include_queries, "Saved queries");
+            ui.checkbox(&mut state.export_include_status, "Status history");
+            ui.checkbox(&mut state.export_include_tasks, "Tasks cache");
+            ui.checkbox(&mut state.export_include_snapshots, "Snapshot cache");
+
+            if let Some(ref err) = state.export_error {
+                ui.label(egui::RichText::new(err).color(Theme::DANGER));
+            }
+            if let Some(ref success) = state.export_success {
+                ui.label(egui::RichText::new(success).color(Theme::SUCCESS));
+            }
+
+            ui.add_space(8.0);
+            if ui.button("Export All").clicked() {
+                state.export_error = None;
+                state.export_success = None;
+                match perform_export(state, clusters, cluster_data) {
+                    Ok(()) => {
+                        state.export_success = Some(format!(
+                            "Exported {} cluster(s) to {}",
+                            clusters.len(),
+                            state.export_path
+                        ));
+                    }
+                    Err(e) => {
+                        state.export_error = Some(format!("Export failed: {}", e));
+                    }
+                }
+            }
+        });
+}
+
+fn perform_export(
+    state: &ClustersState,
+    clusters: &[ClusterConfig],
+    cluster_data: &std::collections::HashMap<String, ClusterData>,
+) -> anyhow::Result<()> {
+    let mut export_data = crate::core::config::AppConfig {
+        clusters: clusters.to_vec(),
+        cluster_data: std::collections::HashMap::new(),
+        auto_refresh: true,
+        refresh_interval_secs: 15,
+    };
+
+    for cluster in clusters {
+        if let Some(data) = cluster_data.get(&cluster.name) {
+            let mut filtered = ClusterData::default();
+            if state.export_include_queries {
+                filtered.saved_queries = data.saved_queries.clone();
+            }
+            if state.export_include_status {
+                filtered.status_history = data.status_history.clone();
+            }
+            if state.export_include_tasks {
+                filtered.tasks_cache = data.tasks_cache.clone();
+            }
+            if state.export_include_snapshots {
+                filtered.snapshot_cache = data.snapshot_cache.clone();
+            }
+            export_data
+                .cluster_data
+                .insert(cluster.name.clone(), filtered);
+        }
+    }
+
+    let contents = serde_json::to_string_pretty(&export_data)?;
+    std::fs::write(&state.export_path, contents)?;
+    Ok(())
+}

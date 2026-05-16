@@ -61,28 +61,23 @@ impl SnapshotState {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct SnapshotStats {
     pub progress_pct: f32,
     pub processed_bytes: u64,
     pub total_bytes: u64,
     pub processed_files: u32,
     pub total_files: u32,
-    #[allow(dead_code)]
-    pub start_time: Option<Instant>,
+    pub start_time: Option<chrono::DateTime<chrono::Utc>>,
     pub current_speed_bps: f64,
     pub avg_speed_bps: f64,
     pub has_byte_stats: bool,
     pub processed_shards: u32,
     pub total_shards: u32,
-    #[allow(dead_code)]
     pub current_shard_rate: f64,
-    #[allow(dead_code)]
     pub avg_shard_rate: f64,
     pub window_avg_speed_bps: f64,
-    #[allow(dead_code)]
     pub min_speed_bps: f64,
-    #[allow(dead_code)]
     pub max_speed_bps: f64,
 }
 
@@ -130,7 +125,7 @@ impl SnapshotStats {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct ClusterSnapshotStatus {
     pub config: ClusterConfig,
     pub reachable: bool,
@@ -324,7 +319,7 @@ pub async fn fetch_cluster_snapshot(
                                 total_files,
                                 start_time: info
                                     .start_time_in_millis
-                                    .map(|ms| Instant::now() - Duration::from_millis(ms as u64)),
+                                    .and_then(|ms| chrono::DateTime::from_timestamp_millis(ms)),
                                 has_byte_stats: stats.incremental.is_some()
                                     || stats.total_size_in_bytes > 0,
                                 processed_shards: detail

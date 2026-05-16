@@ -188,7 +188,8 @@ impl EsClient {
 
 // --- Response Models ---
 
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+
 pub struct ClusterHealth {
     pub cluster_name: String,
     pub status: String,
@@ -210,12 +211,14 @@ pub struct ClusterHealth {
     pub timed_out: Option<bool>,
 }
 
-#[derive(Debug, Clone, serde::Deserialize, Default)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, Default)]
+
 pub struct SnapshotResponse {
     pub snapshots: Vec<SnapshotInfo>,
 }
 
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+
 pub struct SnapshotInfo {
     pub snapshot: String,
     pub uuid: String,
@@ -239,19 +242,22 @@ pub struct SnapshotInfo {
     pub failures: Option<Vec<serde_json::Value>>,
 }
 
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+
 pub struct ShardStats {
     pub total: u32,
     pub failed: u32,
     pub successful: u32,
 }
 
-#[derive(Debug, Clone, serde::Deserialize, Default)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, Default)]
+
 pub struct SnapshotStatusResponse {
     pub snapshots: Vec<SnapshotStatusInfo>,
 }
 
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+
 pub struct SnapshotStatusInfo {
     pub snapshot: String,
     pub repository: String,
@@ -264,7 +270,8 @@ pub struct SnapshotStatusInfo {
     pub indices: Option<serde_json::Value>,
 }
 
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+
 pub struct ShardsStatsDetail {
     pub initializing: u32,
     pub started: u32,
@@ -274,7 +281,8 @@ pub struct ShardsStatsDetail {
     pub total: u32,
 }
 
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+
 pub struct SnapshotStatsDetail {
     #[serde(rename = "number_of_files")]
     pub number_of_files: u32,
@@ -290,7 +298,8 @@ pub struct SnapshotStatsDetail {
     pub incremental: Option<IncrementalStats>,
 }
 
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+
 pub struct IncrementalStats {
     #[serde(rename = "file_count")]
     pub file_count: u32,
@@ -298,13 +307,15 @@ pub struct IncrementalStats {
     pub size_in_bytes: u64,
 }
 
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+
 pub struct SlmPolicyResponse {
     #[serde(flatten)]
     pub policies: std::collections::HashMap<String, SlmPolicyDetail>,
 }
 
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+
 pub struct SlmPolicyDetail {
     pub version: Option<u32>,
     pub modified_date: Option<String>,
@@ -321,7 +332,8 @@ pub struct SlmPolicyDetail {
     pub stats: Option<SlmStats>,
 }
 
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+
 pub struct SlmPolicyConfig {
     pub name: Option<String>,
     pub schedule: Option<String>,
@@ -330,7 +342,8 @@ pub struct SlmPolicyConfig {
     pub retention: Option<serde_json::Value>,
 }
 
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+
 pub struct SlmExecution {
     pub snapshot_name: Option<String>,
     pub time: Option<String>,
@@ -339,7 +352,8 @@ pub struct SlmExecution {
     pub details: Option<String>,
 }
 
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+
 pub struct SlmStats {
     #[serde(rename = "policy_stats")]
     pub policy_stats: Option<serde_json::Value>,
@@ -358,18 +372,21 @@ pub struct SlmStats {
     pub total_snapshot_deletion_failures: Option<u64>,
 }
 
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+
 pub struct TasksResponse {
     pub nodes: std::collections::HashMap<String, TaskNode>,
 }
 
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+
 pub struct TaskNode {
     pub name: String,
     pub tasks: std::collections::HashMap<String, TaskInfo>,
 }
 
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+
 pub struct TaskInfo {
     pub node: String,
     pub id: u64,
@@ -385,7 +402,8 @@ pub struct TaskInfo {
     pub status: Option<serde_json::Value>,
 }
 
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+
 pub struct CatIndex {
     pub index: String,
     #[serde(rename = "docs.count")]
@@ -402,7 +420,8 @@ pub struct CatIndex {
     pub rep: Option<String>,
 }
 
-#[derive(Debug, Clone, serde::Deserialize, Default)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, Default)]
+
 pub struct ClusterStats {
     #[serde(rename = "cluster_name")]
     pub cluster_name: String,
@@ -414,7 +433,8 @@ pub struct ClusterStats {
     pub nodes: Option<NodesStats>,
 }
 
-#[derive(Debug, Clone, serde::Deserialize, Default)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, Default)]
+
 pub struct IndicesStats {
     pub count: u32,
     #[serde(rename = "docs")]
@@ -423,19 +443,22 @@ pub struct IndicesStats {
     pub store: Option<StoreStats>,
 }
 
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+
 pub struct DocStats {
     pub count: u64,
     pub deleted: u64,
 }
 
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+
 pub struct StoreStats {
     #[serde(rename = "size_in_bytes")]
     pub size_in_bytes: u64,
 }
 
-#[derive(Debug, Clone, serde::Deserialize, Default)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, Default)]
+
 pub struct NodesStats {
     pub count: Option<NodeCount>,
     #[serde(rename = "jvm")]
@@ -444,7 +467,8 @@ pub struct NodesStats {
     pub fs: Option<FsStats>,
 }
 
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+
 pub struct NodeCount {
     pub total: u32,
     #[serde(rename = "data")]
@@ -455,7 +479,8 @@ pub struct NodeCount {
     pub ingest: u32,
 }
 
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+
 pub struct JvmStats {
     #[serde(rename = "max_heap_in_bytes")]
     pub max_heap_in_bytes: u64,
@@ -463,7 +488,8 @@ pub struct JvmStats {
     pub used_heap_in_bytes: u64,
 }
 
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+
 pub struct FsStats {
     #[serde(rename = "total_in_bytes")]
     pub total_in_bytes: u64,

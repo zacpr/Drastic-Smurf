@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 use anyhow::Result;
@@ -78,9 +79,54 @@ impl ClusterConfig {
     }
 }
 
+// --- Per-cluster cached module data ---
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct SavedQuery {
+    pub name: String,
+    pub method: String,
+    pub path: String,
+    pub body: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct StatusSnapshot {
+    pub timestamp: chrono::DateTime<chrono::Utc>,
+    pub health: Option<crate::core::es_client::ClusterHealth>,
+    pub stats: Option<crate::core::es_client::ClusterStats>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct TaskCacheEntry {
+    pub timestamp: chrono::DateTime<chrono::Utc>,
+    pub tasks: Vec<crate::core::es_client::TaskInfo>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct SnapshotCacheEntry {
+    pub timestamp: chrono::DateTime<chrono::Utc>,
+    pub reachable: bool,
+    pub error_message: Option<String>,
+    pub snapshot_info: Option<crate::core::es_client::SnapshotInfo>,
+    pub snapshot_stats: Option<crate::modules::snapshot::SnapshotStats>,
+    pub slm_last_run: Option<String>,
+    pub slm_next_run: Option<String>,
+    pub slm_in_progress: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ClusterData {
+    pub saved_queries: Vec<SavedQuery>,
+    pub status_history: Vec<StatusSnapshot>,
+    pub tasks_cache: Vec<TaskCacheEntry>,
+    pub snapshot_cache: Vec<SnapshotCacheEntry>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AppConfig {
     pub clusters: Vec<ClusterConfig>,
+    #[serde(default)]
+    pub cluster_data: HashMap<String, ClusterData>,
     #[serde(default)]
     pub auto_refresh: bool,
     #[serde(default = "default_refresh_interval_secs")]

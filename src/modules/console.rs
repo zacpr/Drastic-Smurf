@@ -1,5 +1,7 @@
 use egui::Ui;
 
+use crate::core::config::SavedQuery;
+
 #[derive(Debug, Clone, Default)]
 pub struct ConsoleState {
     pub selected_cluster: String,
@@ -9,6 +11,9 @@ pub struct ConsoleState {
     pub response: String,
     pub history: Vec<(String, String, String, String)>,
     pub is_loading: bool,
+    pub saved_queries: Vec<SavedQuery>,
+    pub query_name_input: String,
+    pub show_save_dialog: bool,
 }
 
 impl ConsoleState {
@@ -26,6 +31,7 @@ pub fn render_console_module(
     state: &mut ConsoleState,
     clusters: &[String],
     on_send: &mut Option<(String, String, String, Option<String>)>,
+    on_save_query: &mut Option<SavedQuery>,
 ) {
     ui.heading("Elastic Console");
     ui.add_space(16.0);
@@ -64,6 +70,32 @@ pub fn render_console_module(
                     });
             });
 
+            // Saved queries
+            if !state.saved_queries.is_empty() {
+                ui.add_space(4.0);
+                ui.horizontal(|ui| {
+                    ui.label("Saved:");
+                    egui::ComboBox::from_id_salt("console_saved_queries")
+                        .selected_text("Select query...")
+                        .width(200.0)
+                        .show_ui(ui, |ui| {
+                            for query in &state.saved_queries {
+                                if ui
+                                    .selectable_label(false, format!(
+                                        "{} {} {}",
+                                        query.name, query.method, query.path
+                                    ))
+                                    .clicked()
+                                {
+                                    state.method = query.method.clone();
+                                    state.path = query.path.clone();
+                                    state.body = query.body.clone().unwrap_or_default();
+                                }
+                            }
+                        });
+                });
+            }
+
             ui.add_space(8.0);
             ui.horizontal(|ui| {
                 ui.label("Path:");
@@ -92,7 +124,38 @@ pub fn render_console_module(
                         body,
                     ));
                 }
+                if ui.button("💾 Save").clicked() {
+                    state.show_save_dialog = true;
+                    state.query_name_input.clear();
+                }
             });
+
+            // Save query dialog
+            if state.show_save_dialog {
+                ui.add_space(4.0);
+                ui.horizontal(|ui| {
+                    ui.label("Name:");
+                    ui.text_edit_singleline(&mut state.query_name_input);
+                    if ui.button("Save").clicked() && !state.query_name_input.is_empty() {
+                        *on_save_query = Some(SavedQuery {
+                            name: state.query_name_input.clone(),
+                            method: state.method.clone(),
+                            path: state.path.clone(),
+                            body: if state.body.trim().is_empty() {
+                                None
+                            } else {
+                                Some(state.body.clone())
+                            },
+                        });
+                        state.show_save_dialog = false;
+                        state.query_name_input.clear();
+                    }
+                    if ui.button("Cancel").clicked() {
+                        state.show_save_dialog = false;
+                        state.query_name_input.clear();
+                    }
+                });
+            }
 
             ui.add_space(8.0);
             ui.label("Body:");

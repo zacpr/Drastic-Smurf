@@ -21,7 +21,8 @@
 | **Snapshot Monitoring** | ✅ Functional | Cards with progress bars, speed/ETA, sparklines, SLM policy info. Modeled after `es-snap-mon`. Responsive 1→2 column layout. |
 | **Cluster Status** | ✅ Functional | Health dashboard with nodes, shards, indices, docs, store size, JVM heap. Responsive 1→2 column layout. |
 | **Task Monitoring** | ✅ Functional | Filterable task grid (cluster, action, description, running time, cancellable). |
-| **Elastic Console** | ✅ Functional | Method/path/body request builder with response viewer. Inherits cluster credentials. |
+| **Clusters** | ✅ Functional | Centralized cluster management: list, add/edit, test connection, import/export. |
+| **Elastic Console** | ✅ Functional | Method/path/body request builder with response viewer. Saved queries. Inherits cluster credentials. |
 
 ---
 
@@ -39,6 +40,7 @@ src/
 │   ├── mod.rs
 │   └── ssh_tunnel.rs   # SSH tunnel spawning via `ssh -L`
 ├── modules/
+│   ├── clusters.rs     # Clusters management tab
 │   ├── console.rs      # Elastic Console tab
 │   ├── snapshot.rs     # Snapshot Monitoring tab
 │   ├── status.rs       # Cluster Status tab
@@ -103,6 +105,8 @@ $ cargo generate-rpm
 
 - **Do not commit credentials.** Passwords and API keys are stored in the OS keyring.
 - Use `directories` crate for config storage (`~/.config/drastic-smurf/` on Linux).
+- **Export JSON never contains passwords.** Exported cluster configs omit credentials; imported clusters require password re-entry.
+- Per-cluster cached module data (status history, tasks cache, snapshot cache, saved queries) is stored in `config.json` alongside cluster configs.
 - TLS verification is on by default; per-cluster override available.
 - Custom CA certificate support is partially implemented (`CaCert::Custom` works; `CaCert::Bundled` is a TODO).
 - API token auth methods are stubbed in `auth.rs` but not yet wired into `EsClient`.
@@ -133,5 +137,6 @@ $ cargo generate-rpm
 1. **Tests** — Add unit tests for `human_bytes`, `human_duration`, snapshot stat calculations, and config roundtrips.
 2. **Status module depth** — Currently shows a flat card list. The plan calls for an overview of all clusters, selected subset view, and detailed single-cluster view.
 3. **Task type filtering** — Text search exists, but task-type dropdown filtering is not implemented.
-4. **Console enhancements** — No request history navigation, JSON syntax highlighting, or response folding.
-5. **AGENTS.md upkeep** — Update this file whenever modules, build steps, or security boundaries change.
+4. **Console enhancements** — No JSON syntax highlighting or response folding.
+5. **Passphrase-encrypted export** — Export is currently plaintext JSON without passwords. Encrypted export could be added later.
+6. **AGENTS.md upkeep** — Update this file whenever modules, build steps, or security boundaries change.
