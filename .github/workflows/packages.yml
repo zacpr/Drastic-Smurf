@@ -12,6 +12,9 @@ on:
         required: true
         default: ""
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 permissions:
   contents: write
 
@@ -20,7 +23,7 @@ jobs:
     name: Build DEB (x86_64)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
 
@@ -38,8 +41,11 @@ jobs:
       - name: Upload DEB to release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+          TAG_INPUT: ${{ github.event.inputs.tag }}
+          TAG_WORKFLOW: ${{ github.event.workflow_run.head_branch }}
+          TAG_REF: ${{ github.ref_name }}
         run: |
+          TAG="${TAG_INPUT:-${TAG_WORKFLOW:-${TAG_REF}}}"
           TAG="${TAG:-$(git describe --tags --abbrev=0)}"
           echo "Uploading to release $TAG"
           gh release upload "$TAG" target/debian/*.deb --clobber
@@ -48,7 +54,7 @@ jobs:
     name: Build RPM (x86_64)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
 
@@ -69,8 +75,11 @@ jobs:
       - name: Upload RPM to release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+          TAG_INPUT: ${{ github.event.inputs.tag }}
+          TAG_WORKFLOW: ${{ github.event.workflow_run.head_branch }}
+          TAG_REF: ${{ github.ref_name }}
         run: |
+          TAG="${TAG_INPUT:-${TAG_WORKFLOW:-${TAG_REF}}}"
           TAG="${TAG:-$(git describe --tags --abbrev=0)}"
           echo "Uploading to release $TAG"
           gh release upload "$TAG" target/generate-rpm/*.rpm --clobber
