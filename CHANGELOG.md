@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.8] — 2026-05-16
+
+### Added
+- **Ingest Pipeline Simulator** — New "Pipeline" tab for building and testing Elasticsearch-style ingest pipelines. Supports 8 processor types (set, remove, json, reroute, convert, lowercase, uppercase, trim) with step-by-step trace output showing before/after per processor.
+- **Pipeline Engine** — Pure Rust engine ported from the TypeScript reference implementation. Path splitting with dot notation, bracket notation, and quoted/escaped keys. Deep diff for change tracking. Full test coverage.
+- **Debounced Config Saves** — Config writes are batched on a 5-second timer instead of rewriting JSON on every refresh tick. Force-saves on app exit.
+- **Reduce Motion Toggle** — Accessibility option in Appearance tab that disables shimmer, hover glow animations, and background VFX animation to save battery.
+- **Window State Persistence** — App remembers and restores window size and position across launches.
+- **Error Toast System** — Bottom-right toast notifications surface previously silent failures (save errors, auth errors, cluster CRUD failures).
+- **Global Cluster Filter** — Sidebar search input filters clusters across all modules (Snapshot, Status, Tasks, Console).
+
 ## [0.1.7] — 2026-05-16
 
 ### Added
