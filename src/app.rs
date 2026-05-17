@@ -10,6 +10,7 @@ use crate::core::es_client::{ClusterHealth, EsClient};
 use crate::modules::appearance::{AppearanceState, render_appearance_module};
 use crate::modules::clusters::{ClustersState, render_clusters_module};
 use crate::modules::console::{ConsoleState, render_console_module};
+use crate::modules::pipeline::{PipelineState, render_pipeline_module};
 use crate::modules::snapshot::{
     ClusterSnapshotStatus, SnapshotHistory, fetch_cluster_snapshot, render_snapshot_module,
 };
@@ -27,6 +28,7 @@ pub enum Tab {
     Tasks,
     Console,
     Appearance,
+    Pipeline,
 }
 
 pub enum RefreshMsg {
@@ -48,6 +50,7 @@ pub struct DrasticSmurfApp {
     pub console_state: ConsoleState,
     pub clusters_state: ClustersState,
     pub appearance_state: AppearanceState,
+    pub pipeline_state: PipelineState,
     pub auto_refresh: bool,
     pub refresh_interval_secs: u64,
     pub last_refresh: Option<Instant>,
@@ -102,6 +105,7 @@ impl Default for DrasticSmurfApp {
                 selected_preset: config.theme.name.clone(),
                 ..Default::default()
             },
+            pipeline_state: PipelineState::with_defaults(),
             auto_refresh: manager.auto_refresh(),
             refresh_interval_secs: manager.refresh_interval_secs(),
             last_refresh: None,
@@ -553,6 +557,7 @@ impl DrasticSmurfApp {
                 ("Tasks", Tab::Tasks),
                 ("Console", Tab::Console),
                 ("Appearance", Tab::Appearance),
+                ("Pipeline", Tab::Pipeline),
             ] {
                 let is_active = self.current_tab == tab;
                 let text = egui::RichText::new(label).size(14.0);
@@ -767,6 +772,9 @@ impl DrasticSmurfApp {
                         self.toasts.error(format!("Failed to save appearance settings: {}", e));
                     }
                 }
+            }
+            Tab::Pipeline => {
+                render_pipeline_module(ui, &mut self.pipeline_state);
             }
         }
     }
