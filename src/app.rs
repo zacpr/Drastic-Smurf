@@ -138,13 +138,19 @@ impl Default for DrasticSmurfApp {
             if let Some(data) = manager.get_cluster_data(&cluster.name) {
                 // Status
                 if let Some(latest) = data.status_history.last() {
-                    app.status_state.health_data.push((cluster.name.clone(), latest.health.clone()));
-                    app.status_state.stats_data.push((cluster.name.clone(), latest.stats.clone()));
+                    app.status_state
+                        .health_data
+                        .push((cluster.name.clone(), latest.health.clone()));
+                    app.status_state
+                        .stats_data
+                        .push((cluster.name.clone(), latest.stats.clone()));
                 }
                 // Tasks
                 if let Some(latest) = data.tasks_cache.last() {
                     for task in &latest.tasks {
-                        app.tasks_state.tasks.push((cluster.name.clone(), task.clone()));
+                        app.tasks_state
+                            .tasks
+                            .push((cluster.name.clone(), task.clone()));
                     }
                 }
                 // Snapshot
@@ -307,10 +313,17 @@ impl DrasticSmurfApp {
                     {
                         existing.1 = health.clone();
                     } else {
-                        self.status_state.health_data.push((name.clone(), health.clone()));
+                        self.status_state
+                            .health_data
+                            .push((name.clone(), health.clone()));
                     }
                     // Try to save status snapshot when both health and stats are available
-                    let stats = self.status_state.stats_data.iter().find(|(n, _)| n == &name).and_then(|(_, s)| s.clone());
+                    let stats = self
+                        .status_state
+                        .stats_data
+                        .iter()
+                        .find(|(n, _)| n == &name)
+                        .and_then(|(_, s)| s.clone());
                     self.save_status_snapshot(&name, health, stats);
                 }
                 RefreshMsg::StatsResult(name, stats) => {
@@ -322,10 +335,17 @@ impl DrasticSmurfApp {
                     {
                         existing.1 = stats.clone();
                     } else {
-                        self.status_state.stats_data.push((name.clone(), stats.clone()));
+                        self.status_state
+                            .stats_data
+                            .push((name.clone(), stats.clone()));
                     }
                     // Try to save status snapshot when both health and stats are available
-                    let health = self.status_state.health_data.iter().find(|(n, _)| n == &name).and_then(|(_, h)| h.clone());
+                    let health = self
+                        .status_state
+                        .health_data
+                        .iter()
+                        .find(|(n, _)| n == &name)
+                        .and_then(|(_, h)| h.clone());
                     self.save_status_snapshot(&name, health, stats);
                 }
                 RefreshMsg::TasksResult(name, tasks) => {
@@ -510,7 +530,10 @@ impl DrasticSmurfApp {
             let _old_auto = self.auto_refresh;
             let _old_interval = self.refresh_interval_secs;
 
-            if ui.checkbox(&mut self.auto_refresh, "Auto Refresh").changed() {
+            if ui
+                .checkbox(&mut self.auto_refresh, "Auto Refresh")
+                .changed()
+            {
                 auto_refresh_changed = true;
             }
             ui.horizontal(|ui| {
@@ -530,7 +553,8 @@ impl DrasticSmurfApp {
 
             if auto_refresh_changed || interval_changed {
                 self.cluster_manager.set_auto_refresh(self.auto_refresh);
-                self.cluster_manager.set_refresh_interval_secs(self.refresh_interval_secs);
+                self.cluster_manager
+                    .set_refresh_interval_secs(self.refresh_interval_secs);
             }
 
             if ui.button("🔄 Refresh Now").clicked() {
@@ -599,7 +623,8 @@ impl DrasticSmurfApp {
                     }
                     if let Some(old) = old_name {
                         if let Err(e) = self.cluster_manager.update_cluster(&old, config) {
-                            self.toasts.error(format!("Failed to update cluster: {}", e));
+                            self.toasts
+                                .error(format!("Failed to update cluster: {}", e));
                         }
                     } else {
                         if let Err(e) = self.cluster_manager.add_cluster(config) {
@@ -644,7 +669,8 @@ impl DrasticSmurfApp {
             Tab::Snapshot => {
                 let mut on_edit = None;
                 let mut on_delete = None;
-                let filtered_statuses: Vec<_> = self.snapshot_statuses
+                let filtered_statuses: Vec<_> = self
+                    .snapshot_statuses
                     .iter()
                     .filter(|s| self.cluster_matches_filter(&s.config.name))
                     .cloned()
@@ -679,20 +705,33 @@ impl DrasticSmurfApp {
             }
             Tab::Status => {
                 let filtered_state = StatusState {
-                    health_data: self.status_state.health_data.iter()
+                    health_data: self
+                        .status_state
+                        .health_data
+                        .iter()
                         .filter(|(n, _)| self.cluster_matches_filter(n))
                         .cloned()
                         .collect(),
-                    stats_data: self.status_state.stats_data.iter()
+                    stats_data: self
+                        .status_state
+                        .stats_data
+                        .iter()
                         .filter(|(n, _)| self.cluster_matches_filter(n))
                         .cloned()
                         .collect(),
                 };
-                render_status_module(ui, &filtered_state, self.vfx.hover_effects && !self.vfx.reduce_motion);
+                render_status_module(
+                    ui,
+                    &filtered_state,
+                    self.vfx.hover_effects && !self.vfx.reduce_motion,
+                );
             }
             Tab::Tasks => {
                 let mut filtered_tasks_state = TasksState {
-                    tasks: self.tasks_state.tasks.iter()
+                    tasks: self
+                        .tasks_state
+                        .tasks
+                        .iter()
                         .filter(|(n, _)| self.cluster_matches_filter(n))
                         .cloned()
                         .collect(),
@@ -723,7 +762,9 @@ impl DrasticSmurfApp {
                     let cluster = &self.console_state.selected_cluster;
                     if let Some(mut data) = self.cluster_manager.get_cluster_data(cluster) {
                         // Replace if name exists
-                        if let Some(idx) = data.saved_queries.iter().position(|q| q.name == query.name) {
+                        if let Some(idx) =
+                            data.saved_queries.iter().position(|q| q.name == query.name)
+                        {
                             data.saved_queries[idx] = query;
                         } else {
                             data.saved_queries.push(query);
@@ -741,9 +782,15 @@ impl DrasticSmurfApp {
                 }
                 // Load saved queries when cluster selection changes
                 let selected = &self.console_state.selected_cluster;
-                let current_queries: Vec<String> = self.console_state.saved_queries.iter().map(|q| q.name.clone()).collect();
+                let current_queries: Vec<String> = self
+                    .console_state
+                    .saved_queries
+                    .iter()
+                    .map(|q| q.name.clone())
+                    .collect();
                 if let Some(data) = self.cluster_manager.get_cluster_data(selected) {
-                    let new_queries: Vec<String> = data.saved_queries.iter().map(|q| q.name.clone()).collect();
+                    let new_queries: Vec<String> =
+                        data.saved_queries.iter().map(|q| q.name.clone()).collect();
                     if current_queries != new_queries {
                         self.console_state.saved_queries = data.saved_queries;
                     }
@@ -765,11 +812,12 @@ impl DrasticSmurfApp {
                     &mut vfx_changed,
                 );
                 if theme_changed || vfx_changed {
-                    if let Err(e) = self.cluster_manager.save_theme_and_vfx(
-                        self.theme.clone(),
-                        self.vfx.clone(),
-                    ) {
-                        self.toasts.error(format!("Failed to save appearance settings: {}", e));
+                    if let Err(e) = self
+                        .cluster_manager
+                        .save_theme_and_vfx(self.theme.clone(), self.vfx.clone())
+                    {
+                        self.toasts
+                            .error(format!("Failed to save appearance settings: {}", e));
                     }
                 }
             }
@@ -882,7 +930,9 @@ impl DrasticSmurfApp {
                     if ui.button("Save").clicked() {
                         if !self.new_cluster.name.is_empty() && !self.new_cluster.host.is_empty() {
                             let name = self.new_cluster.name.clone();
-                            if let Err(e) = crate::core::auth::set_password(&name, &self.new_password) {
+                            if let Err(e) =
+                                crate::core::auth::set_password(&name, &self.new_password)
+                            {
                                 self.toasts.error(format!("Failed to save password: {}", e));
                             }
 
@@ -891,10 +941,13 @@ impl DrasticSmurfApp {
                                     .cluster_manager
                                     .update_cluster(old_name, self.new_cluster.clone())
                                 {
-                                    self.toasts.error(format!("Failed to update cluster: {}", e));
+                                    self.toasts
+                                        .error(format!("Failed to update cluster: {}", e));
                                 }
                             } else {
-                                if let Err(e) = self.cluster_manager.add_cluster(self.new_cluster.clone()) {
+                                if let Err(e) =
+                                    self.cluster_manager.add_cluster(self.new_cluster.clone())
+                                {
                                     self.toasts.error(format!("Failed to add cluster: {}", e));
                                 }
                             }
@@ -925,7 +978,8 @@ impl DrasticSmurfApp {
                     ui.horizontal(|ui| {
                         if ui.button("Delete").clicked() {
                             if let Err(e) = self.cluster_manager.remove_cluster(&name) {
-                                self.toasts.error(format!("Failed to remove cluster: {}", e));
+                                self.toasts
+                                    .error(format!("Failed to remove cluster: {}", e));
                             }
                             self.snapshot_statuses.retain(|s| s.config.name != name);
                             self.status_state.health_data.retain(|(n, _)| n != &name);
@@ -952,7 +1006,8 @@ impl eframe::App for DrasticSmurfApp {
         if let Some(imported) = self.clusters_import.take() {
             for cluster in imported.clusters {
                 if let Err(e) = self.cluster_manager.add_cluster(cluster) {
-                    self.toasts.error(format!("Failed to import cluster: {}", e));
+                    self.toasts
+                        .error(format!("Failed to import cluster: {}", e));
                 }
             }
             for (name, data) in imported.cluster_data {

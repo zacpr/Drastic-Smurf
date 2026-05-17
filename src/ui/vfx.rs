@@ -38,10 +38,7 @@ fn paint_gradient(ctx: &Context, rect: Rect, settings: &VfxSettings) {
         (t2 * 2.0 - 1.0) * rect.height() * 0.3,
     );
 
-    let glow_center = Pos2::new(
-        center.x + offset1.x,
-        center.y + offset1.y,
-    );
+    let glow_center = Pos2::new(center.x + offset1.x, center.y + offset1.y);
 
     let glow_radius = rect.width().min(rect.height()) * 0.6;
 
@@ -57,9 +54,10 @@ fn paint_gradient(ctx: &Context, rect: Rect, settings: &VfxSettings) {
 
     // Second, smaller accent spot
     let offset2 = Vec2::new(
-        ((time + 3.14).sin() + 1.0) / 2.0 * 2.0 - 1.0,
+        ((time + std::f32::consts::PI).sin() + 1.0) / 2.0 * 2.0 - 1.0,
         ((time + 1.57).cos() + 1.0) / 2.0 * 2.0 - 1.0,
-    ) * rect.width() * 0.25;
+    ) * rect.width()
+        * 0.25;
 
     let glow_center2 = Pos2::new(center.x + offset2.x, center.y + offset2.y);
     for i in 0..steps {
@@ -93,9 +91,7 @@ fn paint_mesh(ctx: &Context, rect: Rect, settings: &VfxSettings) {
     // Draw a subtle grid/mesh of lines
     let spacing = 60.0;
     let alpha = (intensity * 25.0) as u8;
-    let line_color = Color32::from_rgba_premultiplied(
-        accent.r(), accent.g(), accent.b(), alpha,
-    );
+    let line_color = Color32::from_rgba_premultiplied(accent.r(), accent.g(), accent.b(), alpha);
 
     // Vertical lines with wave offset
     let cols = (rect.width() / spacing).ceil() as i32 + 2;

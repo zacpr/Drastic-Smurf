@@ -104,7 +104,9 @@ impl Toasts {
                 .show(ctx, |ui| {
                     let base_color = Color32::from_rgb(30, 41, 59);
                     let bg = Color32::from_rgba_premultiplied(
-                        base_color.r(), base_color.g(), base_color.b(),
+                        base_color.r(),
+                        base_color.g(),
+                        base_color.b(),
                         (alpha * 240.0) as u8,
                     );
                     let stroke_color = Color32::from_rgba_premultiplied(
@@ -113,7 +115,8 @@ impl Toasts {
                         toast.level.color().b(),
                         (alpha * 255.0) as u8,
                     );
-                    let text_color = Color32::from_rgba_premultiplied(248, 250, 252, (alpha * 255.0) as u8);
+                    let text_color =
+                        Color32::from_rgba_premultiplied(248, 250, 252, (alpha * 255.0) as u8);
 
                     let frame = egui::Frame::new()
                         .fill(bg)

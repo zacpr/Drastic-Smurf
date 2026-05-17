@@ -95,12 +95,21 @@ pub fn animated_card<R>(
     let (rect, response) = ui.allocate_exact_size(desired, egui::Sense::click());
 
     let lift = hover_lift(ui, &response, 2.0);
-    let glow_alpha = ui.ctx().animate_value_with_time(id.with("glow"), if response.hovered() { 0.08 } else { 0.0 }, 0.15);
+    let glow_alpha = ui.ctx().animate_value_with_time(
+        id.with("glow"),
+        if response.hovered() { 0.08 } else { 0.0 },
+        0.15,
+    );
 
     if glow_alpha > 0.0 {
         let glow_rect = rect.expand(1.0);
         let accent = Theme::accent();
-        let glow_color = Color32::from_rgba_premultiplied(accent.r(), accent.g(), accent.b(), (glow_alpha * 255.0) as u8);
+        let glow_color = Color32::from_rgba_premultiplied(
+            accent.r(),
+            accent.g(),
+            accent.b(),
+            (glow_alpha * 255.0) as u8,
+        );
         ui.painter().rect_stroke(
             glow_rect,
             Theme::CARD_ROUNDING,
@@ -181,10 +190,8 @@ pub fn pulsing_dot(ui: &mut Ui, color: Color32, speed: f32) -> Response {
     let radius = base_radius + pulse * 2.0;
     let alpha = 180 + (pulse * 75.0) as u8;
 
-    let (rect, response) = ui.allocate_exact_size(
-        Vec2::splat(base_radius * 2.0 + 4.0),
-        egui::Sense::hover(),
-    );
+    let (rect, response) =
+        ui.allocate_exact_size(Vec2::splat(base_radius * 2.0 + 4.0), egui::Sense::hover());
 
     if ui.is_rect_visible(rect) {
         let center = rect.center();

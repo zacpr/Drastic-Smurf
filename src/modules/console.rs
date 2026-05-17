@@ -81,10 +81,10 @@ pub fn render_console_module(
                         .show_ui(ui, |ui| {
                             for query in &state.saved_queries {
                                 if ui
-                                    .selectable_label(false, format!(
-                                        "{} {} {}",
-                                        query.name, query.method, query.path
-                                    ))
+                                    .selectable_label(
+                                        false,
+                                        format!("{} {} {}", query.name, query.method, query.path),
+                                    )
                                     .clicked()
                                 {
                                     state.method = query.method.clone();

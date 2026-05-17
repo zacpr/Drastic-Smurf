@@ -274,12 +274,17 @@ impl ClusterManager {
         self.cluster_data.lock().unwrap().get(name).cloned()
     }
 
-    pub fn all_cluster_data(&self) -> std::collections::HashMap<String, crate::core::config::ClusterData> {
+    pub fn all_cluster_data(
+        &self,
+    ) -> std::collections::HashMap<String, crate::core::config::ClusterData> {
         self.cluster_data.lock().unwrap().clone()
     }
 
     pub fn set_cluster_data(&self, name: &str, data: crate::core::config::ClusterData) {
-        self.cluster_data.lock().unwrap().insert(name.to_string(), data);
+        self.cluster_data
+            .lock()
+            .unwrap()
+            .insert(name.to_string(), data);
         self.mark_dirty();
     }
 

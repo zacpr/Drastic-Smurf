@@ -50,12 +50,24 @@ impl Default for VfxSettings {
     }
 }
 
-fn default_background_effect() -> BackgroundEffect { BackgroundEffect::Gradient }
-fn default_background_intensity() -> f32 { 0.15 }
-fn default_animation_speed() -> f32 { 1.0 }
-fn default_true() -> bool { true }
-fn default_false() -> bool { false }
-fn default_parallax() -> f32 { 0.2 }
+fn default_background_effect() -> BackgroundEffect {
+    BackgroundEffect::Gradient
+}
+fn default_background_intensity() -> f32 {
+    0.15
+}
+fn default_animation_speed() -> f32 {
+    1.0
+}
+fn default_true() -> bool {
+    true
+}
+fn default_false() -> bool {
+    false
+}
+fn default_parallax() -> f32 {
+    0.2
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum CaCert {

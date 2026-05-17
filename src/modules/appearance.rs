@@ -34,7 +34,10 @@ pub fn render_appearance_module(
                 let presets = AppTheme::all_presets();
                 let preset_names: Vec<String> = presets.iter().map(|p| p.name.clone()).collect();
 
-                let mut selected_idx = presets.iter().position(|p| p.name == state.selected_preset).unwrap_or(0);
+                let mut selected_idx = presets
+                    .iter()
+                    .position(|p| p.name == state.selected_preset)
+                    .unwrap_or(0);
                 let prev_idx = selected_idx;
 
                 egui::ComboBox::from_id_salt("theme_preset")
@@ -63,11 +66,26 @@ pub fn render_appearance_module(
                 color_picker_row(ui, "Dark BG", &mut theme.bg_dark, on_theme_changed);
                 color_picker_row(ui, "Card BG", &mut theme.bg_card, on_theme_changed);
                 color_picker_row(ui, "Input BG", &mut theme.bg_input, on_theme_changed);
-                color_picker_row(ui, "Primary Text", &mut theme.text_primary, on_theme_changed);
-                color_picker_row(ui, "Secondary Text", &mut theme.text_secondary, on_theme_changed);
+                color_picker_row(
+                    ui,
+                    "Primary Text",
+                    &mut theme.text_primary,
+                    on_theme_changed,
+                );
+                color_picker_row(
+                    ui,
+                    "Secondary Text",
+                    &mut theme.text_secondary,
+                    on_theme_changed,
+                );
                 color_picker_row(ui, "Muted Text", &mut theme.text_muted, on_theme_changed);
                 color_picker_row(ui, "Accent", &mut theme.accent, on_theme_changed);
-                color_picker_row(ui, "Accent Hover", &mut theme.accent_hover, on_theme_changed);
+                color_picker_row(
+                    ui,
+                    "Accent Hover",
+                    &mut theme.accent_hover,
+                    on_theme_changed,
+                );
                 color_picker_row(ui, "Success", &mut theme.success, on_theme_changed);
                 color_picker_row(ui, "Warning", &mut theme.warning, on_theme_changed);
                 color_picker_row(ui, "Danger", &mut theme.danger, on_theme_changed);
@@ -95,53 +113,96 @@ pub fn render_appearance_module(
             ui.heading("Visual Effects");
             ui.add_space(8.0);
 
-            if ui.checkbox(&mut vfx.reduce_motion, "Reduce Motion (disable animations for accessibility/battery)").changed() {
+            if ui
+                .checkbox(
+                    &mut vfx.reduce_motion,
+                    "Reduce Motion (disable animations for accessibility/battery)",
+                )
+                .changed()
+            {
                 *on_vfx_changed = true;
             }
             ui.add_space(4.0);
 
             ui.label("Background Effect:");
             ui.horizontal(|ui| {
-                if ui.selectable_value(&mut vfx.background_effect, BackgroundEffect::None, "None").changed() {
+                if ui
+                    .selectable_value(&mut vfx.background_effect, BackgroundEffect::None, "None")
+                    .changed()
+                {
                     *on_vfx_changed = true;
                 }
-                if ui.selectable_value(&mut vfx.background_effect, BackgroundEffect::Gradient, "Gradient").changed() {
+                if ui
+                    .selectable_value(
+                        &mut vfx.background_effect,
+                        BackgroundEffect::Gradient,
+                        "Gradient",
+                    )
+                    .changed()
+                {
                     *on_vfx_changed = true;
                 }
-                if ui.selectable_value(&mut vfx.background_effect, BackgroundEffect::Mesh, "Mesh").changed() {
+                if ui
+                    .selectable_value(&mut vfx.background_effect, BackgroundEffect::Mesh, "Mesh")
+                    .changed()
+                {
                     *on_vfx_changed = true;
                 }
             });
             if vfx.background_effect != BackgroundEffect::None {
-                if ui.add(egui::Slider::new(&mut vfx.background_intensity, 0.0..=1.0).text("Intensity")).changed() {
+                if ui
+                    .add(
+                        egui::Slider::new(&mut vfx.background_intensity, 0.0..=1.0)
+                            .text("Intensity"),
+                    )
+                    .changed()
+                {
                     *on_vfx_changed = true;
                 }
             }
 
             ui.add_space(8.0);
-            if ui.add(
-                egui::Slider::new(&mut vfx.animation_speed, 0.0..=3.0)
-                    .text("Animation Speed")
-                    .fixed_decimals(1),
-            ).changed() {
+            if ui
+                .add(
+                    egui::Slider::new(&mut vfx.animation_speed, 0.0..=3.0)
+                        .text("Animation Speed")
+                        .fixed_decimals(1),
+                )
+                .changed()
+            {
                 *on_vfx_changed = true;
             }
 
-            if ui.checkbox(&mut vfx.hover_effects, "Hover Effects (card lift, button glow)").changed() {
+            if ui
+                .checkbox(
+                    &mut vfx.hover_effects,
+                    "Hover Effects (card lift, button glow)",
+                )
+                .changed()
+            {
                 *on_vfx_changed = true;
             }
-            if ui.checkbox(&mut vfx.shimmer_effects, "Shimmer Effects (progress bar, pulse)").changed() {
+            if ui
+                .checkbox(
+                    &mut vfx.shimmer_effects,
+                    "Shimmer Effects (progress bar, pulse)",
+                )
+                .changed()
+            {
                 *on_vfx_changed = true;
             }
             if ui.checkbox(&mut vfx.cursor_glow, "Cursor Glow").changed() {
                 *on_vfx_changed = true;
             }
 
-            if ui.add(
-                egui::Slider::new(&mut vfx.parallax_amount, 0.0..=1.0)
-                    .text("Parallax Amount")
-                    .fixed_decimals(2),
-            ).changed() {
+            if ui
+                .add(
+                    egui::Slider::new(&mut vfx.parallax_amount, 0.0..=1.0)
+                        .text("Parallax Amount")
+                        .fixed_decimals(2),
+                )
+                .changed()
+            {
                 *on_vfx_changed = true;
             }
         });
@@ -152,7 +213,13 @@ fn color_picker_row(ui: &mut Ui, label: &str, color: &mut egui::Color32, changed
         ui.label(label);
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             let mut raw = [*color];
-            if egui::color_picker::color_edit_button_srgba(ui, &mut raw[0], egui::color_picker::Alpha::Opaque).changed() {
+            if egui::color_picker::color_edit_button_srgba(
+                ui,
+                &mut raw[0],
+                egui::color_picker::Alpha::Opaque,
+            )
+            .changed()
+            {
                 *color = raw[0];
                 *changed = true;
                 Theme::set(Theme::get());
@@ -198,18 +265,14 @@ fn render_theme_preview(ui: &mut Ui, theme: &AppTheme) {
             // Mini progress bar
             let bar_width = ui.available_width().min(300.0);
             let bar_height = 8.0;
-            let (rect, _) = ui.allocate_exact_size(
-                egui::Vec2::new(bar_width, bar_height),
-                egui::Sense::hover(),
-            );
+            let (rect, _) = ui
+                .allocate_exact_size(egui::Vec2::new(bar_width, bar_height), egui::Sense::hover());
             if ui.is_rect_visible(rect) {
                 let painter = ui.painter();
                 painter.rect_filled(rect, egui::CornerRadius::same(4), theme.bg_input);
                 let progress = rect.width() * 0.45;
-                let progress_rect = egui::Rect::from_min_size(
-                    rect.min,
-                    egui::Vec2::new(progress, rect.height()),
-                );
+                let progress_rect =
+                    egui::Rect::from_min_size(rect.min, egui::Vec2::new(progress, rect.height()));
                 painter.rect_filled(progress_rect, egui::CornerRadius::same(4), theme.accent);
             }
 

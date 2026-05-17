@@ -132,7 +132,9 @@ fn render_pipeline_builder(ui: &mut Ui, state: &mut PipelineState) {
                     });
 
                 if ui.button("Add processor").clicked() {
-                    state.processors.push(default_processor(state.new_processor_type));
+                    state
+                        .processors
+                        .push(default_processor(state.new_processor_type));
                 }
             });
 
@@ -147,7 +149,14 @@ fn render_pipeline_builder(ui: &mut Ui, state: &mut PipelineState) {
                     let proc_len = state.processors.len();
 
                     for (index, processor) in state.processors.iter_mut().enumerate() {
-                        render_processor_card(ui, index, processor, proc_len, &mut remove_idx, &mut move_dir);
+                        render_processor_card(
+                            ui,
+                            index,
+                            processor,
+                            proc_len,
+                            &mut remove_idx,
+                            &mut move_dir,
+                        );
                     }
 
                     if let Some(idx) = remove_idx {
@@ -183,19 +192,21 @@ fn render_processor_card(
             // Header
             ui.horizontal(|ui| {
                 ui.label(
-                    egui::RichText::new(format!("{}. {}", index + 1, processor.processor_type().as_str()))
-                        .strong()
-                        .size(12.0)
-                        .color(Theme::text_primary()),
+                    egui::RichText::new(format!(
+                        "{}. {}",
+                        index + 1,
+                        processor.processor_type().as_str()
+                    ))
+                    .strong()
+                    .size(12.0)
+                    .color(Theme::text_primary()),
                 );
 
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if ui
                         .add(
                             egui::Label::new(
-                                egui::RichText::new("×")
-                                    .size(14.0)
-                                    .color(Theme::danger()),
+                                egui::RichText::new("×").size(14.0).color(Theme::danger()),
                             )
                             .sense(egui::Sense::click()),
                         )
@@ -269,7 +280,11 @@ fn render_processor_card(
                         }
                     });
                 }
-                Processor::Json { field, target_field, .. } => {
+                Processor::Json {
+                    field,
+                    target_field,
+                    ..
+                } => {
                     ui.horizontal(|ui| {
                         ui.label("Source:");
                         ui.text_edit_singleline(field);
@@ -316,9 +331,21 @@ fn render_processor_card(
                             });
                     });
                 }
-                Processor::Lowercase { field, target_field, .. }
-                | Processor::Uppercase { field, target_field, .. }
-                | Processor::Trim { field, target_field, .. } => {
+                Processor::Lowercase {
+                    field,
+                    target_field,
+                    ..
+                }
+                | Processor::Uppercase {
+                    field,
+                    target_field,
+                    ..
+                }
+                | Processor::Trim {
+                    field,
+                    target_field,
+                    ..
+                } => {
                     ui.horizontal(|ui| {
                         ui.label("Source:");
                         ui.text_edit_singleline(field);
@@ -490,7 +517,8 @@ fn render_input_and_trace(ui: &mut Ui, state: &mut PipelineState) {
                                 .color(Theme::text_primary()),
                         );
                         ui.monospace(
-                            serde_json::to_string_pretty(&result.final_document).unwrap_or_default(),
+                            serde_json::to_string_pretty(&result.final_document)
+                                .unwrap_or_default(),
                         );
 
                         if let Some(ref err) = result.error {

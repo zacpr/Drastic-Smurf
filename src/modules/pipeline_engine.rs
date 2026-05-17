@@ -350,11 +350,8 @@ pub fn collect_changed_paths(before: &Value, after: &Value, base_path: &str) -> 
     match (before, after) {
         (Value::Object(before_map), Value::Object(after_map)) => {
             let mut changed = Vec::new();
-            let keys: std::collections::HashSet<_> = before_map
-                .keys()
-                .chain(after_map.keys())
-                .cloned()
-                .collect();
+            let keys: std::collections::HashSet<_> =
+                before_map.keys().chain(after_map.keys()).cloned().collect();
 
             for key in keys {
                 let child_path = if base_path.is_empty() {
@@ -414,7 +411,11 @@ fn apply_json(document: &Value, field: &str, target_field: Option<&str>) -> Resu
 }
 
 fn apply_reroute(document: &Value, dataset: &str) -> Result<Value, String> {
-    let mut next = set_by_path(document, "_ingest.reroute.dataset", Value::String(dataset.to_string()))?;
+    let mut next = set_by_path(
+        document,
+        "_ingest.reroute.dataset",
+        Value::String(dataset.to_string()),
+    )?;
     next = set_by_path(
         &next,
         "_ingest.reroute.target_index",
@@ -435,13 +436,15 @@ fn convert_value(value: &Value, convert_to: ConvertType) -> Result<Value, String
         ConvertType::String => Ok(Value::String(value_to_str(value))),
         ConvertType::Integer => {
             let s = value_to_str(value);
-            let n = s.parse::<i64>()
+            let n = s
+                .parse::<i64>()
                 .map_err(|_| format!("cannot convert \"{}\" to integer", s))?;
             Ok(Value::Number(n.into()))
         }
         ConvertType::Float => {
             let s = value_to_str(value);
-            let n = s.parse::<f64>()
+            let n = s
+                .parse::<f64>()
                 .map_err(|_| format!("cannot convert \"{}\" to float", s))?;
             let num = serde_json::Number::from_f64(n)
                 .ok_or_else(|| format!("cannot convert \"{}\" to float", s))?;
@@ -482,25 +485,42 @@ fn apply_string_transform(
     target_field: Option<&str>,
     transform: ProcessorType,
 ) -> Result<Value, String> {
-    let source = get_by_path(document, field)
-        .ok_or_else(|| format!("{} processor expected string at \"{}\"", transform.as_str(), field))?;
-    let s = source
-        .as_str()
-        .ok_or_else(|| format!("{} processor expected string at \"{}\"", transform.as_str(), field))?;
+    let source = get_by_path(document, field).ok_or_else(|| {
+        format!(
+            "{} processor expected string at \"{}\"",
+            transform.as_str(),
+            field
+        )
+    })?;
+    let s = source.as_str().ok_or_else(|| {
+        format!(
+            "{} processor expected string at \"{}\"",
+            transform.as_str(),
+            field
+        )
+    })?;
     let result = match transform {
         ProcessorType::Lowercase => s.to_lowercase(),
         ProcessorType::Uppercase => s.to_uppercase(),
         ProcessorType::Trim => s.trim().to_string(),
         _ => unreachable!(),
     };
-    set_by_path(document, target_field.unwrap_or(field), Value::String(result))
+    set_by_path(
+        document,
+        target_field.unwrap_or(field),
+        Value::String(result),
+    )
 }
 
 pub fn apply_processor(document: &Value, processor: &Processor) -> Result<Value, String> {
     match processor {
         Processor::Set { field, value, .. } => apply_set(document, field, value),
         Processor::Remove { fields, .. } => apply_remove(document, fields),
-        Processor::Json { field, target_field, .. } => apply_json(document, field, target_field.as_deref()),
+        Processor::Json {
+            field,
+            target_field,
+            ..
+        } => apply_json(document, field, target_field.as_deref()),
         Processor::Reroute { dataset, .. } => apply_reroute(document, dataset),
         Processor::Convert {
             field,
@@ -508,15 +528,36 @@ pub fn apply_processor(document: &Value, processor: &Processor) -> Result<Value,
             convert_to,
             ..
         } => apply_convert(document, field, target_field.as_deref(), *convert_to),
-        Processor::Lowercase { field, target_field, .. } => {
-            apply_string_transform(document, field, target_field.as_deref(), ProcessorType::Lowercase)
-        }
-        Processor::Uppercase { field, target_field, .. } => {
-            apply_string_transform(document, field, target_field.as_deref(), ProcessorType::Uppercase)
-        }
-        Processor::Trim { field, target_field, .. } => {
-            apply_string_transform(document, field, target_field.as_deref(), ProcessorType::Trim)
-        }
+        Processor::Lowercase {
+            field,
+            target_field,
+            ..
+        } => apply_string_transform(
+            document,
+            field,
+            target_field.as_deref(),
+            ProcessorType::Lowercase,
+        ),
+        Processor::Uppercase {
+            field,
+            target_field,
+            ..
+        } => apply_string_transform(
+            document,
+            field,
+            target_field.as_deref(),
+            ProcessorType::Uppercase,
+        ),
+        Processor::Trim {
+            field,
+            target_field,
+            ..
+        } => apply_string_transform(
+            document,
+            field,
+            target_field.as_deref(),
+            ProcessorType::Trim,
+        ),
     }
 }
 
@@ -554,7 +595,11 @@ pub fn execute_pipeline(document: &Value, processors: &[Processor]) -> Execution
                 return ExecutionResult {
                     steps,
                     final_document: before,
-                    error: Some(format!("Processor \"{}\" failed: {}", processor.id(), message)),
+                    error: Some(format!(
+                        "Processor \"{}\" failed: {}",
+                        processor.id(),
+                        message
+                    )),
                 };
             }
         }
@@ -644,7 +689,10 @@ mod tests {
     fn test_set_and_get() {
         let doc = serde_json::json!({"a": 1});
         let updated = set_by_path(&doc, "b.c", Value::String("hello".to_string())).unwrap();
-        assert_eq!(get_by_path(&updated, "b.c"), Some(&Value::String("hello".to_string())));
+        assert_eq!(
+            get_by_path(&updated, "b.c"),
+            Some(&Value::String("hello".to_string()))
+        );
     }
 
     #[test]

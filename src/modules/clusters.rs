@@ -128,10 +128,11 @@ pub fn render_clusters_module(
                                 state.selected_cluster = Some(cluster.name.clone());
                                 state.editing_cluster = Some(cluster.name.clone());
                                 state.edit_form = cluster.clone();
-                                state.edit_password = crate::core::auth::get_password(&cluster.name)
-                                    .ok()
-                                    .flatten()
-                                    .unwrap_or_default();
+                                state.edit_password =
+                                    crate::core::auth::get_password(&cluster.name)
+                                        .ok()
+                                        .flatten()
+                                        .unwrap_or_default();
                                 state.test_result = None;
                             }
                             if ui.small_button("🔌 Test").clicked() {
@@ -151,13 +152,15 @@ pub fn render_clusters_module(
                             summaries.push(format!("{} queries", data.saved_queries.len()));
                         }
                         if !data.status_history.is_empty() {
-                            summaries.push(format!("{} status snapshots", data.status_history.len()));
+                            summaries
+                                .push(format!("{} status snapshots", data.status_history.len()));
                         }
                         if !data.tasks_cache.is_empty() {
                             summaries.push(format!("{} task caches", data.tasks_cache.len()));
                         }
                         if !data.snapshot_cache.is_empty() {
-                            summaries.push(format!("{} snapshot caches", data.snapshot_cache.len()));
+                            summaries
+                                .push(format!("{} snapshot caches", data.snapshot_cache.len()));
                         }
                         if !summaries.is_empty() {
                             ui.label(
@@ -181,7 +184,9 @@ pub fn render_clusters_module(
         }
 
         // Add new cluster form (when no cluster selected and editing)
-        if state.editing_cluster.is_none() && state.selected_cluster.is_none() && clusters.is_empty()
+        if state.editing_cluster.is_none()
+            && state.selected_cluster.is_none()
+            && clusters.is_empty()
         {
             egui::Frame::new()
                 .fill(Theme::bg_card())
@@ -302,7 +307,10 @@ fn render_import_section(
                 ui.label("Path:");
                 ui.text_edit_singleline(&mut state.import_path);
             });
-            ui.checkbox(&mut state.import_include_data, "Include module data (queries, history, cache)");
+            ui.checkbox(
+                &mut state.import_include_data,
+                "Include module data (queries, history, cache)",
+            );
 
             if let Some(ref err) = state.import_error {
                 ui.label(egui::RichText::new(err).color(Theme::danger()));
@@ -339,8 +347,12 @@ fn perform_import(
         existing_clusters.iter().map(|c| c.name.clone()).collect();
 
     // Filter out duplicates
-    imported.clusters.retain(|c| !existing_names.contains(&c.name));
-    imported.cluster_data.retain(|name, _| !existing_names.contains(name));
+    imported
+        .clusters
+        .retain(|c| !existing_names.contains(&c.name));
+    imported
+        .cluster_data
+        .retain(|name, _| !existing_names.contains(name));
 
     // If user doesn't want module data, clear it
     if !state.import_include_data {

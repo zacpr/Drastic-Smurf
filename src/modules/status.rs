@@ -47,7 +47,14 @@ pub fn render_status_module(ui: &mut Ui, state: &StatusState, hover_effects: boo
                                     .iter()
                                     .find(|(n, _)| n == name)
                                     .and_then(|(_, s)| s.clone());
-                                render_status_card(ui, name, health, stats, col_width, hover_effects);
+                                render_status_card(
+                                    ui,
+                                    name,
+                                    health,
+                                    stats,
+                                    col_width,
+                                    hover_effects,
+                                );
                                 ui.add_space(card_spacing);
                             }
                         }
@@ -189,7 +196,9 @@ fn render_status_card(
         if glow_alpha > 0.0 {
             let accent = Theme::accent();
             let glow_color = Color32::from_rgba_premultiplied(
-                accent.r(), accent.g(), accent.b(),
+                accent.r(),
+                accent.g(),
+                accent.b(),
                 (glow_alpha * 255.0) as u8,
             );
             ui.painter().rect_stroke(
