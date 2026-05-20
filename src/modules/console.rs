@@ -14,6 +14,7 @@ pub struct ConsoleState {
     pub saved_queries: Vec<SavedQuery>,
     pub query_name_input: String,
     pub show_save_dialog: bool,
+    pub use_kibana_host: bool,
 }
 
 impl ConsoleState {
@@ -30,7 +31,7 @@ pub fn render_console_module(
     ui: &mut Ui,
     state: &mut ConsoleState,
     clusters: &[String],
-    on_send: &mut Option<(String, String, String, Option<String>)>,
+    on_send: &mut Option<(String, String, String, Option<String>, bool)>,
     on_save_query: &mut Option<SavedQuery>,
 ) {
     ui.heading("Elastic Console");
@@ -68,6 +69,9 @@ pub fn render_console_module(
                             ui.selectable_value(&mut state.method, m.to_string(), m);
                         }
                     });
+
+                ui.add_space(8.0);
+                ui.checkbox(&mut state.use_kibana_host, "Kibana Host");
             });
 
             // Saved queries
@@ -122,6 +126,7 @@ pub fn render_console_module(
                         state.method.clone(),
                         state.path.clone(),
                         body,
+                        state.use_kibana_host,
                     ));
                 }
                 if ui.button("💾 Save").clicked() {
@@ -159,9 +164,12 @@ pub fn render_console_module(
 
             ui.add_space(8.0);
             ui.label("Body:");
+            let body_height = (ui.available_height() * 0.35).max(80.0);
             ui.add_sized(
-                [ui.available_width(), 120.0],
-                egui::TextEdit::multiline(&mut state.body).code_editor(),
+                [ui.available_width(), body_height],
+                egui::TextEdit::multiline(&mut state.body)
+                    .code_editor()
+                    .desired_rows(4),
             );
 
             ui.add_space(8.0);
@@ -171,9 +179,12 @@ pub fn render_console_module(
                     state.response.clear();
                 }
             });
+            let response_height = ui.available_height().max(60.0);
             ui.add_sized(
-                [ui.available_width(), 200.0],
-                egui::TextEdit::multiline(&mut state.response).code_editor(),
+                [ui.available_width(), response_height],
+                egui::TextEdit::multiline(&mut state.response)
+                    .code_editor()
+                    .desired_rows(6),
             );
         });
 }

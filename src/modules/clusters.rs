@@ -23,6 +23,8 @@ pub struct ClustersState {
     pub export_include_snapshots: bool,
     pub export_error: Option<String>,
     pub export_success: Option<String>,
+    pub fetched_repos: Vec<String>,
+    pub fetched_slm_policies: Vec<String>,
 }
 
 pub fn render_clusters_module(
@@ -30,10 +32,14 @@ pub fn render_clusters_module(
     state: &mut ClustersState,
     clusters: &[ClusterConfig],
     cluster_data: &std::collections::HashMap<String, ClusterData>,
+    connected: &std::collections::HashMap<String, bool>,
     on_save: &mut Option<(Option<String>, ClusterConfig, String)>,
     on_delete: &mut Option<String>,
     on_test: &mut Option<(String, String)>,
     on_import: &mut Option<crate::core::config::AppConfig>,
+    on_show_dialog: &mut bool,
+    on_fetch_repos: &mut Option<String>,
+    on_fetch_slm: &mut Option<String>,
 ) {
     ui.heading("Clusters");
     ui.add_space(16.0);
@@ -46,11 +52,7 @@ pub fn render_clusters_module(
     // --- Action buttons ---
     ui.horizontal(|ui| {
         if ui.button("➕ Add Cluster").clicked() {
-            state.selected_cluster = None;
-            state.editing_cluster = None;
-            state.edit_form = ClusterConfig::default();
-            state.edit_password.clear();
-            state.test_result = None;
+            *on_show_dialog = true;
         }
         if ui.button("📥 Import").clicked() {
             state.show_import = !state.show_import;
@@ -77,7 +79,9 @@ pub fn render_clusters_module(
     }
 
     // --- Cluster list ---
-    egui::ScrollArea::vertical().show(ui, |ui| {
+    egui::ScrollArea::vertical()
+        .id_salt("clusters")
+        .show(ui, |ui| {
         for cluster in clusters {
             let is_selected = state.selected_cluster.as_ref() == Some(&cluster.name);
             let _is_editing = state.editing_cluster.as_ref() == Some(&cluster.name)
@@ -97,9 +101,10 @@ pub fn render_clusters_module(
                         ui.set_width(ui.available_width());
 
                         // Selection click area
+                        let is_connected = *connected.get(&cluster.name).unwrap_or(&false);
                         let response = ui
                             .horizontal(|ui| {
-                                ConnectionDot::new(true).ui(ui);
+                                ConnectionDot::new(is_connected).ui(ui);
                                 ui.label(
                                     egui::RichText::new(&cluster.name)
                                         .strong()
@@ -176,18 +181,15 @@ pub fn render_clusters_module(
                         ui.add_space(8.0);
                         ui.separator();
                         ui.add_space(8.0);
-                        render_edit_form(ui, state, on_save);
+                        render_edit_form(ui, state, on_save, on_fetch_repos, on_fetch_slm);
                     }
                 });
 
             ui.add_space(8.0);
         }
 
-        // Add new cluster form (when no cluster selected and editing)
-        if state.editing_cluster.is_none()
-            && state.selected_cluster.is_none()
-            && clusters.is_empty()
-        {
+        // Add new cluster form (when no cluster selected and not editing)
+        if state.editing_cluster.is_none() && state.selected_cluster.is_none() {
             egui::Frame::new()
                 .fill(Theme::bg_card())
                 .corner_radius(Theme::CARD_ROUNDING)
@@ -200,7 +202,7 @@ pub fn render_clusters_module(
                             .color(Theme::text_primary()),
                     );
                     ui.add_space(8.0);
-                    render_edit_form(ui, state, on_save);
+                    render_edit_form(ui, state, on_save, on_fetch_repos, on_fetch_slm);
                 });
         }
     });
@@ -210,6 +212,8 @@ fn render_edit_form(
     ui: &mut Ui,
     state: &mut ClustersState,
     on_save: &mut Option<(Option<String>, ClusterConfig, String)>,
+    on_fetch_repos: &mut Option<String>,
+    on_fetch_slm: &mut Option<String>,
 ) {
     let form = &mut state.edit_form;
 
@@ -232,11 +236,41 @@ fn render_edit_form(
     ui.horizontal(|ui| {
         ui.label("Snapshot Repo:");
         ui.text_edit_singleline(&mut form.snapshot_repo);
+        if ui.button("🔍 Fetch").clicked() {
+            *on_fetch_repos = Some(state.selected_cluster.clone().unwrap_or_default());
+        }
     });
+    if !state.fetched_repos.is_empty() {
+        ui.indent("repo_indent", |ui| {
+            ui.label(egui::RichText::new("Available repos:").size(11.0).color(Theme::text_muted()));
+            for repo in state.fetched_repos.clone() {
+                if ui.selectable_label(repo == form.snapshot_repo, &repo).clicked() {
+                    form.snapshot_repo = repo;
+                }
+            }
+        });
+    }
     ui.horizontal(|ui| {
         ui.label("SLM Policy:");
         ui.text_edit_singleline(&mut form.slm_policy);
+        if ui.button("🔍 Fetch").clicked() {
+            *on_fetch_slm = Some(state.selected_cluster.clone().unwrap_or_default());
+        }
     });
+    ui.horizontal(|ui| {
+        ui.label("Kibana Host:");
+        ui.text_edit_singleline(&mut form.kibana_host);
+    });
+    if !state.fetched_slm_policies.is_empty() {
+        ui.indent("slm_indent", |ui| {
+            ui.label(egui::RichText::new("Available policies:").size(11.0).color(Theme::text_muted()));
+            for policy in state.fetched_slm_policies.clone() {
+                if ui.selectable_label(policy == form.slm_policy, &policy).clicked() {
+                    form.slm_policy = policy;
+                }
+            }
+        });
+    }
     ui.horizontal(|ui| {
         ui.checkbox(&mut form.verify_ssl, "Verify SSL");
     });
@@ -264,7 +298,7 @@ fn render_edit_form(
     }
 
     if let Some(ref result) = state.test_result {
-        let color = if result.contains("Success") || result.contains("success") {
+        let color = if result.contains("Connected") || result.contains("connected") {
             Theme::success()
         } else {
             Theme::danger()

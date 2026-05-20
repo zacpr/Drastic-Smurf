@@ -7,7 +7,7 @@ mod ui;
 
 #[tokio::main]
 async fn main() -> eframe::Result<()> {
-    tracing_subscriber::fmt::init();
+    let log_entries = crate::ui::log_buffer::init_logging();
 
     let config = crate::core::config::AppConfig::load().unwrap_or_default();
 
@@ -30,6 +30,8 @@ async fn main() -> eframe::Result<()> {
     eframe::run_native(
         "DRASTIC SMURF",
         options,
-        Box::new(|cc| Ok(Box::new(app::DrasticSmurfApp::new(cc)))),
+        Box::new(move |cc| {
+            Ok(Box::new(app::DrasticSmurfApp::new(cc, log_entries)))
+        }),
     )
 }

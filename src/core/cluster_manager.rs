@@ -165,14 +165,18 @@ impl ClusterManager {
         self.clusters.lock().unwrap().clone()
     }
 
-    pub fn add_cluster(&self, config: ClusterConfig) -> anyhow::Result<()> {
+    pub fn add_cluster(&self, config: ClusterConfig, password: Option<&str>) -> anyhow::Result<()> {
         {
             let mut clusters = self.clusters.lock().unwrap();
             clusters.push(config.clone());
         }
         {
             let mut clients = self.clients.lock().unwrap();
-            match EsClient::new(&config) {
+            let client_result = match password {
+                Some(pw) => EsClient::with_password(&config, pw),
+                None => EsClient::new(&config),
+            };
+            match client_result {
                 Ok(client) => {
                     clients.insert(config.name.clone(), client);
                 }
@@ -189,7 +193,7 @@ impl ClusterManager {
         Ok(())
     }
 
-    pub fn update_cluster(&self, old_name: &str, config: ClusterConfig) -> anyhow::Result<()> {
+    pub fn update_cluster(&self, old_name: &str, config: ClusterConfig, password: Option<&str>) -> anyhow::Result<()> {
         {
             let mut clusters = self.clusters.lock().unwrap();
             if let Some(idx) = clusters.iter().position(|c| c.name == old_name) {
@@ -201,7 +205,11 @@ impl ClusterManager {
         {
             let mut clients = self.clients.lock().unwrap();
             clients.remove(old_name);
-            match EsClient::new(&config) {
+            let client_result = match password {
+                Some(pw) => EsClient::with_password(&config, pw),
+                None => EsClient::new(&config),
+            };
+            match client_result {
                 Ok(client) => {
                     clients.insert(config.name.clone(), client);
                 }
@@ -222,11 +230,8 @@ impl ClusterManager {
                 self.set_cluster_data(&config.name, data);
                 self.remove_cluster_data(old_name);
             }
-            // Migrate keyring password
-            if let Ok(Some(pwd)) = crate::core::auth::get_password(old_name) {
-                let _ = crate::core::auth::set_password(&config.name, &pwd);
-                let _ = crate::core::auth::delete_password(old_name);
-            }
+            // Delete old keyring entry (new password already saved by caller)
+            let _ = crate::core::auth::delete_password(old_name);
         }
         self.mark_dirty();
         Ok(())
@@ -250,6 +255,53 @@ impl ClusterManager {
 
     pub fn get_client(&self, name: &str) -> Option<EsClient> {
         self.clients.lock().unwrap().get(name).cloned()
+    }
+
+    pub fn set_client(&self, name: &str, client: EsClient) {
+        self.clients.lock().unwrap().insert(name.to_string(), client);
+    }
+
+    pub fn rebuild_client(&self, name: &str) {
+        let config = {
+            let clusters = self.clusters.lock().unwrap();
+            clusters.iter().find(|c| c.name == name).cloned()
+        };
+
+        let existing_password = {
+            let clients = self.clients.lock().unwrap();
+            clients.get(name).map(|c| c.password().to_string())
+        };
+
+        if let Some(config) = config {
+            let result = match &existing_password {
+                Some(pw) => {
+                    tracing::info!(
+                        "Rebuilding ES client for '{}' preserving existing password ({} chars)",
+                        name,
+                        pw.len()
+                    );
+                    EsClient::with_password(&config, pw)
+                }
+                None => {
+                    tracing::warn!(
+                        "Rebuilding ES client for '{}' — no existing password, reading from keyring",
+                        name
+                    );
+                    EsClient::new(&config)
+                },
+            };
+
+            match result {
+                Ok(client) => {
+                    let mut clients = self.clients.lock().unwrap();
+                    clients.insert(name.to_string(), client);
+                    tracing::info!("Successfully rebuilt ES client for '{}'", name);
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to rebuild ES client for '{}': {}", name, e);
+                }
+            }
+        }
     }
 
     pub fn auto_refresh(&self) -> bool {
@@ -319,21 +371,23 @@ impl ClusterManager {
                     return Ok(());
                 }
 
-                // Recreate client with tunnel URL
-                match EsClient::new(&cluster) {
-                    Ok(client) => {
-                        let client = client.with_tunnel(&url);
-                        self.clients
-                            .lock()
-                            .unwrap()
-                            .insert(name.to_string(), client);
+                // Recreate client with tunnel URL, preserving existing password
+                let existing_password = {
+                    let clients = self.clients.lock().unwrap();
+                    clients.get(name).map(|c| c.password().to_string())
+                };
+                match existing_password {
+                    Some(pw) => {
+                        if let Ok(client) = EsClient::with_password(&cluster, &pw) {
+                            let client = client.with_tunnel(&url);
+                            self.clients.lock().unwrap().insert(name.to_string(), client);
+                        }
                     }
-                    Err(e) => {
-                        tracing::warn!(
-                            "Failed to create client for tunnelled cluster '{}': {}",
-                            name,
-                            e
-                        );
+                    None => {
+                        if let Ok(client) = EsClient::new(&cluster) {
+                            let client = client.with_tunnel(&url);
+                            self.clients.lock().unwrap().insert(name.to_string(), client);
+                        }
                     }
                 }
 

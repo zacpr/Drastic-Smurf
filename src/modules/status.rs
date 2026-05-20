@@ -1,15 +1,22 @@
+use crate::core::config::ClusterConfig;
 use crate::core::es_client::{ClusterHealth, ClusterStats};
 use crate::ui::theme::Theme;
-use crate::ui::widgets::{ConnectionDot, human_bytes};
+use crate::ui::widgets::{ConnectionDot, human_bytes, human_docs};
 use egui::{Color32, Ui};
 
 #[derive(Debug, Clone, Default)]
 pub struct StatusState {
     pub health_data: Vec<(String, Option<ClusterHealth>)>,
     pub stats_data: Vec<(String, Option<ClusterStats>)>,
+    pub errors: std::collections::HashMap<String, String>,
 }
 
-pub fn render_status_module(ui: &mut Ui, state: &StatusState, hover_effects: bool) {
+pub fn render_status_module(
+    ui: &mut Ui,
+    clusters: &[ClusterConfig],
+    state: &StatusState,
+    hover_effects: bool,
+) {
     ui.heading("Cluster Status");
     ui.add_space(16.0);
 
@@ -23,8 +30,10 @@ pub fn render_status_module(ui: &mut Ui, state: &StatusState, hover_effects: boo
     };
     let col_width = (available_width - (cols - 1) as f32 * card_spacing) / cols as f32;
 
-    egui::ScrollArea::vertical().show(ui, |ui| {
-        if state.health_data.is_empty() {
+    egui::ScrollArea::vertical()
+        .id_salt("status")
+        .show(ui, |ui| {
+        if clusters.is_empty() {
             ui.label(
                 egui::RichText::new("No clusters configured. Add a cluster to begin monitoring.")
                     .color(Theme::text_muted())
@@ -40,18 +49,25 @@ pub fn render_status_module(ui: &mut Ui, state: &StatusState, hover_effects: boo
                     egui::Vec2::new(col_width, ui.available_height()),
                     egui::Layout::top_down(egui::Align::Min),
                     |ui| {
-                        for (i, (name, health)) in state.health_data.iter().enumerate() {
+                        for (i, cluster) in clusters.iter().enumerate() {
                             if i % cols == col_idx {
+                                let health = state
+                                    .health_data
+                                    .iter()
+                                    .find(|(n, _)| n == &cluster.name)
+                                    .and_then(|(_, h)| h.clone());
                                 let stats = state
                                     .stats_data
                                     .iter()
-                                    .find(|(n, _)| n == name)
+                                    .find(|(n, _)| n == &cluster.name)
                                     .and_then(|(_, s)| s.clone());
+                                let error = state.errors.get(&cluster.name).cloned();
                                 render_status_card(
                                     ui,
-                                    name,
-                                    health,
+                                    &cluster.name,
+                                    &health,
                                     stats,
+                                    error,
                                     col_width,
                                     hover_effects,
                                 );
@@ -73,6 +89,7 @@ fn render_status_card(
     name: &str,
     health: &Option<ClusterHealth>,
     stats: Option<ClusterStats>,
+    error: Option<String>,
     col_width: f32,
     hover_effects: bool,
 ) {
@@ -113,41 +130,82 @@ fn render_status_card(
         });
         ui.add_space(8.0);
 
+        if let Some(ref err) = error {
+            ui.colored_label(Theme::danger(), format!("⚠ {}", err));
+            ui.add_space(4.0);
+        }
+
         if let Some(h) = health {
-            // Stats grid (2 columns)
             let mut items: Vec<(&str, String)> = Vec::new();
             items.push(("Nodes", h.number_of_nodes.to_string()));
             items.push(("Active Shards", h.active_shards.to_string()));
             items.push(("Unassigned", h.unassigned_shards.to_string()));
             items.push(("Relocating", h.relocating_shards.to_string()));
 
+            let mut node_role_items: Vec<(&str, u32)> = Vec::new();
+            let mut jvm_heap: Option<(u64, u64)> = None;
+
             if let Some(s) = stats {
                 if let Some(ref indices) = s.indices {
                     items.push(("Indices", indices.count.to_string()));
                     if let Some(ref docs) = indices.docs {
-                        items.push(("Docs", docs.count.to_string()));
+                        items.push(("Docs", human_docs(docs.count)));
                     }
                     if let Some(ref store) = indices.store {
                         items.push(("Store", human_bytes(store.size_in_bytes)));
                     }
                 }
-                if let Some(ref nodes) = s.nodes {
-                    if let Some(ref count) = nodes.count {
-                        items.push(("Data Nodes", count.data.to_string()));
+                if let Some(ref nodes_stats) = s.nodes {
+                    if let Some(ref count) = nodes_stats.count {
+                        if count.data > 0 {
+                            node_role_items.push(("Data", count.data));
+                        }
+                        if count.master > 0 {
+                            node_role_items.push(("Master", count.master));
+                        }
+                        if count.ingest > 0 {
+                            node_role_items.push(("Ingest", count.ingest));
+                        }
+                        if count.ml > 0 {
+                            node_role_items.push(("ML", count.ml));
+                        }
+                        if count.coordinating_only > 0 {
+                            node_role_items.push(("Coordinating", count.coordinating_only));
+                        }
+                        if count.data_hot > 0 {
+                            node_role_items.push(("Hot", count.data_hot));
+                        }
+                        if count.data_warm > 0 {
+                            node_role_items.push(("Warm", count.data_warm));
+                        }
+                        if count.data_cold > 0 {
+                            node_role_items.push(("Cold", count.data_cold));
+                        }
+                        if count.data_frozen > 0 {
+                            node_role_items.push(("Frozen", count.data_frozen));
+                        }
+                        if count.data_content > 0 {
+                            node_role_items.push(("Content", count.data_content));
+                        }
+                        if count.remote_cluster_client > 0 {
+                            node_role_items.push(("CCR Client", count.remote_cluster_client));
+                        }
+                        if count.transform > 0 {
+                            node_role_items.push(("Transform", count.transform));
+                        }
+if count.voting_only > 0 {
+                            node_role_items.push(("Voting", count.voting_only));
+                        }
                     }
-                    if let Some(ref jvm) = nodes.jvm {
-                        items.push((
-                            "JVM Heap",
-                            format!(
-                                "{} / {}",
-                                human_bytes(jvm.used_heap_in_bytes),
-                                human_bytes(jvm.max_heap_in_bytes)
-                            ),
-                        ));
+                    if let Some(ref jvm) = nodes_stats.jvm {
+                        if let Some(ref mem) = jvm.mem {
+                            jvm_heap = Some((mem.heap_used_in_bytes, mem.heap_max_in_bytes));
+                        }
                     }
                 }
             }
 
+            // Main stats grid
             for pair in items.chunks(2) {
                 ui.horizontal(|ui| {
                     ui.set_width(ui.available_width());
@@ -175,6 +233,44 @@ fn render_status_card(
                         );
                     }
                 });
+            }
+
+            if let Some((used, max)) = jvm_heap {
+                ui.add_space(8.0);
+                ui.label(
+                    egui::RichText::new(format!(
+                        "JVM Heap: {} / {}",
+                        human_bytes(used),
+                        human_bytes(max)
+                    ))
+                    .size(11.0)
+                    .color(Theme::text_muted()),
+                );
+            }
+
+            if !node_role_items.is_empty() {
+                ui.add_space(8.0);
+                ui.separator();
+                ui.add_space(4.0);
+                ui.label(
+                    egui::RichText::new("Nodes by Role:")
+                        .strong()
+                        .size(11.0)
+                        .color(Theme::text_secondary()),
+                );
+                ui.add_space(2.0);
+                for chunk in node_role_items.chunks(3) {
+                    ui.horizontal(|ui| {
+                        for (label, count) in chunk {
+                            ui.label(
+                                egui::RichText::new(format!("{}: {}", label, count))
+                                    .size(11.0)
+                                    .color(Theme::text_primary()),
+                            );
+                            ui.add_space(12.0);
+                        }
+                    });
+                }
             }
         } else {
             ui.label(

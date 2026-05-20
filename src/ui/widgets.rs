@@ -298,3 +298,30 @@ pub fn human_nanos(nanos: u64) -> String {
         }
     }
 }
+
+pub fn human_docs(count: u64) -> String {
+    const SI_PREFIXES: &[(&str, f64)] = &[
+        ("", 1.0),
+        ("K", 1_000.0),
+        ("M", 1_000_000.0),
+        ("B", 1_000_000_000.0),
+        ("T", 1_000_000_000_000.0),
+    ];
+    if count == 0 {
+        return "0".to_string();
+    }
+    let mut idx = 0;
+    for (i, &(_, threshold)) in SI_PREFIXES.iter().enumerate() {
+        if (count as f64) >= threshold {
+            idx = i;
+        } else {
+            break;
+        }
+    }
+    let scaled = count as f64 / SI_PREFIXES[idx].1;
+    if idx == 0 {
+        format!("{}", count)
+    } else {
+        format!("{:.1}{} ({})", scaled, SI_PREFIXES[idx].0, count)
+    }
+}

@@ -6,6 +6,7 @@ use egui::Ui;
 pub struct TasksState {
     pub tasks: Vec<(String, TaskInfo)>,
     pub filter: String,
+    pub errors: std::collections::HashMap<String, String>,
 }
 
 pub fn render_tasks_module(ui: &mut Ui, state: &mut TasksState) {
@@ -18,7 +19,33 @@ pub fn render_tasks_module(ui: &mut Ui, state: &mut TasksState) {
     });
     ui.add_space(8.0);
 
-    egui::ScrollArea::vertical().show(ui, |ui| {
+    egui::ScrollArea::vertical()
+        .id_salt("tasks")
+        .show(ui, |ui| {
+        // Show errors first
+        if !state.errors.is_empty() {
+            for (cluster, err) in &state.errors {
+                if !state.filter.is_empty()
+                    && !cluster.to_lowercase().contains(&state.filter.to_lowercase())
+                {
+                    continue;
+                }
+                egui::Frame::new()
+                    .fill(crate::ui::theme::Theme::bg_card())
+                    .corner_radius(crate::ui::theme::Theme::CARD_ROUNDING)
+                    .inner_margin(crate::ui::theme::Theme::CARD_PADDING)
+                    .show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.colored_label(
+                                crate::ui::theme::Theme::danger(),
+                                format!("⚠ {}: {}", cluster, err),
+                            );
+                        });
+                    });
+                ui.add_space(8.0);
+            }
+        }
+
         egui::Frame::new()
             .fill(crate::ui::theme::Theme::bg_card())
             .corner_radius(crate::ui::theme::Theme::CARD_ROUNDING)

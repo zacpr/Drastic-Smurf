@@ -1,6 +1,6 @@
 [package]
 name = "drastic-smurf"
-version = "0.1.9"
+version = "0.2.0"
 edition = "2024"
 authors = ["Zac <zac@example.com>"]
 description = "Extensible desktop GUI for monitoring and interacting with multiple Elasticsearch clusters"
@@ -18,13 +18,20 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 chrono = { version = "0.4", features = ["serde"] }
 hex = "0.4"
-keyring = { version = "3.6" }
 directories = "6.0"
 anyhow = "1.0"
 thiserror = "2.0"
 poll-promise = { version = "0.3", features = ["tokio"] }
 tracing = "0.1"
 tracing-subscriber = "0.3"
+[target.'cfg(target_os = "linux")'.dependencies]
+keyring = { version = "3.6", features = ["sync-secret-service"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+keyring = { version = "3.6", features = ["windows-native"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+keyring = { version = "3.6", features = ["apple-native"] }
 
 [profile.release]
 opt-level = 3

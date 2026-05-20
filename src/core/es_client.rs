@@ -27,11 +27,14 @@ pub enum EsError {
 pub struct EsClient {
     config: ClusterConfig,
     client: Client,
-    password: String,
+    pub(crate) password: String,
     tunnel_url: Option<String>,
 }
 
 impl EsClient {
+    pub fn password(&self) -> &str {
+        &self.password
+    }
     fn build_client(config: &ClusterConfig) -> Result<Client> {
         let mut builder = ClientBuilder::new()
             .timeout(Duration::from_secs(30))
@@ -59,10 +62,32 @@ impl EsClient {
     }
 
     pub fn new(config: &ClusterConfig) -> Result<Self> {
-        let password = auth::get_password(&config.name)
-            .ok()
-            .flatten()
-            .unwrap_or_default();
+        let password = match auth::get_password(&config.name) {
+            Ok(Some(pw)) => {
+                tracing::info!(
+                    "[{}] Password loaded from keyring ({} chars)",
+                    config.name,
+                    pw.len()
+                );
+                pw
+            }
+            Ok(None) => {
+                tracing::warn!(
+                    "[{}] No password found in keyring — will authenticate as empty",
+                    config.name
+                );
+                String::new()
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "[{}] Failed to read password from keyring ({}): {}",
+                    config.name,
+                    e,
+                    e
+                );
+                String::new()
+            }
+        };
 
         let client = Self::build_client(config)?;
 
@@ -89,7 +114,7 @@ impl EsClient {
         self
     }
 
-    fn request(&self, method: reqwest::Method, path: &str) -> RequestBuilder {
+    fn request(&self, method: reqwest::Method, path: &str) -> (RequestBuilder, reqwest::Method, String) {
         let host = self
             .tunnel_url
             .as_deref()
@@ -100,43 +125,100 @@ impl EsClient {
             format!("http://{}", host)
         };
         let url = format!("{}{}", host.trim_end_matches('/'), path);
-        self.client
-            .request(method, &url)
+        let req = self.client
+            .request(method.clone(), &url)
             .basic_auth(&self.config.username, Some(&self.password))
-            .header("Content-Type", "application/json")
+            .header("Content-Type", "application/json");
+        (req, method, url)
     }
 
-    async fn exec<T: DeserializeOwned>(&self, req: RequestBuilder) -> Result<T, EsError> {
+    async fn exec<T: DeserializeOwned>(
+        &self,
+        req: RequestBuilder,
+        method: &reqwest::Method,
+        url: &str,
+    ) -> Result<T, EsError> {
+        tracing::info!("[{}] {} {}", self.config.name, method, url);
+
+        let start = std::time::Instant::now();
         let resp = req
             .send()
             .await
-            .map_err(|e| EsError::Unreachable(e.to_string()))?;
+            .map_err(|e| {
+                let elapsed = start.elapsed();
+                tracing::error!(
+                    "[{}] {} {} — FAILED after {}: {}",
+                    self.config.name,
+                    method,
+                    url,
+                    elapsed_millis(elapsed),
+                    e
+                );
+                EsError::Unreachable(e.to_string())
+            })?;
 
         let status = resp.status();
+        let elapsed = start.elapsed();
+
         if !status.is_success() {
             let text = resp.text().await.unwrap_or_default();
+            tracing::warn!(
+                "[{}] {} {} — {} after {}",
+                self.config.name,
+                method,
+                url,
+                status,
+                elapsed_millis(elapsed),
+            );
+            if !text.is_empty() {
+                tracing::debug!(
+                    "[{}] Response body: {}",
+                    self.config.name,
+                    truncate(&text, 500)
+                );
+            }
             return Err(EsError::Http {
                 status,
                 message: text,
             });
         }
 
-        resp.json().await.map_err(|e| EsError::Parse(e.to_string()))
+        tracing::info!(
+            "[{}] {} {} — {} after {}",
+            self.config.name,
+            method,
+            url,
+            status,
+            elapsed_millis(elapsed),
+        );
+
+        resp.json().await.map_err(|e| {
+            tracing::error!(
+                "[{}] {} {} — Parse error after {}: {}",
+                self.config.name,
+                method,
+                url,
+                elapsed_millis(elapsed),
+                e
+            );
+            EsError::Parse(e.to_string())
+        })
     }
 
     pub async fn cluster_health(&self) -> Result<ClusterHealth, EsError> {
-        self.exec(self.request(reqwest::Method::GET, "/_cluster/health"))
-            .await
+        let (req, method, url) = self.request(reqwest::Method::GET, "/_cluster/health");
+        self.exec(req, &method, &url).await
     }
 
     pub async fn snapshot_current(&self, repo: &str) -> Result<SnapshotResponse, EsError> {
         let path = format!("/_snapshot/{}/_current", repo);
-        self.exec(self.request(reqwest::Method::GET, &path)).await
+        let (req, method, url) = self.request(reqwest::Method::GET, &path);
+        self.exec(req, &method, &url).await
     }
 
     pub async fn snapshot_status_all(&self) -> Result<SnapshotStatusResponse, EsError> {
-        self.exec(self.request(reqwest::Method::GET, "/_snapshot/_status"))
-            .await
+        let (req, method, url) = self.request(reqwest::Method::GET, "/_snapshot/_status");
+        self.exec(req, &method, &url).await
     }
 
     pub async fn snapshot_status(
@@ -145,12 +227,14 @@ impl EsClient {
         snapshot: &str,
     ) -> Result<SnapshotStatusResponse, EsError> {
         let path = format!("/_snapshot/{}/{}/_status", repo, snapshot);
-        self.exec(self.request(reqwest::Method::GET, &path)).await
+        let (req, method, url) = self.request(reqwest::Method::GET, &path);
+        self.exec(req, &method, &url).await
     }
 
     pub async fn slm_policy(&self, policy: &str) -> Result<SlmPolicyResponse, EsError> {
         let path = format!("/_slm/policy/{}", policy);
-        self.exec(self.request(reqwest::Method::GET, &path)).await
+        let (req, method, url) = self.request(reqwest::Method::GET, &path);
+        self.exec(req, &method, &url).await
     }
 
     pub async fn tasks(&self, actions: Option<&str>) -> Result<TasksResponse, EsError> {
@@ -159,17 +243,19 @@ impl EsClient {
             path.push_str("?actions=");
             path.push_str(a);
         }
-        self.exec(self.request(reqwest::Method::GET, &path)).await
+        let (req, method, url) = self.request(reqwest::Method::GET, &path);
+        self.exec(req, &method, &url).await
     }
 
     pub async fn cat_indices(&self) -> Result<Vec<CatIndex>, EsError> {
-        self.exec(self.request(reqwest::Method::GET, "/_cat/indices?format=json&bytes=b"))
-            .await
+        let (req, method, url) =
+            self.request(reqwest::Method::GET, "/_cat/indices?format=json&bytes=b");
+        self.exec(req, &method, &url).await
     }
 
     pub async fn cluster_stats(&self) -> Result<ClusterStats, EsError> {
-        self.exec(self.request(reqwest::Method::GET, "/_cluster/stats"))
-            .await
+        let (req, method, url) = self.request(reqwest::Method::GET, "/_cluster/stats");
+        self.exec(req, &method, &url).await
     }
 
     pub async fn execute(
@@ -178,11 +264,38 @@ impl EsClient {
         path: &str,
         body: Option<String>,
     ) -> Result<serde_json::Value, EsError> {
-        let mut req = self.request(method, path);
+        let (mut req, m, url) = self.request(method, path);
         if let Some(b) = body {
             req = req.body(b);
         }
-        self.exec(req).await
+        self.exec(req, &m, &url).await
+    }
+
+    pub async fn send_to_host(
+        &self,
+        host: &str,
+        method: reqwest::Method,
+        path: &str,
+        body: Option<String>,
+    ) -> Result<serde_json::Value, EsError> {
+        let base = host.trim_end_matches('/');
+        let url = if path.starts_with('/') {
+            format!("{}{}", base, path)
+        } else {
+            format!("{}/{}", base, path)
+        };
+        let mut req = self
+            .client
+            .request(method.clone(), &url)
+            .basic_auth(&self.config.username, Some(&self.password))
+            .header("kbn-xsrf", "true")
+            .header("Content-Type", "application/json");
+
+        if let Some(b) = body {
+            req = req.body(b);
+        }
+
+        self.exec(req, &method, &url).await
     }
 }
 
@@ -420,81 +533,120 @@ pub struct CatIndex {
     pub rep: Option<String>,
 }
 
-#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, Default)]
-
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 pub struct ClusterStats {
     #[serde(rename = "cluster_name")]
     pub cluster_name: String,
-    #[serde(rename = "cluster_uuid")]
+    #[serde(rename = "cluster_uuid", default)]
     pub cluster_uuid: String,
+    #[serde(default)]
     pub timestamp: i64,
+    #[serde(default)]
     pub status: String,
+    #[serde(default)]
     pub indices: Option<IndicesStats>,
+    #[serde(default)]
     pub nodes: Option<NodesStats>,
 }
 
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize, Default)]
-
 pub struct IndicesStats {
+    #[serde(default)]
     pub count: u32,
-    #[serde(rename = "docs")]
+    #[serde(default)]
     pub docs: Option<DocStats>,
-    #[serde(rename = "store")]
+    #[serde(default)]
     pub store: Option<StoreStats>,
 }
 
-#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
-
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, Default)]
 pub struct DocStats {
+    #[serde(default)]
     pub count: u64,
+    #[serde(default)]
     pub deleted: u64,
 }
 
-#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
-
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, Default)]
 pub struct StoreStats {
-    #[serde(rename = "size_in_bytes")]
+    #[serde(rename = "size_in_bytes", default)]
     pub size_in_bytes: u64,
 }
 
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize, Default)]
-
 pub struct NodesStats {
+    #[serde(default)]
     pub count: Option<NodeCount>,
-    #[serde(rename = "jvm")]
+    #[serde(default)]
     pub jvm: Option<JvmStats>,
-    #[serde(rename = "fs")]
+    #[serde(default)]
     pub fs: Option<FsStats>,
 }
 
-#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
-
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, Default)]
 pub struct NodeCount {
+    #[serde(default)]
     pub total: u32,
-    #[serde(rename = "data")]
+    #[serde(default)]
     pub data: u32,
-    #[serde(rename = "coordinating_only")]
+    #[serde(rename = "data_cold", default)]
+    pub data_cold: u32,
+    #[serde(rename = "data_content", default)]
+    pub data_content: u32,
+    #[serde(rename = "data_frozen", default)]
+    pub data_frozen: u32,
+    #[serde(rename = "data_hot", default)]
+    pub data_hot: u32,
+    #[serde(rename = "data_warm", default)]
+    pub data_warm: u32,
+    #[serde(rename = "coordinating_only", default)]
     pub coordinating_only: u32,
+    #[serde(default)]
     pub master: u32,
+    #[serde(default)]
     pub ingest: u32,
+    #[serde(default)]
+    pub ml: u32,
+    #[serde(rename = "remote_cluster_client", default)]
+    pub remote_cluster_client: u32,
+    #[serde(default)]
+    pub transform: u32,
+    #[serde(rename = "voting_only", default)]
+    pub voting_only: u32,
 }
 
-#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
-
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, Default)]
 pub struct JvmStats {
-    #[serde(rename = "max_heap_in_bytes")]
-    pub max_heap_in_bytes: u64,
-    #[serde(rename = "used_heap_in_bytes")]
-    pub used_heap_in_bytes: u64,
+    #[serde(default)]
+    pub mem: Option<JvmMem>,
 }
 
-#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, Default)]
+pub struct JvmMem {
+    #[serde(rename = "heap_max_in_bytes", default)]
+    pub heap_max_in_bytes: u64,
+    #[serde(rename = "heap_used_in_bytes", default)]
+    pub heap_used_in_bytes: u64,
+}
 
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, Default)]
 pub struct FsStats {
-    #[serde(rename = "total_in_bytes")]
+    #[serde(rename = "total_in_bytes", default)]
     pub total_in_bytes: u64,
-    #[serde(rename = "free_in_bytes")]
+    #[serde(rename = "free_in_bytes", default)]
     pub free_in_bytes: u64,
-    #[serde(rename = "available_in_bytes")]
+    #[serde(rename = "available_in_bytes", default)]
     pub available_in_bytes: u64,
+}
+
+fn elapsed_millis(dur: std::time::Duration) -> String {
+    format!("{}ms", dur.as_millis())
+}
+
+fn truncate(s: &str, max_len: usize) -> String {
+    if s.len() <= max_len {
+        s.to_string()
+    } else {
+        format!("{}...", &s[..max_len])
+    }
 }

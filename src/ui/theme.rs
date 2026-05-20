@@ -535,4 +535,17 @@ impl Theme {
     pub fn snapshot_state_color(state: &str) -> Color32 {
         ACTIVE_THEME.with(|t| t.borrow().snapshot_state_color(state))
     }
+
+    pub fn border() -> Color32 {
+        ACTIVE_THEME.with(|t| {
+            let bg = t.borrow().bg_darkest;
+            let [r, g, b, a] = bg.to_array();
+            Color32::from_rgba_premultiplied(
+                (r as u16 + 30).min(255) as u8,
+                (g as u16 + 30).min(255) as u8,
+                (b as u16 + 30).min(255) as u8,
+                a,
+            )
+        })
+    }
 }

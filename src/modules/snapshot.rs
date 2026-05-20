@@ -374,8 +374,15 @@ pub fn render_snapshot_module(
     on_edit: &mut Option<String>,
     on_delete: &mut Option<String>,
     shimmer: bool,
+    on_refresh: &mut bool,
 ) {
-    ui.heading("Snapshot Monitoring");
+    ui.horizontal(|ui| {
+        ui.heading("Snapshot Monitoring");
+        ui.add_space(16.0);
+        if ui.button("🔄 Refresh All").clicked() {
+            *on_refresh = true;
+        }
+    });
     ui.add_space(16.0);
 
     let min_card_width = 420.0;
@@ -388,7 +395,9 @@ pub fn render_snapshot_module(
     };
     let col_width = (available_width - (cols - 1) as f32 * card_spacing) / cols as f32;
 
-    egui::ScrollArea::vertical().show(ui, |ui| {
+    egui::ScrollArea::vertical()
+        .id_salt("snapshot")
+        .show(ui, |ui| {
         if statuses.is_empty() {
             ui.label(
                 egui::RichText::new("No clusters configured. Add a cluster to begin monitoring.")

@@ -15,7 +15,9 @@ pub struct PipelineState {
     pub new_processor_type: ProcessorType,
     pub run_result: Option<ExecutionResult>,
     pub input_error: Option<String>,
+    #[allow(dead_code)]
     pub expanded_steps: HashSet<usize>,
+    pub output_text: String,
 }
 
 impl PipelineState {
@@ -66,6 +68,7 @@ impl PipelineState {
                 "payload": "{\"message\":\" hello \",\"remove_me\":\"temp\",\"status\":\"200\",\"level\":\"INFO\",\"service\":\"edge\"}"
             }))
             .unwrap_or_default(),
+            output_text: String::new(),
             ..Default::default()
         }
     }
@@ -75,32 +78,94 @@ pub fn render_pipeline_module(ui: &mut Ui, state: &mut PipelineState) {
     ui.heading("Ingest Pipeline Simulator");
     ui.add_space(16.0);
 
-    // Use a two-column layout: pipeline builder on left, input + output on right
-    ui.horizontal(|ui| {
-        let available = ui.available_width();
-        let left_width = available * 0.45;
-        let right_width = available * 0.55 - 16.0;
+    let available_width = ui.available_width();
+    let remaining_height = ui.available_height();
+    let left_width = available_width * 0.45;
+    let right_width = available_width * 0.55 - 16.0;
 
-        // ── Left: Pipeline builder ──
-        ui.allocate_ui_with_layout(
-            egui::Vec2::new(left_width, ui.available_height()),
-            egui::Layout::top_down(egui::Align::Min),
-            |ui| {
-                render_pipeline_builder(ui, state);
-            },
-        );
+    ui.allocate_ui_with_layout(
+        egui::Vec2::new(available_width, remaining_height),
+        egui::Layout::left_to_right(egui::Align::TOP),
+        |ui| {
+            ui.allocate_ui_with_layout(
+                egui::Vec2::new(left_width, remaining_height),
+                egui::Layout::top_down(egui::Align::Min),
+                |ui| {
+                    render_pipeline_builder(ui, state);
+                },
+            );
+            ui.add_space(16.0);
+            ui.allocate_ui_with_layout(
+                egui::Vec2::new(right_width, remaining_height),
+                egui::Layout::top_down(egui::Align::Min),
+                |ui| {
+                    render_right_panel(ui, state);
+                },
+            );
+        },
+    );
+}
 
-        ui.add_space(16.0);
+fn render_right_panel(ui: &mut Ui, state: &mut PipelineState) {
+    egui::Frame::new()
+        .fill(Theme::bg_card())
+        .corner_radius(Theme::CARD_ROUNDING)
+        .inner_margin(Theme::CARD_PADDING)
+        .show(ui, |ui| {
+            ui.label(
+                egui::RichText::new("Input Document")
+                    .strong()
+                    .size(13.0)
+                    .color(Theme::text_primary()),
+            );
+            ui.add_space(4.0);
 
-        // ── Right: Input document + trace ──
-        ui.allocate_ui_with_layout(
-            egui::Vec2::new(right_width, ui.available_height()),
-            egui::Layout::top_down(egui::Align::Min),
-            |ui| {
-                render_input_and_trace(ui, state);
-            },
-        );
-    });
+            ui.add(
+                egui::TextEdit::multiline(&mut state.document_text)
+                    .font(egui::TextStyle::Monospace)
+                    .code_editor()
+                    .desired_rows(5),
+            );
+
+            if let Some(ref err) = state.input_error {
+                ui.add_space(4.0);
+                ui.label(
+                    egui::RichText::new(format!("Error: {}", err))
+                        .color(Theme::danger())
+                        .size(12.0),
+                );
+            }
+
+            ui.add_space(8.0);
+            ui.horizontal(|ui| {
+                if ui.button("🔄 Run simulation").clicked() {
+                    run_simulation(state);
+                }
+            });
+            ui.add_space(12.0);
+
+            ui.label(
+                egui::RichText::new("Pipeline Output")
+                    .strong()
+                    .size(13.0)
+                    .color(Theme::text_primary()),
+            );
+            ui.add_space(4.0);
+
+            egui::ScrollArea::vertical()
+                .id_salt("pipeline_output")
+                .show(ui, |ui| {
+                    let mut output = state.output_text.clone();
+                    ui.add(
+                        egui::TextEdit::multiline(&mut output)
+                            .font(egui::TextStyle::Monospace)
+                            .code_editor()
+                            .desired_rows(10)
+                            .interactive(false),
+                    );
+                    state.output_text = output;
+                });
+        });
 }
 
 fn render_pipeline_builder(ui: &mut Ui, state: &mut PipelineState) {
@@ -117,59 +182,58 @@ fn render_pipeline_builder(ui: &mut Ui, state: &mut PipelineState) {
             );
             ui.add_space(8.0);
 
-            // Toolbar
             ui.horizontal(|ui| {
                 egui::ComboBox::from_id_salt("new_processor_type")
                     .selected_text(state.new_processor_type.as_str())
                     .show_ui(ui, |ui| {
                         for ptype in ProcessorType::ALL {
-                            ui.selectable_value(
-                                &mut state.new_processor_type,
-                                *ptype,
-                                ptype.as_str(),
-                            );
+                            ui.selectable_value(&mut state.new_processor_type, *ptype, ptype.as_str());
                         }
                     });
 
                 if ui.button("Add processor").clicked() {
-                    state
-                        .processors
-                        .push(default_processor(state.new_processor_type));
+                    state.processors.push(default_processor(state.new_processor_type));
                 }
             });
 
             ui.add_space(8.0);
 
-            // Processor list
-            egui::ScrollArea::vertical()
-                .max_height(ui.available_height() - 8.0)
-                .show(ui, |ui| {
-                    let mut remove_idx = None;
-                    let mut move_dir = None;
-                    let proc_len = state.processors.len();
+            ui.allocate_ui_with_layout(
+                egui::Vec2::new(ui.available_width(), ui.available_height()),
+                egui::Layout::top_down(egui::Align::Min),
+                |ui| {
+                    let max_h = ui.available_height();
+                    egui::ScrollArea::vertical()
+                        .id_salt("pipeline_processors")
+                        .max_height(max_h)
+                        .show(ui, |ui| {
+                            let mut remove_idx = None;
+                            let mut move_dir = None;
+                            let proc_len = state.processors.len();
 
-                    for (index, processor) in state.processors.iter_mut().enumerate() {
-                        render_processor_card(
-                            ui,
-                            index,
-                            processor,
-                            proc_len,
-                            &mut remove_idx,
-                            &mut move_dir,
-                        );
-                    }
+                            for (index, processor) in state.processors.iter_mut().enumerate() {
+                                render_processor_card(
+                                    ui,
+                                    index,
+                                    processor,
+                                    proc_len,
+                                    &mut remove_idx,
+                                    &mut move_dir,
+                                );
+                            }
 
-                    if let Some(idx) = remove_idx {
-                        state.processors.remove(idx);
-                        state.run_result = None;
-                    }
-                    if let Some((idx, dir)) = move_dir {
-                        let new_idx = (idx as isize + dir) as usize;
-                        if new_idx < state.processors.len() {
-                            state.processors.swap(idx, new_idx);
-                            state.run_result = None;
-                        }
-                    }
+                            if let Some(idx) = remove_idx {
+                                state.processors.remove(idx);
+                                state.output_text.clear();
+                            }
+                            if let Some((idx, dir)) = move_dir {
+                                let new_idx = (idx as isize + dir) as usize;
+                                if new_idx < state.processors.len() {
+                                    state.processors.swap(idx, new_idx);
+                                    state.output_text.clear();
+                                }
+                            }
+                        });
                 });
         });
 }
@@ -364,192 +428,37 @@ fn render_processor_card(
     ui.add_space(4.0);
 }
 
-fn render_input_and_trace(ui: &mut Ui, state: &mut PipelineState) {
-    // Input document
-    egui::Frame::new()
-        .fill(Theme::bg_card())
-        .corner_radius(Theme::CARD_ROUNDING)
-        .inner_margin(Theme::CARD_PADDING)
-        .show(ui, |ui| {
-            ui.label(
-                egui::RichText::new("Input Document")
-                    .strong()
-                    .size(14.0)
-                    .color(Theme::text_primary()),
-            );
-            ui.add_space(8.0);
-
-            let available_height = ui.available_height() * 0.35;
-            ui.add_sized(
-                egui::Vec2::new(ui.available_width(), available_height),
-                egui::TextEdit::multiline(&mut state.document_text)
-                    .font(egui::TextStyle::Monospace)
-                    .code_editor()
-                    .desired_rows(10),
-            );
-
-            ui.add_space(8.0);
-            if ui.button("Run simulation").clicked() {
-                run_simulation(state);
-            }
-
-            if let Some(ref err) = state.input_error {
-                ui.add_space(4.0);
-                ui.label(
-                    egui::RichText::new(format!("Error: {}", err))
-                        .color(Theme::danger())
-                        .size(12.0),
-                );
-            }
-        });
-
-    ui.add_space(12.0);
-
-    // Trace output
-    if let Some(ref result) = state.run_result {
-        egui::Frame::new()
-            .fill(Theme::bg_card())
-            .corner_radius(Theme::CARD_ROUNDING)
-            .inner_margin(Theme::CARD_PADDING)
-            .show(ui, |ui| {
-                ui.label(
-                    egui::RichText::new("Trace")
-                        .strong()
-                        .size(14.0)
-                        .color(Theme::text_primary()),
-                );
-                ui.add_space(8.0);
-
-                egui::ScrollArea::vertical()
-                    .max_height(ui.available_height() - 8.0)
-                    .show(ui, |ui| {
-                        for (index, step) in result.steps.iter().enumerate() {
-                            let header = if let Some(ref err) = step.error {
-                                format!(
-                                    "{}. {} ({}) — {}",
-                                    index + 1,
-                                    step.processor_type.as_str(),
-                                    step.processor_id,
-                                    err
-                                )
-                            } else {
-                                format!(
-                                    "{}. {} ({}) — changed: {}",
-                                    index + 1,
-                                    step.processor_type.as_str(),
-                                    step.processor_id,
-                                    if step.changed_paths.is_empty() {
-                                        "none".to_string()
-                                    } else {
-                                        step.changed_paths.join(", ")
-                                    }
-                                )
-                            };
-
-                            let is_expanded = state.expanded_steps.contains(&index);
-                            let mut next_expanded = is_expanded;
-
-                            ui.horizontal(|ui| {
-                                ui.toggle_value(&mut next_expanded, "▶");
-                                let color = if step.error.is_some() {
-                                    Theme::danger()
-                                } else {
-                                    Theme::text_primary()
-                                };
-                                ui.label(egui::RichText::new(header).size(12.0).color(color));
-                            });
-
-                            if is_expanded {
-                                ui.indent(format!("step-{}", index), |ui| {
-                                    ui.horizontal(|ui| {
-                                        let half = ui.available_width() / 2.0 - 4.0;
-                                        ui.allocate_ui_with_layout(
-                                            egui::Vec2::new(half, ui.available_height()),
-                                            egui::Layout::top_down(egui::Align::Min),
-                                            |ui| {
-                                                ui.label(
-                                                    egui::RichText::new("Before")
-                                                        .strong()
-                                                        .size(11.0)
-                                                        .color(Theme::text_secondary()),
-                                                );
-                                                ui.monospace(
-                                                    serde_json::to_string_pretty(&step.before)
-                                                        .unwrap_or_default(),
-                                                );
-                                            },
-                                        );
-                                        ui.allocate_ui_with_layout(
-                                            egui::Vec2::new(half, ui.available_height()),
-                                            egui::Layout::top_down(egui::Align::Min),
-                                            |ui| {
-                                                ui.label(
-                                                    egui::RichText::new("After")
-                                                        .strong()
-                                                        .size(11.0)
-                                                        .color(Theme::text_secondary()),
-                                                );
-                                                ui.monospace(
-                                                    serde_json::to_string_pretty(&step.after)
-                                                        .unwrap_or_default(),
-                                                );
-                                            },
-                                        );
-                                    });
-                                });
-                            }
-
-                            if next_expanded != is_expanded {
-                                if next_expanded {
-                                    state.expanded_steps.insert(index);
-                                } else {
-                                    state.expanded_steps.remove(&index);
-                                }
-                            }
-                        }
-
-                        // Final document
-                        ui.add_space(8.0);
-                        ui.label(
-                            egui::RichText::new("Final Document")
-                                .strong()
-                                .size(13.0)
-                                .color(Theme::text_primary()),
-                        );
-                        ui.monospace(
-                            serde_json::to_string_pretty(&result.final_document)
-                                .unwrap_or_default(),
-                        );
-
-                        if let Some(ref err) = result.error {
-                            ui.add_space(4.0);
-                            ui.label(
-                                egui::RichText::new(format!("Pipeline error: {}", err))
-                                    .color(Theme::danger())
-                                    .size(12.0),
-                            );
-                        }
-                    });
-            });
-    }
-}
-
 fn run_simulation(state: &mut PipelineState) {
     let parsed: Value = match serde_json::from_str(&state.document_text) {
         Ok(v) => v,
         Err(e) => {
             state.input_error = Some(format!("invalid JSON: {}", e));
-            state.run_result = None;
+            state.output_text = format!("Error: {}", e);
             return;
         }
     };
 
     if !parsed.is_object() {
         state.input_error = Some("document must be a JSON object".to_string());
-        state.run_result = None;
+        state.output_text = String::from("Error: document must be a JSON object");
         return;
     }
 
     state.input_error = None;
-    state.run_result = Some(execute_pipeline(&parsed, &state.processors));
+    let result = execute_pipeline(&parsed, &state.processors);
+
+    match &result.error {
+        Some(err) => {
+            state.output_text = format!("Pipeline error: {}\n\nFinal document:\n{}",
+                err,
+                serde_json::to_string_pretty(&result.final_document).unwrap_or_default()
+            );
+        }
+        None => {
+            state.output_text = serde_json::to_string_pretty(&result.final_document)
+                .unwrap_or_default();
+        }
+    }
+
+    state.run_result = Some(result);
 }

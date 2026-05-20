@@ -89,6 +89,8 @@ pub struct ClusterConfig {
     pub username: String,
     pub snapshot_repo: String,
     pub slm_policy: String,
+    #[serde(default)]
+    pub kibana_host: String,
     #[serde(default = "default_verify_ssl")]
     pub verify_ssl: bool,
     #[serde(default)]
@@ -117,6 +119,7 @@ impl Default for ClusterConfig {
             username: String::new(),
             snapshot_repo: String::new(),
             slm_policy: String::new(),
+            kibana_host: String::new(),
             verify_ssl: true,
             ca_cert: CaCert::default(),
             ssh_tunnel: false,
