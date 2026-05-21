@@ -1,0 +1,33 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug drastic-smurf",
+            "cargo": {
+                "args": ["build", "--bin=drastic-smurf", "--package=drastic-smurf"],
+                "filter": {
+                    "name": "drastic-smurf",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Release drastic-smurf",
+            "cargo": {
+                "args": ["build", "--release", "--bin=drastic-smurf", "--package=drastic-smurf"],
+                "filter": {
+                    "name": "drastic-smurf",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        }
+    ]
+}
