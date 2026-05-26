@@ -383,7 +383,7 @@ pub fn render_wizard_overlay(
                             );
                             ui.add_space(8.0);
                             ui.label(
-                                egui::RichText::new("Pro Tip: Head over to the Appearance tab and turn on the animated Mesh Background or custom glow shaders to elevate the app's visuals!")
+                                egui::RichText::new("Pro Tip: Head over to the Settings tab and turn on the animated Mesh Background or custom glow shaders to elevate the app's visuals!")
                                     .size(11.0)
                                     .color(Theme::text_secondary())
                             );
