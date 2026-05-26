@@ -282,7 +282,7 @@ pub fn render_wizard_overlay(
                             ui.label(egui::RichText::new("📸").size(36.0));
                             ui.add_space(8.0);
                             ui.label(
-                                egui::RichText::new("Track, monitor, and configure snapshots instantly.")
+                                egui::RichText::new("Track and monitor snapshots instantly.")
                                     .size(13.0)
                                     .strong()
                             );
