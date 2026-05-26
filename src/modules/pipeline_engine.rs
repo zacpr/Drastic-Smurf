@@ -593,13 +593,27 @@ pub fn evaluate_if_condition(document: &Value, condition: &str) -> Result<bool, 
 }
 
 fn get_ctx_val(document: &Value, path: &str) -> Result<Value, String> {
-    let mut clean_path = path.trim();
-    if clean_path.starts_with("ctx.") {
-        clean_path = &clean_path["ctx.".len()..];
+    let mut clean_path = path.trim().to_string();
+    let is_safe = clean_path.contains('?');
+
+    if clean_path.starts_with("ctx?.") {
+        clean_path = clean_path["ctx?.".len()..].to_string();
+    } else if clean_path.starts_with("ctx.") {
+        clean_path = clean_path["ctx.".len()..].to_string();
     }
-    get_by_path(document, clean_path)
-        .cloned()
-        .ok_or_else(|| format!("field \"{}\" not found in document", clean_path))
+
+    let normalized_path = clean_path.replace('?', "");
+
+    match get_by_path(document, &normalized_path) {
+        Some(val) => Ok(val.clone()),
+        None => {
+            if is_safe {
+                Ok(Value::Null)
+            } else {
+                Err(format!("field \"{}\" not found in document", normalized_path))
+            }
+        }
+    }
 }
 
 fn parse_literal(val: &str) -> Value {
@@ -1047,12 +1061,24 @@ mod tests {
         let doc = serde_json::json!({
             "status": 200,
             "level": "error",
-            "message": "failed to connect"
+            "message": "failed to connect",
+            "payload": {
+                "subfield": "hello"
+            }
         });
         assert!(evaluate_if_condition(&doc, "ctx.status == 200").unwrap());
         assert!(!evaluate_if_condition(&doc, "ctx.status == 500").unwrap());
         assert!(evaluate_if_condition(&doc, "ctx.level == 'error'").unwrap());
         assert!(evaluate_if_condition(&doc, "ctx.message.contains('fail')").unwrap());
+
+        // Safe navigation tests
+        assert!(evaluate_if_condition(&doc, "ctx?.status == 200").unwrap());
+        assert!(evaluate_if_condition(&doc, "ctx?.payload?.subfield == 'hello'").unwrap());
+        assert!(evaluate_if_condition(&doc, "ctx?.missing?.field == null").unwrap());
+        assert!(evaluate_if_condition(&doc, "ctx.payload?.missing == null").unwrap());
+
+        // Unsafe navigation fails on missing path
+        assert!(evaluate_if_condition(&doc, "ctx.missing.field == null").is_err());
     }
 
     #[test]
