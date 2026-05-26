@@ -729,7 +729,7 @@ impl DrasticSmurfApp {
                 }
             };
 
-            ui.add_space(8.0);
+            ui.add_space(24.0);
             ui.horizontal(|ui| {
                 // Add the warning light widget
                 ui.add(crate::ui::widgets::WarningLight::new(overall_status));
