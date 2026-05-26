@@ -24,7 +24,7 @@
 | **Clusters** | ✅ Functional | Centralized cluster management: list, add/edit, test connection, import/export. |
 | **Elastic Console** | ✅ Enhanced | Category-based Elasticsearch & Kibana presets (40+ items), official documentation links, automatic connection target host toggles (ES vs Kibana), custom variables with interpolation, command history cycling, and saved queries. |
 | **Discover** | ✅ Functional | A cutdown mimic of Kibana's Discover. Index pattern interrogating, Lucene/KQL search queries, dynamic available fields selection, and collapsible document JSON drawers. |
-| **Datastreams & Indices** | ✅ Functional | Sub-tabbed browser for Indices and Data Streams, displaying names, status, health states, doc counts, and store sizes. |
+| **Datastreams & Indices** | ✅ Functional | Sub-tabbed browser for Indices and Data Streams, displaying names, status, health states, doc counts, and store sizes. Supports multi-selection checkbox tracking and selection-only filtering. |
 | **Observability Monitors** | ✅ Functional | Kibana Synthetics / Uptime monitors explorer with space-selection support, multi-region status, sparkline history latency, and a customizable Pinned Dashboard. |
 
 ---
@@ -143,7 +143,7 @@ $ cargo generate-rpm
 
 ## Next Steps / Known Gaps
 
-1. **Tests** — Add unit tests for `human_bytes`, `human_duration`, snapshot stat calculations, and config roundtrips.
+1. **Tests** — Add unit tests for `human_duration`, snapshot stat calculations, and config roundtrips. (Partially completed: `human_bytes` and formatting tests are now implemented!)
 2. **Status module depth** — Currently shows a flat card list. The plan calls for an overview of all clusters, selected subset view, and detailed single-cluster view.
 3. **Task type filtering** — Text search exists, but task-type dropdown filtering is not implemented.
 4. **Console enhancements** — No JSON syntax highlighting or response folding.

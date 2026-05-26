@@ -513,8 +513,7 @@ impl DrasticSmurfApp {
                     }
                 }
                 RefreshMsg::IndicesResult(_name, indices, datastreams) => {
-                    self.indices_state.indices = indices;
-                    self.indices_state.datastreams = datastreams;
+                    self.indices_state.update_data(indices, datastreams);
                     self.indices_state.error = None;
                     self.indices_state.is_loading = false;
                 }
