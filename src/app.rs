@@ -644,12 +644,24 @@ impl DrasticSmurfApp {
                 continue;
             }
             ui.horizontal(|ui| {
-                let connected = self
+                let health_opt = self
                     .status_state
                     .health_data
                     .iter()
-                    .any(|(n, h)| n == &cluster.name && h.is_some());
-                ui.add(crate::ui::widgets::ConnectionDot::new(connected).size(8.0));
+                    .find(|(n, _)| n == &cluster.name)
+                    .and_then(|(_, h)| h.as_ref());
+                
+                let dot_color = match health_opt {
+                    Some(health) => match health.status.as_str() {
+                        "green" => Theme::success(),
+                        "yellow" => egui::Color32::from_rgb(235, 179, 41), // Vibrant Yellow
+                        "red" => Theme::danger(),
+                        _ => egui::Color32::from_rgb(60, 60, 60), // Dark Grey
+                    },
+                    None => egui::Color32::from_rgb(60, 60, 60), // Offline
+                };
+
+                ui.add(crate::ui::widgets::ConnectionDot::new(health_opt.is_some()).color(dot_color).size(8.0));
                 ui.label(
                     egui::RichText::new(&cluster.name)
                         .color(Theme::text_primary())
@@ -677,6 +689,79 @@ impl DrasticSmurfApp {
 
         // Push bottom controls to the bottom of the sidebar
         ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
+            // Render Overall Status Warning Light first (so it stays at the bottom!)
+            let overall_status = if clusters.is_empty() {
+                "offline"
+            } else {
+                let mut has_contact = false;
+                let mut any_yellow = false;
+                let mut any_red = false;
+                for cluster in &clusters {
+                    let health_opt = self
+                        .status_state
+                        .health_data
+                        .iter()
+                        .find(|(n, _)| n == &cluster.name)
+                        .and_then(|(_, h)| h.as_ref());
+                    if let Some(health) = health_opt {
+                        has_contact = true;
+                        if health.status == "red" {
+                            any_red = true;
+                        } else if health.status == "yellow" {
+                            any_yellow = true;
+                        }
+                    }
+                }
+                if !has_contact {
+                    "offline"
+                } else if any_red {
+                    "red"
+                } else if any_yellow {
+                    "yellow"
+                } else {
+                    "green"
+                }
+            };
+
+            ui.add_space(8.0);
+            ui.horizontal(|ui| {
+                // Add the warning light widget
+                ui.add(crate::ui::widgets::WarningLight::new(overall_status));
+                
+                // Status panel description next to the light
+                ui.vertical(|ui| {
+                    ui.add_space(2.0);
+                    let (title, color, desc) = match overall_status {
+                        "green" => (
+                            "SYSTEM ONLINE", 
+                            Theme::success(), 
+                            "All connected clusters healthy.\nStandby mode active."
+                        ),
+                        "yellow" => (
+                            "MINOR WARNING", 
+                            egui::Color32::from_rgb(235, 179, 41), 
+                            "One or more clusters yellow.\nCheck shard allocation."
+                        ),
+                        "red" => (
+                            "CRITICAL FAILURE", 
+                            Theme::danger(), 
+                            "Immediate attention required!\nRed health detected."
+                        ),
+                        _ => (
+                            "SYSTEM OFFLINE", 
+                            egui::Color32::from_rgb(120, 120, 125), 
+                            "No active cluster contact.\nFilament disconnected."
+                        ),
+                    };
+                    
+                    ui.colored_label(color, egui::RichText::new(title).strong().size(11.0));
+                    ui.label(egui::RichText::new(desc).size(8.5).color(Theme::text_muted()));
+                });
+            });
+            ui.add_space(8.0);
+            ui.separator();
+            ui.add_space(8.0);
+
             if let Some(last) = self.last_refresh {
                 let ago = last.elapsed().as_secs();
                 ui.label(
