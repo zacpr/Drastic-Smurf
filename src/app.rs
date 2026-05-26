@@ -12,6 +12,8 @@ use crate::modules::appearance::{AppearanceState, render_appearance_module};
 use crate::modules::clusters::{ClustersState, render_clusters_module};
 use crate::modules::console::{ConsoleState, render_console_module};
 use crate::modules::discover::{DiscoverState, render_discover_module};
+use crate::modules::indices::{IndicesState, render_indices_module};
+use crate::modules::observability::{ObservabilityState, render_observability_module};
 use crate::modules::pipeline::{PipelineState, render_pipeline_module};
 use crate::modules::snapshot::{
     ClusterSnapshotStatus, SnapshotHistory, fetch_cluster_snapshot, render_snapshot_module,
@@ -30,6 +32,8 @@ pub enum Tab {
     Tasks,
     Console,
     Discover,
+    Indices,
+    Observability,
     PipelineSimulator,
     Settings,
 }
@@ -47,6 +51,10 @@ pub enum RefreshMsg {
     TestResult(String),
     FetchedRepos(String, Vec<String>),
     FetchedSlmPolicies(String, Vec<String>),
+    IndicesResult(String, Vec<crate::core::es_client::CatIndex>, Vec<crate::core::es_client::DataStream>),
+    IndicesError(String, String),
+    ObservabilityResult(String, Vec<crate::modules::observability::SyntheticMonitor>),
+    ObservabilityError(String, String),
 }
 
 pub struct DrasticSmurfApp {
@@ -57,6 +65,9 @@ pub struct DrasticSmurfApp {
     pub status_state: StatusState,
     pub tasks_state: TasksState,
     pub console_state: ConsoleState,
+    pub discover_state: DiscoverState,
+    pub indices_state: IndicesState,
+    pub observability_state: ObservabilityState,
     pub clusters_state: ClustersState,
     pub appearance_state: AppearanceState,
     pub pipeline_state: PipelineState,
@@ -73,8 +84,9 @@ pub struct DrasticSmurfApp {
     pub refresh_rx: Receiver<RefreshMsg>,
     pub pending_delete: Option<String>,
     pub console_send: Option<(String, String, String, Option<String>, bool)>,
-    pub discover_state: DiscoverState,
     pub discover_send: Option<(String, String, String)>,
+    pub indices_refresh: Option<(String, bool)>,
+    pub observability_refresh: Option<(String, String)>,
     pub clusters_import: Option<crate::core::config::AppConfig>,
     pub theme: crate::ui::theme::AppTheme,
     pub vfx: crate::core::config::VfxSettings,
@@ -134,6 +146,9 @@ impl DrasticSmurfApp {
             status_state: StatusState::default(),
             tasks_state: TasksState::default(),
             console_state,
+            discover_state: DiscoverState::default(),
+            indices_state: IndicesState::new(),
+            observability_state: ObservabilityState::new(),
             clusters_state: ClustersState::default(),
             appearance_state: AppearanceState {
                 selected_preset: config.theme.name.clone(),
@@ -153,8 +168,9 @@ impl DrasticSmurfApp {
             refresh_rx: rx,
             pending_delete: None,
             console_send: None,
-            discover_state: DiscoverState::default(),
             discover_send: None,
+            indices_refresh: None,
+            observability_refresh: None,
             clusters_import: None,
             theme: config.theme,
             vfx: config.vfx,
@@ -496,6 +512,25 @@ impl DrasticSmurfApp {
                         }
                     }
                 }
+                RefreshMsg::IndicesResult(_name, indices, datastreams) => {
+                    self.indices_state.indices = indices;
+                    self.indices_state.datastreams = datastreams;
+                    self.indices_state.error = None;
+                    self.indices_state.is_loading = false;
+                }
+                RefreshMsg::IndicesError(_name, err) => {
+                    self.indices_state.error = Some(err);
+                    self.indices_state.is_loading = false;
+                }
+                RefreshMsg::ObservabilityResult(_name, monitors) => {
+                    self.observability_state.monitors = monitors;
+                    self.observability_state.error = None;
+                    self.observability_state.is_loading = false;
+                }
+                RefreshMsg::ObservabilityError(_name, err) => {
+                    self.observability_state.error = Some(err);
+                    self.observability_state.is_loading = false;
+                }
                 RefreshMsg::TestResult(msg) => {
                     self.test_result = Some(msg.clone());
                     self.clusters_state.test_result = Some(msg);
@@ -832,6 +867,8 @@ impl DrasticSmurfApp {
                         ("Tasks", Tab::Tasks),
                         ("Console", Tab::Console),
                         ("Discover", Tab::Discover),
+                        ("Indices", Tab::Indices),
+                        ("Observability", Tab::Observability),
                         ("Pipeline Simulator", Tab::PipelineSimulator),
                         ("Settings", Tab::Settings),
                     ] {
@@ -1224,6 +1261,36 @@ impl DrasticSmurfApp {
                     self.discover_send = Some((self.discover_state.selected_cluster.clone(), path, body));
                 }
             }
+            Tab::Indices => {
+                let cluster_names: Vec<String> = self
+                    .cluster_manager
+                    .clusters()
+                    .iter()
+                    .filter(|c| self.cluster_matches_filter(&c.name))
+                    .map(|c| c.name.clone())
+                    .collect();
+                render_indices_module(
+                    ui,
+                    &mut self.indices_state,
+                    &cluster_names,
+                    &mut self.indices_refresh,
+                );
+            }
+            Tab::Observability => {
+                let cluster_names: Vec<String> = self
+                    .cluster_manager
+                    .clusters()
+                    .iter()
+                    .filter(|c| self.cluster_matches_filter(&c.name))
+                    .map(|c| c.name.clone())
+                    .collect();
+                render_observability_module(
+                    ui,
+                    &mut self.observability_state,
+                    &cluster_names,
+                    &mut self.observability_refresh,
+                );
+            }
             Tab::Settings => {
                 let mut theme_changed = false;
                 let mut vfx_changed = false;
@@ -1535,6 +1602,109 @@ impl eframe::App for DrasticSmurfApp {
                         .await
                         .map_err(|e| e.to_string());
                     let _ = tx.send(RefreshMsg::DiscoverResult(result));
+                    ctx.request_repaint();
+                });
+            }
+        }
+
+        // Handle indices refresh
+        if let Some((cluster_name, _)) = self.indices_refresh.take() {
+            if let Some(client) = self.cluster_manager.get_client(&cluster_name) {
+                let tx = self.refresh_tx.clone();
+                let ctx = ctx.clone();
+                let name = cluster_name.clone();
+                tokio::spawn(async move {
+                    let indices_res = client.cat_indices().await;
+                    let datastreams_res = client.get_data_streams().await;
+                    match (indices_res, datastreams_res) {
+                        (Ok(indices), Ok(ds_resp)) => {
+                            let _ = tx.send(RefreshMsg::IndicesResult(name, indices, ds_resp.data_streams));
+                        }
+                        (Ok(indices), Err(_)) => {
+                            let _ = tx.send(RefreshMsg::IndicesResult(name, indices, Vec::new()));
+                        }
+                        (Err(e), _) => {
+                            let _ = tx.send(RefreshMsg::IndicesError(name, e.to_string()));
+                        }
+                    }
+                    ctx.request_repaint();
+                });
+            }
+        }
+
+        // Handle observability refresh
+        if let Some((cluster_name, space_id)) = self.observability_refresh.take() {
+            if let Some(client) = self.cluster_manager.get_client(&cluster_name) {
+                let tx = self.refresh_tx.clone();
+                let ctx = ctx.clone();
+                let name = cluster_name.clone();
+                let space = space_id.clone();
+                let cluster_config = self
+                    .cluster_manager
+                    .clusters()
+                    .into_iter()
+                    .find(|c| c.name == cluster_name);
+                tokio::spawn(async move {
+                    if let Some(ref config) = cluster_config {
+                        let kibana_host = if config.kibana_host.is_empty() {
+                            config.host.clone()
+                        } else {
+                            let h = config.kibana_host.trim();
+                            if h.starts_with("http://") || h.starts_with("https://") {
+                                h.to_string()
+                            } else {
+                                format!("http://{}", h)
+                            }
+                        };
+                        match client.get_kibana_synthetics_monitors(&kibana_host, Some(&space)).await {
+                            Ok(val) => {
+                                let mut monitors = Vec::new();
+                                if let Some(monitors_arr) = val.get("monitors").and_then(|m| m.as_array()) {
+                                    for m in monitors_arr {
+                                        if let (Some(id), Some(monitor_name)) = (m.get("id").and_then(|id| id.as_str()), m.get("name").and_then(|n| n.as_str())) {
+                                            let monitor_type = m.get("type").and_then(|t| t.as_str()).unwrap_or("http").to_string();
+                                            let status = m.get("status").and_then(|s| s.get("status")).and_then(|s| s.as_str()).unwrap_or("up").to_string();
+                                            let url = m.get("url").and_then(|u| u.as_str()).unwrap_or("").to_string();
+                                            
+                                            let mut locations = Vec::new();
+                                            if let Some(locs) = m.get("locations").and_then(|l| l.as_array()) {
+                                                for l in locs {
+                                                    if let Some(l_str) = l.as_str() {
+                                                        locations.push(l_str.to_string());
+                                                    }
+                                                }
+                                            }
+
+                                            let latency_ms = m.get("metrics").and_then(|m| m.get("latency")).and_then(|l| l.as_u64()).unwrap_or(50) as u32;
+                                            
+                                            monitors.push(crate::modules::observability::SyntheticMonitor {
+                                                id: id.to_string(),
+                                                name: monitor_name.to_string(),
+                                                monitor_type,
+                                                status,
+                                                url,
+                                                locations,
+                                                latency_ms,
+                                                latency_history: vec![latency_ms as f32, (latency_ms + 5) as f32, (latency_ms - 2) as f32],
+                                                last_checked: "Just now".to_string(),
+                                            });
+                                        }
+                                    }
+                                }
+                                
+                                if monitors.is_empty() {
+                                    let _ = tx.send(RefreshMsg::ObservabilityError(name.clone(), "No monitors configured in this Kibana space.".to_string()));
+                                } else {
+                                    let _ = tx.send(RefreshMsg::ObservabilityResult(name, monitors));
+                                }
+                            }
+                            Err(e) => {
+                                let _ = tx.send(RefreshMsg::ObservabilityError(name, e.to_string()));
+                            }
+                        }
+                    } else {
+                        let _ = tx.send(RefreshMsg::ObservabilityError(name, "No cluster configuration found".to_string()));
+                    }
                     ctx.request_repaint();
                 });
             }

@@ -331,6 +331,21 @@ impl EsClient {
         self.exec(req, &method, &url).await
     }
 
+    pub async fn get_data_streams(&self) -> Result<DataStreamResponse, EsError> {
+        let (req, method, url) = self.request(reqwest::Method::GET, "/_data_stream");
+        self.exec(req, &method, &url).await
+    }
+
+    pub async fn get_kibana_synthetics_monitors(&self, kibana_host: &str, space_id: Option<&str>) -> Result<serde_json::Value, EsError> {
+        let path = match space_id {
+            Some(space) if space != "default" && !space.is_empty() => {
+                format!("/s/{}/api/synthetics/monitors", space)
+            }
+            _ => "/api/synthetics/monitors".to_string(),
+        };
+        self.send_to_host(kibana_host, reqwest::Method::GET, &path, None).await
+    }
+
     pub async fn cluster_stats(&self) -> Result<ClusterStats, EsError> {
         let (req, method, url) = self.request(reqwest::Method::GET, "/_cluster/stats");
         self.exec(req, &method, &url).await
@@ -951,4 +966,33 @@ impl EsClient {
             .unwrap_or(host);
         host.split(':').nth(1)?.parse().ok()
     }
+}
+
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+pub struct DataStreamResponse {
+    pub data_streams: Vec<DataStream>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+pub struct DataStream {
+    pub name: String,
+    pub timestamp_field: TimestampField,
+    pub indices: Vec<DataStreamBackingIndex>,
+    pub generation: i64,
+    pub status: String,
+    pub template: Option<String>,
+    pub ilm_policy: Option<String>,
+    #[serde(rename = "store_size_bytes", default)]
+    pub store_size_bytes: Option<i64>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+pub struct TimestampField {
+    pub name: String,
+}
+
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+pub struct DataStreamBackingIndex {
+    pub index_name: String,
+    pub index_uuid: String,
 }
