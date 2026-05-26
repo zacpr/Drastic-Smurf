@@ -639,44 +639,50 @@ impl DrasticSmurfApp {
         ui.add_space(4.0);
 
         let clusters = self.cluster_manager.clusters();
-        for cluster in &clusters {
-            if !self.cluster_matches_filter(&cluster.name) {
-                continue;
-            }
-            ui.horizontal(|ui| {
-                let health_opt = self
-                    .status_state
-                    .health_data
-                    .iter()
-                    .find(|(n, _)| n == &cluster.name)
-                    .and_then(|(_, h)| h.as_ref());
-                
-                let dot_color = match health_opt {
-                    Some(health) => match health.status.as_str() {
-                        "green" => Theme::success(),
-                        "yellow" => egui::Color32::from_rgb(235, 179, 41), // Vibrant Yellow
-                        "red" => Theme::danger(),
-                        _ => egui::Color32::from_rgb(60, 60, 60), // Dark Grey
-                    },
-                    None => egui::Color32::from_rgb(60, 60, 60), // Offline
-                };
+        let scroll_height = ui.available_height() - 170.0;
+        egui::ScrollArea::vertical()
+            .max_height(scroll_height)
+            .id_salt("cluster_scroll")
+            .show(ui, |ui| {
+                for cluster in &clusters {
+                    if !self.cluster_matches_filter(&cluster.name) {
+                        continue;
+                    }
+                    ui.horizontal(|ui| {
+                        let health_opt = self
+                            .status_state
+                            .health_data
+                            .iter()
+                            .find(|(n, _)| n == &cluster.name)
+                            .and_then(|(_, h)| h.as_ref());
+                        
+                        let dot_color = match health_opt {
+                            Some(health) => match health.status.as_str() {
+                                "green" => Theme::success(),
+                                "yellow" => egui::Color32::from_rgb(235, 179, 41), // Vibrant Yellow
+                                "red" => Theme::danger(),
+                                _ => egui::Color32::from_rgb(60, 60, 60), // Dark Grey
+                            },
+                            None => egui::Color32::from_rgb(60, 60, 60), // Offline
+                        };
 
-                ui.add(crate::ui::widgets::ConnectionDot::new(health_opt.is_some()).color(dot_color).size(8.0));
-                ui.label(
-                    egui::RichText::new(&cluster.name)
-                        .color(Theme::text_primary())
-                        .size(13.0),
-                );
+                        ui.add(crate::ui::widgets::ConnectionDot::new(health_opt.is_some()).color(dot_color).size(8.0));
+                        ui.label(
+                            egui::RichText::new(&cluster.name)
+                                .color(Theme::text_primary())
+                                .size(13.0),
+                        );
+                    });
+                }
+
+                if clusters.is_empty() {
+                    ui.label(
+                        egui::RichText::new("No clusters configured")
+                            .color(Theme::text_muted())
+                            .size(11.0),
+                    );
+                }
             });
-        }
-
-        if clusters.is_empty() {
-            ui.label(
-                egui::RichText::new("No clusters configured")
-                    .color(Theme::text_muted())
-                    .size(11.0),
-            );
-        }
 
         ui.add_space(12.0);
         if ui.button("+ Add Cluster").clicked() {
@@ -1578,7 +1584,12 @@ if self.snapshot_manual_refresh {
                 egui::Frame::new()
                     .fill(sidebar_fill)
                     .stroke(egui::Stroke::new(1.0, Theme::border()))
-                    .inner_margin(egui::Vec2::new(12.0, 0.0)),
+                    .inner_margin(egui::Margin {
+                        left: 12,
+                        right: 12,
+                        top: 10,
+                        bottom: 12,
+                    }),
             )
             .show(ctx, |ui| {
                 self.render_sidebar(ui);

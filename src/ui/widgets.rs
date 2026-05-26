@@ -349,13 +349,13 @@ impl WarningLight {
 
 impl Widget for WarningLight {
     fn ui(self, ui: &mut Ui) -> egui::Response {
-        let desired_size = Vec2::new(70.0, 80.0);
+        let desired_size = Vec2::new(45.0, 48.0);
         let (rect, response) = ui.allocate_exact_size(desired_size, egui::Sense::hover());
 
         if ui.is_rect_visible(rect) {
             let painter = ui.painter();
             let center_x = rect.center().x;
-            let base_y = rect.bottom() - 10.0;
+            let base_y = rect.bottom() - 4.0;
             
             // 1. Draw soft pulsing glow under the dome if active
             let glow_color = match self.status.as_str() {
@@ -367,31 +367,31 @@ impl Widget for WarningLight {
             
             if let Some(gc) = glow_color {
                 let time = ui.input(|i| i.time);
-                let pulse = (time * 3.5).sin() as f32 * 4.0 + 26.0;
-                painter.circle_filled(Pos2::new(center_x, base_y - 20.0), pulse, gc);
-                painter.circle_filled(Pos2::new(center_x, base_y - 20.0), pulse * 0.6, gc.linear_multiply(2.0));
+                let pulse = (time * 3.5).sin() as f32 * 2.5 + 16.0;
+                painter.circle_filled(Pos2::new(center_x, base_y - 12.0), pulse, gc);
+                painter.circle_filled(Pos2::new(center_x, base_y - 12.0), pulse * 0.6, gc.linear_multiply(2.0));
             }
 
             // 2. Base plate
             let base_rect_stroke = Rect::from_min_max(
-                Pos2::new(center_x - 24.5, base_y - 4.5),
-                Pos2::new(center_x + 24.5, base_y + 4.5),
+                Pos2::new(center_x - 16.5, base_y - 3.0),
+                Pos2::new(center_x + 16.5, base_y + 3.0),
             );
             let base_rect_fill = Rect::from_min_max(
-                Pos2::new(center_x - 23.5, base_y - 3.5),
-                Pos2::new(center_x + 23.5, base_y + 3.5),
+                Pos2::new(center_x - 15.5, base_y - 2.0),
+                Pos2::new(center_x + 15.5, base_y + 2.0),
             );
             painter.rect_filled(base_rect_stroke, CornerRadius::same(2), Color32::from_rgb(70, 70, 72));
             painter.rect_filled(base_rect_fill, CornerRadius::same(2), Color32::from_rgb(50, 50, 52));
 
             // 3. Inner filament bulb (if offline)
             if self.status == "offline" {
-                let bulb_center = Pos2::new(center_x, base_y - 18.0);
+                let bulb_center = Pos2::new(center_x, base_y - 12.0);
                 painter.line_segment(
-                    [Pos2::new(center_x, base_y - 4.0), Pos2::new(center_x, base_y - 14.0)],
+                    [Pos2::new(center_x, base_y - 3.0), Pos2::new(center_x, base_y - 9.0)],
                     Stroke::new(1.0, Color32::from_rgb(100, 100, 100))
                 );
-                painter.circle_stroke(bulb_center, 3.0, Stroke::new(1.0, Color32::from_rgb(140, 140, 140)));
+                painter.circle_stroke(bulb_center, 2.0, Stroke::new(1.0, Color32::from_rgb(140, 140, 140)));
             }
 
             // 4. Dome Lens
@@ -403,28 +403,28 @@ impl Widget for WarningLight {
             };
 
             let dome_rect = Rect::from_min_max(
-                Pos2::new(center_x - 18.0, base_y - 38.0),
-                Pos2::new(center_x + 18.0, base_y - 4.0),
+                Pos2::new(center_x - 12.0, base_y - 25.0),
+                Pos2::new(center_x + 12.0, base_y - 3.0),
             );
             let dome_rounding = CornerRadius {
-                nw: 18,
-                ne: 18,
+                nw: 12,
+                ne: 12,
                 se: 0,
                 sw: 0,
             };
             painter.rect_filled(dome_rect, dome_rounding, dome_color);
 
             // 5. Fresnel ribs
-            let rib_stroke = Stroke::new(1.0, match self.status.as_str() {
+            let rib_stroke = Stroke::new(0.8, match self.status.as_str() {
                 "green" => Color32::from_rgba_premultiplied(100, 220, 110, 80),
                 "yellow" => Color32::from_rgba_premultiplied(255, 230, 100, 80),
                 "red" => Color32::from_rgba_premultiplied(255, 120, 100, 80),
                 _ => Color32::from_rgba_premultiplied(130, 130, 135, 40),
             });
-            for y_offset in [8.0, 15.0, 22.0, 29.0] {
+            for y_offset in [5.0, 10.0, 15.0, 20.0] {
                 let y = base_y - y_offset;
-                let pct = (y_offset - 4.0) / 40.0;
-                let half_w = 18.0 * (1.0 - pct * pct).max(0.0).sqrt();
+                let pct = (y_offset - 3.0) / 25.0;
+                let half_w = 12.0 * (1.0 - pct * pct).max(0.0).sqrt();
                 painter.line_segment(
                     [Pos2::new(center_x - half_w, y), Pos2::new(center_x + half_w, y)],
                     rib_stroke
@@ -432,39 +432,39 @@ impl Widget for WarningLight {
             }
 
             // 6. Protective Metal Cage
-            let cage_stroke = Stroke::new(1.5, Color32::from_rgb(110, 110, 115));
+            let cage_stroke = Stroke::new(1.2, Color32::from_rgb(110, 110, 115));
             
             // Left curved bar
             let left_points = vec![
-                Pos2::new(center_x - 19.0, base_y - 4.0),
-                Pos2::new(center_x - 19.0, base_y - 20.0),
-                Pos2::new(center_x - 18.0, base_y - 30.0),
-                Pos2::new(center_x - 12.0, base_y - 37.0),
-                Pos2::new(center_x, base_y - 40.0),
+                Pos2::new(center_x - 13.0, base_y - 3.0),
+                Pos2::new(center_x - 13.0, base_y - 13.0),
+                Pos2::new(center_x - 12.0, base_y - 20.0),
+                Pos2::new(center_x - 8.0, base_y - 25.0),
+                Pos2::new(center_x, base_y - 26.5),
             ];
             painter.add(Shape::line(left_points, cage_stroke));
             
             // Right curved bar
             let right_points = vec![
-                Pos2::new(center_x + 19.0, base_y - 4.0),
-                Pos2::new(center_x + 19.0, base_y - 20.0),
-                Pos2::new(center_x + 18.0, base_y - 30.0),
-                Pos2::new(center_x + 12.0, base_y - 37.0),
-                Pos2::new(center_x, base_y - 40.0),
+                Pos2::new(center_x + 13.0, base_y - 3.0),
+                Pos2::new(center_x + 13.0, base_y - 13.0),
+                Pos2::new(center_x + 12.0, base_y - 20.0),
+                Pos2::new(center_x + 8.0, base_y - 25.0),
+                Pos2::new(center_x, base_y - 26.5),
             ];
             painter.add(Shape::line(right_points, cage_stroke));
 
             // Center vertical bar
             painter.line_segment(
-                [Pos2::new(center_x, base_y - 4.0), Pos2::new(center_x, base_y - 40.0)],
+                [Pos2::new(center_x, base_y - 3.0), Pos2::new(center_x, base_y - 26.5)],
                 cage_stroke
             );
 
             // Horizontal reinforcing rings
-            let ring_y1 = base_y - 13.0;
-            let ring_y2 = base_y - 26.0;
-            painter.line_segment([Pos2::new(center_x - 19.2, ring_y1), Pos2::new(center_x + 19.2, ring_y1)], cage_stroke);
-            painter.line_segment([Pos2::new(center_x - 18.8, ring_y2), Pos2::new(center_x + 18.8, ring_y2)], cage_stroke);
+            let ring_y1 = base_y - 9.0;
+            let ring_y2 = base_y - 18.0;
+            painter.line_segment([Pos2::new(center_x - 13.1, ring_y1), Pos2::new(center_x + 13.1, ring_y1)], cage_stroke);
+            painter.line_segment([Pos2::new(center_x - 12.7, ring_y2), Pos2::new(center_x + 12.7, ring_y2)], cage_stroke);
         }
 
         response
