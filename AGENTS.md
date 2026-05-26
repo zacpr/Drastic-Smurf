@@ -24,6 +24,8 @@
 | **Clusters** | ✅ Functional | Centralized cluster management: list, add/edit, test connection, import/export. |
 | **Elastic Console** | ✅ Enhanced | Category-based Elasticsearch & Kibana presets (40+ items), official documentation links, automatic connection target host toggles (ES vs Kibana), custom variables with interpolation, command history cycling, and saved queries. |
 | **Discover** | ✅ Functional | A cutdown mimic of Kibana's Discover. Index pattern interrogating, Lucene/KQL search queries, dynamic available fields selection, and collapsible document JSON drawers. |
+| **Datastreams & Indices** | ✅ Functional | Sub-tabbed browser for Indices and Data Streams, displaying names, status, health states, doc counts, and store sizes. |
+| **Observability Monitors** | ✅ Functional | Kibana Synthetics / Uptime monitors explorer with space-selection support, multi-region status, sparkline history latency, and a customizable Pinned Dashboard. |
 
 ---
 
@@ -43,6 +45,8 @@ src/
 ├── modules/
 │   ├── clusters.rs     # Clusters management tab
 │   ├── console.rs      # Elastic Console tab
+│   ├── indices.rs      # Datastreams & Indices explorer tab
+│   ├── observability.rs # Kibana Synthetics Monitors tab
 │   ├── snapshot.rs     # Snapshot Monitoring tab
 │   ├── status.rs       # Cluster Status tab
 │   ├── tasks.rs        # Task Monitoring tab
