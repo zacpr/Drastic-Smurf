@@ -30,8 +30,8 @@ pub enum Tab {
     Tasks,
     Console,
     Discover,
-    Appearance,
-    Pipeline,
+    PipelineSimulator,
+    Settings,
 }
 
 pub enum RefreshMsg {
@@ -735,8 +735,8 @@ impl DrasticSmurfApp {
                         ("Tasks", Tab::Tasks),
                         ("Console", Tab::Console),
                         ("Discover", Tab::Discover),
-                        ("Appearance", Tab::Appearance),
-                        ("Pipeline", Tab::Pipeline),
+                        ("Pipeline Simulator", Tab::PipelineSimulator),
+                        ("Settings", Tab::Settings),
                     ] {
                         let is_active = self.current_tab == tab;
                         let text = egui::RichText::new(label).size(14.0);
@@ -1128,7 +1128,7 @@ impl DrasticSmurfApp {
                     self.discover_send = Some((self.discover_state.selected_cluster.clone(), path, body));
                 }
             }
-            Tab::Appearance => {
+            Tab::Settings => {
                 let mut theme_changed = false;
                 let mut vfx_changed = false;
                 let mut tour_triggered = false;
@@ -1155,7 +1155,7 @@ impl DrasticSmurfApp {
                     }
                 }
             }
-            Tab::Pipeline => {
+            Tab::PipelineSimulator => {
                 render_pipeline_module(ui, &mut self.pipeline_state);
             }
         }
