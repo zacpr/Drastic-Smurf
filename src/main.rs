@@ -31,6 +31,7 @@ async fn main() -> eframe::Result<()> {
         "DRASTIC SMURF",
         options,
         Box::new(move |cc| {
+            egui_extras::install_image_loaders(&cc.egui_ctx);
             Ok(Box::new(app::DrasticSmurfApp::new(cc, log_entries)))
         }),
     )

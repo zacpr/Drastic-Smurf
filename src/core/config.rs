@@ -187,6 +187,8 @@ pub struct ClusterData {
     pub status_history: Vec<StatusSnapshot>,
     pub tasks_cache: Vec<TaskCacheEntry>,
     pub snapshot_cache: Vec<SnapshotCacheEntry>,
+    #[serde(default)]
+    pub variables: Vec<(String, String)>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

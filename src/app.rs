@@ -11,6 +11,7 @@ use crate::core::es_client::{ClusterHealth, EsClient};
 use crate::modules::appearance::{AppearanceState, render_appearance_module};
 use crate::modules::clusters::{ClustersState, render_clusters_module};
 use crate::modules::console::{ConsoleState, render_console_module};
+use crate::modules::discover::{DiscoverState, render_discover_module};
 use crate::modules::pipeline::{PipelineState, render_pipeline_module};
 use crate::modules::snapshot::{
     ClusterSnapshotStatus, SnapshotHistory, fetch_cluster_snapshot, render_snapshot_module,
@@ -28,6 +29,7 @@ pub enum Tab {
     Status,
     Tasks,
     Console,
+    Discover,
     Appearance,
     Pipeline,
 }
@@ -40,7 +42,8 @@ pub enum RefreshMsg {
     StatsError(String, String),
     TasksResult(String, Vec<crate::core::es_client::TaskInfo>),
     TasksError(String, String),
-    ConsoleResult(Result<serde_json::Value, String>),
+    ConsoleResult(Result<String, String>),
+    DiscoverResult(Result<String, String>),
     TestResult(String),
     FetchedRepos(String, Vec<String>),
     FetchedSlmPolicies(String, Vec<String>),
@@ -70,6 +73,8 @@ pub struct DrasticSmurfApp {
     pub refresh_rx: Receiver<RefreshMsg>,
     pub pending_delete: Option<String>,
     pub console_send: Option<(String, String, String, Option<String>, bool)>,
+    pub discover_state: DiscoverState,
+    pub discover_send: Option<(String, String, String)>,
     pub clusters_import: Option<crate::core::config::AppConfig>,
     pub theme: crate::ui::theme::AppTheme,
     pub vfx: crate::core::config::VfxSettings,
@@ -141,6 +146,8 @@ impl DrasticSmurfApp {
             refresh_rx: rx,
             pending_delete: None,
             console_send: None,
+            discover_state: DiscoverState::default(),
+            discover_send: None,
             clusters_import: None,
             theme: config.theme,
             vfx: config.vfx,
@@ -447,11 +454,35 @@ impl DrasticSmurfApp {
                 RefreshMsg::ConsoleResult(result) => {
                     self.console_state.response = match result {
                         Ok(val) => {
-                            serde_json::to_string_pretty(&val).unwrap_or_else(|e| e.to_string())
+                            if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&val) {
+                                serde_json::to_string_pretty(&parsed).unwrap_or(val)
+                            } else {
+                                val
+                            }
                         }
                         Err(e) => format!("Error: {}", e),
                     };
                     self.console_state.is_loading = false;
+                }
+                RefreshMsg::DiscoverResult(result) => {
+                    self.discover_state.is_loading = false;
+                    match result {
+                        Ok(val) => {
+                            if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&val) {
+                                if let Some(hits) = parsed.get("hits").and_then(|h| h.get("hits")).and_then(|h| h.as_array()) {
+                                    self.discover_state.results = hits.clone();
+                                    self.discover_state.refresh_fields();
+                                } else {
+                                    self.discover_state.error = Some("Invalid response structure from search API".to_string());
+                                }
+                            } else {
+                                self.discover_state.error = Some("Failed to parse search response as JSON".to_string());
+                            }
+                        }
+                        Err(e) => {
+                            self.discover_state.error = Some(e);
+                        }
+                    }
                 }
                 RefreshMsg::TestResult(msg) => {
                     self.test_result = Some(msg.clone());
@@ -545,6 +576,14 @@ impl DrasticSmurfApp {
 
     fn render_sidebar(&mut self, ui: &mut egui::Ui) {
         ui.add_space(16.0);
+        
+        // Render logo image
+        ui.add(
+            egui::Image::new(egui::include_image!("../drastic.png"))
+                .max_width(120.0)
+        );
+        
+        ui.add_space(8.0);
         let title_response = ui.heading(
             egui::RichText::new("DRASTIC SMURF")
                 .color(Theme::accent())
@@ -689,6 +728,7 @@ impl DrasticSmurfApp {
                         ("Status", Tab::Status),
                         ("Tasks", Tab::Tasks),
                         ("Console", Tab::Console),
+                        ("Discover", Tab::Discover),
                         ("Appearance", Tab::Appearance),
                         ("Pipeline", Tab::Pipeline),
                     ] {
@@ -1008,6 +1048,22 @@ impl DrasticSmurfApp {
                 if self.console_state.selected_cluster.is_empty() && !names.is_empty() {
                     self.console_state.selected_cluster = names[0].clone();
                 }
+
+                let selected = self.console_state.selected_cluster.clone();
+
+                // Sync variables and saved queries when cluster selection changes
+                if self.console_state.last_selected_cluster != selected {
+                    if let Some(data) = self.cluster_manager.get_cluster_data(&selected) {
+                        self.console_state.variables = data.variables.clone();
+                        self.console_state.saved_queries = data.saved_queries.clone();
+                    } else {
+                        self.console_state.variables.clear();
+                        self.console_state.saved_queries.clear();
+                    }
+                    self.console_state.last_selected_cluster = selected.clone();
+                    self.console_state.variables_changed = false;
+                }
+
                 let mut on_save_query = None;
                 render_console_module(
                     ui,
@@ -1016,6 +1072,7 @@ impl DrasticSmurfApp {
                     &mut self.console_send,
                     &mut on_save_query,
                 );
+
                 if let Some(query) = on_save_query {
                     let cluster = &self.console_state.selected_cluster;
                     if let Some(mut data) = self.cluster_manager.get_cluster_data(cluster) {
@@ -1033,29 +1090,36 @@ impl DrasticSmurfApp {
                         data.saved_queries.push(query);
                         self.cluster_manager.set_cluster_data(cluster, data);
                     }
-                    // Also update console state so the dropdown shows immediately
+                    // Also update console state so it shows immediately
                     if let Some(data) = self.cluster_manager.get_cluster_data(cluster) {
                         self.console_state.saved_queries = data.saved_queries;
                     }
                 }
-                // Load saved queries when cluster selection changes
-                let selected = &self.console_state.selected_cluster;
-                let current_queries: Vec<String> = self
-                    .console_state
-                    .saved_queries
-                    .iter()
-                    .map(|q| q.name.clone())
-                    .collect();
-                if let Some(data) = self.cluster_manager.get_cluster_data(selected) {
-                    let new_queries: Vec<String> =
-                        data.saved_queries.iter().map(|q| q.name.clone()).collect();
-                    if current_queries != new_queries {
-                        self.console_state.saved_queries = data.saved_queries;
+
+                // Persist variable changes back to ClusterData when modified
+                if self.console_state.variables_changed && !selected.is_empty() {
+                    if let Some(mut data) = self.cluster_manager.get_cluster_data(&selected) {
+                        data.variables = self.console_state.variables.clone();
+                        self.cluster_manager.set_cluster_data(&selected, data);
+                    } else {
+                        let mut data = crate::core::config::ClusterData::default();
+                        data.variables = self.console_state.variables.clone();
+                        self.cluster_manager.set_cluster_data(&selected, data);
                     }
-                } else {
-                    if !self.console_state.saved_queries.is_empty() {
-                        self.console_state.saved_queries.clear();
-                    }
+                    self.console_state.variables_changed = false;
+                }
+            }
+            Tab::Discover => {
+                let mut search_triggered = None;
+                let cluster_names: Vec<String> = self.cluster_manager.clusters().iter().map(|c| c.name.clone()).collect();
+                render_discover_module(
+                    ui,
+                    &mut self.discover_state,
+                    &cluster_names,
+                    &mut search_triggered,
+                );
+                if let Some((path, body)) = search_triggered {
+                    self.discover_send = Some((self.discover_state.selected_cluster.clone(), path, body));
                 }
             }
             Tab::Appearance => {
@@ -1336,7 +1400,7 @@ impl eframe::App for DrasticSmurfApp {
                                 }
                             };
                             client
-                                .send_to_host(&kibana_host, method, &path, body)
+                                .send_to_host_raw(&kibana_host, method, &path, body)
                                 .await
                                 .map_err(|e| e.to_string())
                         } else {
@@ -1344,11 +1408,28 @@ impl eframe::App for DrasticSmurfApp {
                         }
                     } else {
                         client
-                            .execute(method, &path, body)
+                            .execute_raw(method, &path, body)
                             .await
                             .map_err(|e| e.to_string())
                     };
                     let _ = tx.send(RefreshMsg::ConsoleResult(result));
+                    ctx.request_repaint();
+                });
+            }
+        }
+
+        // Handle discover send
+        if let Some((cluster_name, path, body)) = self.discover_send.take() {
+            if let Some(client) = self.cluster_manager.get_client(&cluster_name) {
+                let tx = self.refresh_tx.clone();
+                let ctx = ctx.clone();
+                tokio::spawn(async move {
+                    let method = reqwest::Method::POST;
+                    let result = client
+                        .execute_raw(method, &path, Some(body))
+                        .await
+                        .map_err(|e| e.to_string());
+                    let _ = tx.send(RefreshMsg::DiscoverResult(result));
                     ctx.request_repaint();
                 });
             }
@@ -1373,6 +1454,20 @@ if self.snapshot_manual_refresh {
         // Background VFX
         let screen_rect = ctx.screen_rect();
         vfx::paint_background(ctx, &self.vfx, screen_rect);
+        vfx::paint_cursor_glow(ctx, &self.vfx, screen_rect);
+
+        // Glassmorphism translucent fills if VFX is active
+        let has_vfx = self.vfx.background_effect != crate::core::config::BackgroundEffect::None && self.vfx.background_intensity > 0.0;
+        let sidebar_fill = if has_vfx {
+            Theme::bg_darkest().linear_multiply(0.85)
+        } else {
+            Theme::bg_darkest()
+        };
+        let central_fill = if has_vfx {
+            Theme::bg_dark().linear_multiply(0.88)
+        } else {
+            Theme::bg_dark()
+        };
 
         // Sidebar
         egui::SidePanel::left("sidebar")
@@ -1382,7 +1477,7 @@ if self.snapshot_manual_refresh {
             .max_width(400.0)
             .frame(
                 egui::Frame::new()
-                    .fill(Theme::bg_darkest())
+                    .fill(sidebar_fill)
                     .stroke(egui::Stroke::new(1.0, Theme::border()))
                     .inner_margin(egui::Vec2::new(12.0, 0.0)),
             )
@@ -1394,7 +1489,7 @@ if self.snapshot_manual_refresh {
         egui::CentralPanel::default()
             .frame(
                 egui::Frame::new()
-                    .fill(Theme::bg_dark())
+                    .fill(central_fill)
                     .stroke(egui::Stroke::new(1.0, Theme::border())),
             )
             .show(ctx, |ui| {

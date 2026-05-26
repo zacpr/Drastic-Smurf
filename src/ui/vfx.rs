@@ -8,8 +8,43 @@ use crate::ui::theme::Theme;
 pub fn paint_background(ctx: &Context, settings: &VfxSettings, rect: Rect) {
     match settings.background_effect {
         BackgroundEffect::None => {}
-        BackgroundEffect::Gradient => paint_gradient(ctx, rect, settings),
-        BackgroundEffect::Mesh => paint_mesh(ctx, rect, settings),
+        BackgroundEffect::Gradient => {
+            paint_gradient(ctx, rect, settings);
+            if !settings.reduce_motion {
+                ctx.request_repaint();
+            }
+        }
+        BackgroundEffect::Mesh => {
+            paint_mesh(ctx, rect, settings);
+            if !settings.reduce_motion {
+                ctx.request_repaint();
+            }
+        }
+    }
+}
+
+/// Paint a glowing spotlight backlight that follows the cursor under the widgets.
+pub fn paint_cursor_glow(ctx: &Context, settings: &VfxSettings, _rect: Rect) {
+    if !settings.cursor_glow || settings.reduce_motion {
+        return;
+    }
+
+    if let Some(mouse_pos) = ctx.input(|i| i.pointer.latest_pos()) {
+        let painter = ctx.layer_painter(egui::LayerId::background());
+        let accent = Theme::accent();
+        
+        let glow_radius = 120.0;
+        let steps = 12;
+        for i in 0..steps {
+            let f = i as f32 / steps as f32;
+            let radius = glow_radius * (1.0 - f * 0.85);
+            let alpha = ((1.0 - f) * settings.background_intensity * 25.0) as u8;
+            let color = Color32::from_rgba_premultiplied(accent.r(), accent.g(), accent.b(), alpha);
+            painter.circle_filled(mouse_pos, radius, color);
+        }
+
+        // Request repaint so the cursor glow updates smoothly in real time
+        ctx.request_repaint();
     }
 }
 
@@ -28,6 +63,21 @@ fn paint_gradient(ctx: &Context, rect: Rect, settings: &VfxSettings) {
 
     let accent = Theme::accent();
 
+    // Mouse parallax offset calculation
+    let parallax_offset = if settings.reduce_motion || settings.parallax_amount <= 0.0 {
+        Vec2::ZERO
+    } else {
+        ctx.input(|i| {
+            if let Some(mouse_pos) = i.pointer.latest_pos() {
+                let center = rect.center();
+                let delta = mouse_pos - center;
+                delta * settings.parallax_amount * 0.05
+            } else {
+                Vec2::ZERO
+            }
+        })
+    };
+
     // Create a soft radial-ish gradient by painting a large quad with color variation
     let center = rect.center();
     let t1 = (time.sin() + 1.0) / 2.0;
@@ -38,7 +88,10 @@ fn paint_gradient(ctx: &Context, rect: Rect, settings: &VfxSettings) {
         (t2 * 2.0 - 1.0) * rect.height() * 0.3,
     );
 
-    let glow_center = Pos2::new(center.x + offset1.x, center.y + offset1.y);
+    let glow_center = Pos2::new(
+        center.x + offset1.x - parallax_offset.x,
+        center.y + offset1.y - parallax_offset.y,
+    );
 
     let glow_radius = rect.width().min(rect.height()) * 0.6;
 
@@ -59,7 +112,10 @@ fn paint_gradient(ctx: &Context, rect: Rect, settings: &VfxSettings) {
     ) * rect.width()
         * 0.25;
 
-    let glow_center2 = Pos2::new(center.x + offset2.x, center.y + offset2.y);
+    let glow_center2 = Pos2::new(
+        center.x + offset2.x - parallax_offset.x,
+        center.y + offset2.y - parallax_offset.y,
+    );
     for i in 0..steps {
         let f = i as f32 / steps as f32;
         let radius = glow_radius * 0.5 * (1.0 - f * 0.8);
@@ -88,17 +144,32 @@ fn paint_mesh(ctx: &Context, rect: Rect, settings: &VfxSettings) {
     };
     let accent = Theme::accent();
 
+    // Mouse parallax offset calculation
+    let parallax_offset = if settings.reduce_motion || settings.parallax_amount <= 0.0 {
+        Vec2::ZERO
+    } else {
+        ctx.input(|i| {
+            if let Some(mouse_pos) = i.pointer.latest_pos() {
+                let center = rect.center();
+                let delta = mouse_pos - center;
+                delta * settings.parallax_amount * 0.05
+            } else {
+                Vec2::ZERO
+            }
+        })
+    };
+
     // Draw a subtle grid/mesh of lines
     let spacing = 60.0;
     let alpha = (intensity * 25.0) as u8;
     let line_color = Color32::from_rgba_premultiplied(accent.r(), accent.g(), accent.b(), alpha);
 
-    // Vertical lines with wave offset
+    // Vertical lines with wave offset and parallax shift
     let cols = (rect.width() / spacing).ceil() as i32 + 2;
     let wave_amp = 15.0 * intensity;
 
     for i in -1..cols {
-        let base_x = rect.min.x + i as f32 * spacing;
+        let base_x = rect.min.x + i as f32 * spacing - parallax_offset.x;
         let mut points = Vec::new();
         let rows = (rect.height() / 10.0).ceil() as i32;
         for j in 0..=rows {
@@ -116,10 +187,10 @@ fn paint_mesh(ctx: &Context, rect: Rect, settings: &VfxSettings) {
         }
     }
 
-    // Horizontal lines with wave offset
+    // Horizontal lines with wave offset and parallax shift
     let rows = (rect.height() / spacing).ceil() as i32 + 2;
     for j in -1..rows {
-        let base_y = rect.min.y + j as f32 * spacing;
+        let base_y = rect.min.y + j as f32 * spacing - parallax_offset.y;
         let mut points = Vec::new();
         let cols = (rect.width() / 10.0).ceil() as i32;
         for i in 0..=cols {

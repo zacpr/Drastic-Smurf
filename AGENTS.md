@@ -22,7 +22,8 @@
 | **Cluster Status** | ✅ Functional | Health dashboard with nodes, shards, indices, docs, store size, JVM heap. Responsive 1→2 column layout. |
 | **Task Monitoring** | ✅ Functional | Filterable task grid (cluster, action, description, running time, cancellable). |
 | **Clusters** | ✅ Functional | Centralized cluster management: list, add/edit, test connection, import/export. |
-| **Elastic Console** | ✅ Functional | Method/path/body request builder with response viewer. Saved queries. Inherits cluster credentials. |
+| **Elastic Console** | ✅ Enhanced | Category-based Elasticsearch & Kibana presets (40+ items), official documentation links, automatic connection target host toggles (ES vs Kibana), custom variables with interpolation, command history cycling, and saved queries. |
+| **Discover** | ✅ Functional | A cutdown mimic of Kibana's Discover. Index pattern interrogating, Lucene/KQL search queries, dynamic available fields selection, and collapsible document JSON drawers. |
 
 ---
 
@@ -93,11 +94,11 @@ $ cargo generate-rpm
 
 ## Testing
 
-- **Unit tests** — planned for JSON parsing, stat translation, utility functions
+- **Unit tests** — implemented for console variable interpolation; planned for JSON parsing, stat translation, and utility functions
 - **Integration tests** — planned against a local Elasticsearch instance or mock HTTP server
 - **UI tests** — limited; egui does not have a built-in UI testing framework
 
-*(No tests are currently implemented — this is a known gap.)*
+*(Unit tests are now partially implemented — console interpolation has working tests.)*
 
 ---
 

@@ -124,7 +124,12 @@ impl EsClient {
         } else {
             format!("http://{}", host)
         };
-        let url = format!("{}{}", host.trim_end_matches('/'), path);
+        let host_trimmed = host.trim_end_matches('/');
+        let url = if path.starts_with('/') {
+            format!("{}{}", host_trimmed, path)
+        } else {
+            format!("{}/{}", host_trimmed, path)
+        };
         let req = self.client
             .request(method.clone(), &url)
             .basic_auth(&self.config.username, Some(&self.password))
@@ -202,6 +207,79 @@ impl EsClient {
                 e
             );
             EsError::Parse(e.to_string())
+        })
+    }
+
+    async fn exec_raw(
+        &self,
+        req: RequestBuilder,
+        method: &reqwest::Method,
+        url: &str,
+    ) -> Result<String, EsError> {
+        tracing::info!("[{}] {} {}", self.config.name, method, url);
+
+        let start = std::time::Instant::now();
+        let resp = req
+            .send()
+            .await
+            .map_err(|e| {
+                let elapsed = start.elapsed();
+                tracing::error!(
+                    "[{}] {} {} — FAILED after {}: {}",
+                    self.config.name,
+                    method,
+                    url,
+                    elapsed_millis(elapsed),
+                    e
+                );
+                EsError::Unreachable(e.to_string())
+            })?;
+
+        let status = resp.status();
+        let elapsed = start.elapsed();
+
+        if !status.is_success() {
+            let text = resp.text().await.unwrap_or_default();
+            tracing::warn!(
+                "[{}] {} {} — {} after {}",
+                self.config.name,
+                method,
+                url,
+                status,
+                elapsed_millis(elapsed),
+            );
+            if !text.is_empty() {
+                tracing::debug!(
+                    "[{}] Response body: {}",
+                    self.config.name,
+                    truncate(&text, 500)
+                );
+            }
+            return Err(EsError::Http {
+                status,
+                message: text,
+            });
+        }
+
+        tracing::info!(
+            "[{}] {} {} — {} after {}",
+            self.config.name,
+            method,
+            url,
+            status,
+            elapsed_millis(elapsed),
+        );
+
+        resp.text().await.map_err(|e| {
+            tracing::error!(
+                "[{}] {} {} — Read error after {}: {}",
+                self.config.name,
+                method,
+                url,
+                elapsed_millis(elapsed),
+                e
+            );
+            EsError::Request(e.to_string())
         })
     }
 
@@ -296,6 +374,46 @@ impl EsClient {
         }
 
         self.exec(req, &method, &url).await
+    }
+
+    pub async fn execute_raw(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        body: Option<String>,
+    ) -> Result<String, EsError> {
+        let (mut req, m, url) = self.request(method, path);
+        if let Some(b) = body {
+            req = req.body(b);
+        }
+        self.exec_raw(req, &m, &url).await
+    }
+
+    pub async fn send_to_host_raw(
+        &self,
+        host: &str,
+        method: reqwest::Method,
+        path: &str,
+        body: Option<String>,
+    ) -> Result<String, EsError> {
+        let base = host.trim_end_matches('/');
+        let url = if path.starts_with('/') {
+            format!("{}{}", base, path)
+        } else {
+            format!("{}/{}", base, path)
+        };
+        let mut req = self
+            .client
+            .request(method.clone(), &url)
+            .basic_auth(&self.config.username, Some(&self.password))
+            .header("kbn-xsrf", "true")
+            .header("Content-Type", "application/json");
+
+        if let Some(b) = body {
+            req = req.body(b);
+        }
+
+        self.exec_raw(req, &method, &url).await
     }
 }
 
