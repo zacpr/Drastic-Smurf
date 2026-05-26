@@ -108,6 +108,7 @@ $ cargo generate-rpm
 - Use `directories` crate for config storage (`~/.config/drastic-smurf/` on Linux).
 - **Export JSON never contains passwords.** Exported cluster configs omit credentials; imported clusters require password re-entry.
 - Per-cluster cached module data (status history, tasks cache, snapshot cache, saved queries) is stored in `config.json` alongside cluster configs.
+- Application state flags, including theme choices, VFX toggles, and onboarding tour status (`wizard_completed`), are persisted in `config.json`.
 - TLS verification is on by default; per-cluster override available.
 - Custom CA certificate support is partially implemented (`CaCert::Custom` works; `CaCert::Bundled` is a TODO).
 - API token auth methods are stubbed in `auth.rs` but not yet wired into `EsClient`.

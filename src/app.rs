@@ -86,6 +86,7 @@ pub struct DrasticSmurfApp {
     pub show_log_window: bool,
     pub konami_six_count: u32,
     pub title_hovered: bool,
+    pub wizard_state: Option<crate::ui::wizard::WizardState>,
 }
 
 impl Default for DrasticSmurfApp {
@@ -165,6 +166,11 @@ impl DrasticSmurfApp {
             show_log_window: false,
             konami_six_count: 0,
             title_hovered: false,
+            wizard_state: if !config.wizard_completed {
+                Some(crate::ui::wizard::WizardState::default())
+            } else {
+                None
+            },
         };
 
         for cluster in &clusters {
@@ -1125,6 +1131,7 @@ impl DrasticSmurfApp {
             Tab::Appearance => {
                 let mut theme_changed = false;
                 let mut vfx_changed = false;
+                let mut tour_triggered = false;
                 render_appearance_module(
                     ui,
                     &mut self.appearance_state,
@@ -1132,7 +1139,12 @@ impl DrasticSmurfApp {
                     &mut self.vfx,
                     &mut theme_changed,
                     &mut vfx_changed,
+                    &mut tour_triggered,
                 );
+                if tour_triggered {
+                    self.wizard_state = Some(crate::ui::wizard::WizardState::default());
+                    self.toasts.info("Onboarding tour started!");
+                }
                 if theme_changed || vfx_changed {
                     if let Err(e) = self
                         .cluster_manager
@@ -1500,6 +1512,27 @@ if self.snapshot_manual_refresh {
         // Dialogs
         self.render_add_cluster_dialog(ctx);
         self.render_delete_confirmation(ctx);
+
+        // Onboarding Wizard Overlay
+        if let Some(mut state) = self.wizard_state.clone() {
+            let mut on_dismiss = false;
+            crate::ui::wizard::render_wizard_overlay(
+                ctx,
+                &mut state,
+                &mut self.cluster_manager,
+                &mut self.current_tab,
+                &mut self.toasts,
+                &mut on_dismiss,
+            );
+            self.wizard_state = Some(state);
+            if on_dismiss {
+                self.wizard_state = None;
+                let mut config = crate::core::config::AppConfig::load().unwrap_or_default();
+                config.wizard_completed = true;
+                let _ = config.save();
+                self.toasts.info("Onboarding tour completed!");
+            }
+        }
 
         // Track window size/position for persistence
         if let Some(rect) = ctx.input(|i| i.viewport().inner_rect) {

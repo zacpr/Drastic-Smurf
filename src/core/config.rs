@@ -212,6 +212,8 @@ pub struct AppConfig {
     pub window_pos_x: Option<f32>,
     #[serde(default)]
     pub window_pos_y: Option<f32>,
+    #[serde(default)]
+    pub wizard_completed: bool,
 }
 
 fn default_refresh_interval_secs() -> u64 {

@@ -16,8 +16,17 @@ pub fn render_appearance_module(
     vfx: &mut VfxSettings,
     on_theme_changed: &mut bool,
     on_vfx_changed: &mut bool,
+    on_tour_triggered: &mut bool,
 ) {
     ui.heading("Appearance");
+    ui.add_space(8.0);
+
+    ui.horizontal(|ui| {
+        if ui.add(egui::Button::new(egui::RichText::new("🚀 Start Onboarding Tour").color(egui::Color32::WHITE)).fill(Theme::accent())).clicked() {
+            *on_tour_triggered = true;
+        }
+        ui.label(egui::RichText::new("Learn how to use all features step-by-step.").color(Theme::text_muted()).size(11.0));
+    });
     ui.add_space(16.0);
 
     egui::Frame::new()
