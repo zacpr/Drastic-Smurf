@@ -4,6 +4,31 @@ use std::collections::HashSet;
 
 use crate::ui::theme::Theme;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TimeframePreset {
+    Last30m,
+    Last1h,
+    Last6h,
+    Last12h,
+    Last24h,
+    Last72h,
+    Custom,
+}
+
+impl TimeframePreset {
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::Last30m => "🕒 Last 30m",
+            Self::Last1h => "🕒 Last 1h",
+            Self::Last6h => "🕒 Last 6h",
+            Self::Last12h => "🕒 Last 12h",
+            Self::Last24h => "🕒 Last day",
+            Self::Last72h => "🕒 Last 72h",
+            Self::Custom => "🕒 Custom Range",
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct DiscoverState {
     pub selected_cluster: String,
@@ -15,13 +40,29 @@ pub struct DiscoverState {
     pub expanded_doc_id: Option<String>,
     pub available_fields: Vec<String>,
     pub selected_fields: Vec<String>,
+
+    // Timeframe Selector State
+    pub time_preset: TimeframePreset,
+    pub custom_from_year: i32,
+    pub custom_from_month: u32,
+    pub custom_from_day: u32,
+    pub custom_from_hour: u32,
+    pub custom_from_minute: u32,
+    pub custom_from_second: u32,
+    pub custom_to_year: i32,
+    pub custom_to_month: u32,
+    pub custom_to_day: u32,
+    pub custom_to_hour: u32,
+    pub custom_to_minute: u32,
+    pub custom_to_second: u32,
+    pub show_time_selector_popup: bool,
 }
 
 impl Default for DiscoverState {
     fn default() -> Self {
         Self {
             selected_cluster: String::new(),
-            index_pattern: "*".to_string(),
+            index_pattern: "logs-elasticsearch-*".to_string(),
             search_query: "".to_string(),
             is_loading: false,
             error: None,
@@ -29,6 +70,22 @@ impl Default for DiscoverState {
             expanded_doc_id: None,
             available_fields: Vec::new(),
             selected_fields: vec!["_source".to_string()],
+
+            // Default custom time to a modern reference date
+            time_preset: TimeframePreset::Last1h,
+            custom_from_year: 2026,
+            custom_from_month: 5,
+            custom_from_day: 26,
+            custom_from_hour: 0,
+            custom_from_minute: 0,
+            custom_from_second: 0,
+            custom_to_year: 2026,
+            custom_to_month: 5,
+            custom_to_day: 26,
+            custom_to_hour: 23,
+            custom_to_minute: 59,
+            custom_to_second: 59,
+            show_time_selector_popup: false,
         }
     }
 }
@@ -94,11 +151,151 @@ fn get_json_path(value: &Value, path: &str) -> Option<Value> {
     Some(current.clone())
 }
 
+/// Pure math helper to calculate days in month
+fn days_in_month(year: i32, month: u32) -> u32 {
+    match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 => {
+            if (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0) {
+                29
+            } else {
+                28
+            }
+        }
+        _ => 30,
+    }
+}
+
+/// Pure math helper to calculate day of week for 1st of month using Zeller's Congruence.
+/// Returns Sunday = 0, Monday = 1, ..., Saturday = 6.
+fn day_of_week_first_of_month(year: i32, month: u32) -> u32 {
+    let mut y = year;
+    let mut m = month;
+    if m < 3 {
+        m += 12;
+        y -= 1;
+    }
+    let k = y % 100;
+    let j = y / 100;
+    
+    // Zeller's formula for positive inputs
+    let h = (1 + (13 * (m as i32 + 1)) / 5 + k + k / 4 + j / 4 + 5 * j) % 7;
+    
+    // Zeller: 0 = Saturday, 1 = Sunday, ..., 6 = Friday
+    match h {
+        0 => 6, // Saturday
+        1 => 0, // Sunday
+        2 => 1, // Monday
+        3 => 2, // Tuesday
+        4 => 3, // Wednesday
+        5 => 4, // Thursday
+        6 => 5, // Friday
+        _ => 0,
+    }
+}
+
+/// Beautifully renders a pure stateless date picker grid
+fn draw_calendar_picker(
+    ui: &mut Ui,
+    year: &mut i32,
+    month: &mut u32,
+    day: &mut u32,
+    id_salt: &'static str,
+) {
+    ui.vertical(|ui| {
+        // Month/Year navigation row
+        ui.horizontal(|ui| {
+            if ui.button("◀").clicked() {
+                if *month == 1 {
+                    *month = 12;
+                    *year -= 1;
+                } else {
+                    *month -= 1;
+                }
+            }
+            
+            let month_name = match *month {
+                1 => "Jan", 2 => "Feb", 3 => "Mar", 4 => "Apr",
+                5 => "May", 6 => "Jun", 7 => "Jul", 8 => "Aug",
+                9 => "Sep", 10 => "Oct", 11 => "Nov", 12 => "Dec",
+                _ => "Month"
+            };
+            ui.allocate_ui(egui::Vec2::new(76.0, 18.0), |ui| {
+                ui.vertical_centered(|ui| {
+                    ui.label(egui::RichText::new(format!("{} {}", month_name, year)).strong());
+                });
+            });
+
+            if ui.button("▶").clicked() {
+                if *month == 12 {
+                    *month = 1;
+                    *year += 1;
+                } else {
+                    *month += 1;
+                }
+            }
+        });
+
+        ui.add_space(4.0);
+
+        // Day of week headers
+        ui.horizontal(|ui| {
+            let days_headers = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
+            for header in &days_headers {
+                ui.allocate_ui(egui::Vec2::new(20.0, 14.0), |ui| {
+                    ui.vertical_centered(|ui| {
+                        ui.label(egui::RichText::new(*header).size(10.0).color(Theme::text_muted()));
+                    });
+                });
+            }
+        });
+
+        let total_days = days_in_month(*year, *month);
+        let first_day_weekday = day_of_week_first_of_month(*year, *month);
+
+        // 6 rows, 7 columns grid
+        let mut current_day = 1;
+        egui::Grid::new(id_salt)
+            .spacing([2.0, 2.0])
+            .show(ui, |ui| {
+                for r in 0..6 {
+                    for c in 0..7 {
+                        let cell_idx = r * 7 + c;
+                        if cell_idx < first_day_weekday as i32 || current_day > total_days {
+                            ui.allocate_ui(egui::Vec2::new(20.0, 20.0), |ui| {
+                                ui.label("");
+                            });
+                        } else {
+                            let is_selected = *day == current_day;
+                            let btn_text = current_day.to_string();
+                            
+                            let mut btn = egui::Button::new(egui::RichText::new(btn_text).size(10.0));
+                            if is_selected {
+                                btn = btn.fill(Theme::accent());
+                            } else {
+                                btn = btn.fill(Color32::TRANSPARENT);
+                            }
+
+                            ui.allocate_ui(egui::Vec2::new(20.0, 20.0), |ui| {
+                                if ui.add(btn).clicked() {
+                                    *day = current_day;
+                                }
+                            });
+                            current_day += 1;
+                        }
+                    }
+                    ui.end_row();
+                }
+            });
+    });
+}
+
 pub fn render_discover_module(
     ui: &mut Ui,
     state: &mut DiscoverState,
     cluster_names: &[String],
-    on_search_triggered: &mut Option<(String, String)>, // (method, path, body) target return
+    on_search_triggered: &mut Option<(String, String)>,
 ) {
     ui.heading("Discover");
     ui.add_space(8.0);
@@ -107,6 +304,8 @@ pub fn render_discover_module(
     if state.selected_cluster.is_empty() && !cluster_names.is_empty() {
         state.selected_cluster = cluster_names[0].clone();
     }
+
+    let mut trigger_search = false;
 
     // Top control bar card
     egui::Frame::new()
@@ -125,24 +324,42 @@ pub fn render_discover_module(
                         }
                     });
 
-                ui.add_space(8.0);
+                ui.add_space(4.0);
 
                 // Index Pattern
-                ui.label("Index Pattern:");
+                ui.label("Index:");
                 ui.add(
                     egui::TextEdit::singleline(&mut state.index_pattern)
-                        .hint_text("e.g. logstash-*")
+                        .hint_text("logs-elasticsearch-*")
                         .desired_width(140.0),
                 );
 
-                ui.add_space(8.0);
+                ui.add_space(4.0);
+
+                // Time selector button
+                let selector_label = if state.time_preset == TimeframePreset::Custom {
+                    format!(
+                        "🕒 Custom ({:02}/{:02} to {:02}/{:02})",
+                        state.custom_from_month, state.custom_from_day,
+                        state.custom_to_month, state.custom_to_day
+                    )
+                } else {
+                    state.time_preset.label().to_string()
+                };
+
+                let time_btn = ui.button(egui::RichText::new(selector_label).strong());
+                if time_btn.clicked() {
+                    state.show_time_selector_popup = !state.show_time_selector_popup;
+                }
+
+                ui.add_space(4.0);
 
                 // Search query
                 ui.label("Search:");
                 let search_input = ui.add(
                     egui::TextEdit::singleline(&mut state.search_query)
-                        .hint_text("e.g. status:500 OR level:error")
-                        .desired_width(320.0),
+                        .hint_text("status:500 OR level:error")
+                        .desired_width(180.0),
                 );
 
                 // Clear button inside search query space
@@ -152,7 +369,7 @@ pub fn render_discover_module(
                     }
                 }
 
-                ui.add_space(8.0);
+                ui.add_space(4.0);
 
                 // Search Button with loading indicator
                 let search_btn_text = if state.is_loading { "Searching..." } else { "🔍 Search" };
@@ -170,39 +387,248 @@ pub fn render_discover_module(
                 if (btn.clicked() || (search_input.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter))))
                     && !state.selected_cluster.is_empty()
                 {
-                    state.is_loading = true;
-                    state.error = None;
-                    state.results.clear();
-
-                    // Formulate query body
-                    let body = if state.search_query.trim().is_empty() {
-                        serde_json::json!({
-                            "size": 50,
-                            "sort": [
-                                { "@timestamp": { "order": "desc", "unmapped_type": "date" } }
-                            ]
-                        })
-                    } else {
-                        serde_json::json!({
-                            "size": 50,
-                            "sort": [
-                                { "@timestamp": { "order": "desc", "unmapped_type": "date" } }
-                            ],
-                            "query": {
-                                "query_string": {
-                                    "query": state.search_query
-                                }
-                            }
-                        })
-                    };
-
-                    let body_str = serde_json::to_string_pretty(&body).unwrap_or_default();
-                    let path = format!("/{}/_search", state.index_pattern);
-
-                    *on_search_triggered = Some((path, body_str));
+                    trigger_search = true;
                 }
             });
         });
+
+    ui.add_space(4.0);
+
+    // Timeframe selector drawer (slides down if open)
+    if state.show_time_selector_popup {
+        egui::Frame::new()
+            .fill(Theme::bg_input())
+            .corner_radius(Theme::CARD_ROUNDING)
+            .inner_margin(Theme::CARD_PADDING)
+            .stroke(Stroke::new(1.0, Theme::accent()))
+            .show(ui, |ui| {
+                ui.horizontal_top(|ui| {
+                    // Left Column: Presets
+                    ui.vertical(|ui| {
+                        ui.label(egui::RichText::new("Quick Presets").strong().color(Theme::accent()));
+                        ui.add_space(6.0);
+                        
+                        let presets = [
+                            TimeframePreset::Last30m,
+                            TimeframePreset::Last1h,
+                            TimeframePreset::Last6h,
+                            TimeframePreset::Last12h,
+                            TimeframePreset::Last24h,
+                            TimeframePreset::Last72h,
+                        ];
+
+                        for p in presets {
+                            let is_active = state.time_preset == p;
+                            let mut btn = egui::Button::new(p.label());
+                            if is_active {
+                                btn = btn.fill(Theme::accent());
+                            }
+                            if ui.add_sized([120.0, 20.0], btn).clicked() {
+                                state.time_preset = p;
+                                state.show_time_selector_popup = false;
+                                trigger_search = true;
+                            }
+                            ui.add_space(4.0);
+                        }
+                    });
+
+                    ui.add_space(16.0);
+                    ui.separator();
+                    ui.add_space(16.0);
+
+                    // Middle Column: From Date/Time
+                    ui.vertical(|ui| {
+                        ui.label(egui::RichText::new("From Date & Time").strong().color(Theme::accent()));
+                        ui.add_space(6.0);
+
+                        draw_calendar_picker(
+                            ui,
+                            &mut state.custom_from_year,
+                            &mut state.custom_from_month,
+                            &mut state.custom_from_day,
+                            "calendar_from",
+                        );
+
+                        ui.add_space(6.0);
+                        ui.horizontal(|ui| {
+                            ui.label("Time:");
+                            ui.add(egui::DragValue::new(&mut state.custom_from_hour).range(0..=23).suffix("h"));
+                            ui.label(":");
+                            ui.add(egui::DragValue::new(&mut state.custom_from_minute).range(0..=59).suffix("m"));
+                            ui.label(":");
+                            ui.add(egui::DragValue::new(&mut state.custom_from_second).range(0..=59).suffix("s"));
+                        });
+                    });
+
+                    ui.add_space(16.0);
+                    ui.separator();
+                    ui.add_space(16.0);
+
+                    // Right Column: To Date/Time
+                    ui.vertical(|ui| {
+                        ui.label(egui::RichText::new("To Date & Time").strong().color(Theme::accent()));
+                        ui.add_space(6.0);
+
+                        draw_calendar_picker(
+                            ui,
+                            &mut state.custom_to_year,
+                            &mut state.custom_to_month,
+                            &mut state.custom_to_day,
+                            "calendar_to",
+                        );
+
+                        ui.add_space(6.0);
+                        ui.horizontal(|ui| {
+                            ui.label("Time:");
+                            ui.add(egui::DragValue::new(&mut state.custom_to_hour).range(0..=23).suffix("h"));
+                            ui.label(":");
+                            ui.add(egui::DragValue::new(&mut state.custom_to_minute).range(0..=59).suffix("m"));
+                            ui.label(":");
+                            ui.add(egui::DragValue::new(&mut state.custom_to_second).range(0..=59).suffix("s"));
+                        });
+                    });
+                });
+
+                ui.add_space(12.0);
+                ui.separator();
+                ui.add_space(8.0);
+
+                // Footer Apply / Cancel buttons
+                ui.horizontal(|ui| {
+                    let apply_btn = egui::Button::new(
+                        egui::RichText::new("Apply Custom Range")
+                            .color(Color32::WHITE)
+                            .strong()
+                    ).fill(Theme::success());
+                    
+                    if ui.add(apply_btn).clicked() {
+                        state.time_preset = TimeframePreset::Custom;
+                        state.show_time_selector_popup = false;
+                        trigger_search = true;
+                    }
+
+                    if ui.button("Cancel").clicked() {
+                        state.show_time_selector_popup = false;
+                    }
+                });
+            });
+        ui.add_space(8.0);
+    }
+
+    // Execute Search if triggered
+    if trigger_search && !state.selected_cluster.is_empty() {
+        state.is_loading = true;
+        state.error = None;
+        state.results.clear();
+
+        // Formulate query body
+        let range_filter = match state.time_preset {
+            TimeframePreset::Last30m => {
+                Some(serde_json::json!({
+                    "@timestamp": {
+                        "gte": "now-30m",
+                        "lte": "now"
+                    }
+                }))
+            }
+            TimeframePreset::Last1h => {
+                Some(serde_json::json!({
+                    "@timestamp": {
+                        "gte": "now-1h",
+                        "lte": "now"
+                    }
+                }))
+            }
+            TimeframePreset::Last6h => {
+                Some(serde_json::json!({
+                    "@timestamp": {
+                        "gte": "now-6h",
+                        "lte": "now"
+                    }
+                }))
+            }
+            TimeframePreset::Last12h => {
+                Some(serde_json::json!({
+                    "@timestamp": {
+                        "gte": "now-12h",
+                        "lte": "now"
+                    }
+                }))
+            }
+            TimeframePreset::Last24h => {
+                Some(serde_json::json!({
+                    "@timestamp": {
+                        "gte": "now-24h",
+                        "lte": "now"
+                    }
+                }))
+            }
+            TimeframePreset::Last72h => {
+                Some(serde_json::json!({
+                    "@timestamp": {
+                        "gte": "now-72h",
+                        "lte": "now"
+                    }
+                }))
+            }
+            TimeframePreset::Custom => {
+                let from_str = format!(
+                    "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
+                    state.custom_from_year, state.custom_from_month, state.custom_from_day,
+                    state.custom_from_hour, state.custom_from_minute, state.custom_from_second
+                );
+                let to_str = format!(
+                    "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
+                    state.custom_to_year, state.custom_to_month, state.custom_to_day,
+                    state.custom_to_hour, state.custom_to_minute, state.custom_to_second
+                );
+                Some(serde_json::json!({
+                    "@timestamp": {
+                        "gte": from_str,
+                        "lte": to_str
+                    }
+                }))
+            }
+        };
+
+        let mut must_clauses = vec![];
+        if !state.search_query.trim().is_empty() {
+            must_clauses.push(serde_json::json!({
+                "query_string": {
+                    "query": state.search_query
+                }
+            }));
+        } else {
+            must_clauses.push(serde_json::json!({
+                "match_all": {}
+            }));
+        }
+
+        let mut filter_clauses = vec![];
+        if let Some(rf) = range_filter {
+            filter_clauses.push(serde_json::json!({
+                "range": rf
+            }));
+        }
+
+        let body = serde_json::json!({
+            "size": 50,
+            "sort": [
+                { "@timestamp": { "order": "desc", "unmapped_type": "date" } }
+            ],
+            "query": {
+                "bool": {
+                    "must": must_clauses,
+                    "filter": filter_clauses
+                }
+            }
+        });
+
+        let body_str = serde_json::to_string_pretty(&body).unwrap_or_default();
+        let path = format!("/{}/_search", state.index_pattern);
+
+        *on_search_triggered = Some((path, body_str));
+    }
 
     ui.add_space(12.0);
 
