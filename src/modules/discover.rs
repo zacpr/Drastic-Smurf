@@ -62,7 +62,7 @@ impl Default for DiscoverState {
     fn default() -> Self {
         Self {
             selected_cluster: String::new(),
-            index_pattern: "logs-elasticsearch-*".to_string(),
+            index_pattern: "logs-elasticsearch*".to_string(),
             search_query: "".to_string(),
             is_loading: false,
             error: None,
@@ -330,7 +330,7 @@ pub fn render_discover_module(
                 ui.label("Index:");
                 ui.add(
                     egui::TextEdit::singleline(&mut state.index_pattern)
-                        .hint_text("logs-elasticsearch-*")
+                        .hint_text("logs-elasticsearch*")
                         .desired_width(140.0),
                 );
 
