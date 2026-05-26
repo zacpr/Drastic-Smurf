@@ -105,15 +105,15 @@ impl ClusterManager {
         let refresh_interval_secs = *self.refresh_interval_secs.lock().unwrap();
         let theme = self.theme.lock().unwrap().clone();
         let vfx = self.vfx.lock().unwrap().clone();
-        let config = crate::core::config::AppConfig {
-            clusters: clusters.clone(),
-            cluster_data: data.clone(),
-            auto_refresh,
-            refresh_interval_secs,
-            theme,
-            vfx,
-            ..Default::default()
-        };
+        
+        let mut config = crate::core::config::AppConfig::load().unwrap_or_default();
+        config.clusters = clusters.clone();
+        config.cluster_data = data.clone();
+        config.auto_refresh = auto_refresh;
+        config.refresh_interval_secs = refresh_interval_secs;
+        config.theme = theme;
+        config.vfx = vfx;
+        
         config.save()?;
         Ok(())
     }
