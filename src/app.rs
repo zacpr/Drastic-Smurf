@@ -1046,8 +1046,11 @@ impl DrasticSmurfApp {
                         .filter(|(n, _)| self.cluster_matches_filter(n))
                         .map(|(n, e)| (n.clone(), e.clone()))
                         .collect(),
+                    expanded_tasks: self.tasks_state.expanded_tasks.clone(),
                 };
                 render_tasks_module(ui, &mut filtered_tasks_state);
+                self.tasks_state.filter = filtered_tasks_state.filter;
+                self.tasks_state.expanded_tasks = filtered_tasks_state.expanded_tasks;
             }
             Tab::Console => {
                 let names: Vec<String> = self
