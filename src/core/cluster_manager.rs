@@ -361,7 +361,12 @@ impl ClusterManager {
         if let Some(cluster) = cluster {
             if cluster.ssh_tunnel && !cluster.ssh_host.is_empty() {
                 let info = SshTunnel::spawn(&cluster).await?;
-                let url = format!("http://127.0.0.1:{}", info.local_port);
+                let protocol = if cluster.host.starts_with("https://") {
+                    "https"
+                } else {
+                    "http"
+                };
+                let url = format!("{}://127.0.0.1:{}", protocol, info.local_port);
 
                 // Double-check after async op
                 let mut tunnels = self.tunnels.lock().unwrap();

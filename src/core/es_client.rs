@@ -54,7 +54,7 @@ impl EsClient {
             }
         };
 
-        if !config.verify_ssl {
+        if !config.verify_ssl || config.ssh_tunnel {
             builder = builder.danger_accept_invalid_certs(true);
         }
 
@@ -879,7 +879,12 @@ impl EsClient {
             let result = if tunnel_ready {
                 // Build a temporary test client pointing to the tunnel's local port
                 let mut test_config = self.config.clone();
-                test_config.host = format!("http://127.0.0.1:{}", local_port);
+                let protocol = if self.config.host.starts_with("https://") {
+                    "https"
+                } else {
+                    "http"
+                };
+                test_config.host = format!("{}://127.0.0.1:{}", protocol, local_port);
                 
                 if let Ok(test_client) = Self::with_password(&test_config, &self.password) {
                     // Execute HTTP request
