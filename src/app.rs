@@ -919,30 +919,26 @@ impl DrasticSmurfApp {
                         let ctx = ui.ctx().clone();
                         let tx = self.refresh_tx.clone();
                         tokio::spawn(async move {
-                            let result = client.cluster_health().await;
+                            let result = client.test_connection_detailed().await;
                             match &result {
-                                Ok(h) => {
+                                Ok(msg) => {
                                     tracing::info!(
-                                        "Test connection succeeded for '{}': {} (status={})",
+                                        "Test connection succeeded for '{}': {}",
                                         test_name,
-                                        h.cluster_name,
-                                        h.status
+                                        msg
                                     );
                                 }
-                                Err(e) => {
+                                Err(msg) => {
                                     tracing::warn!(
                                         "Test connection failed for '{}': {}",
                                         test_name,
-                                        e
+                                        msg
                                     );
                                 }
                             }
                             let msg = match result {
-                                Ok(h) => format!(
-                                    "Connected! Cluster: {}, Status: {}",
-                                    h.cluster_name, h.status
-                                ),
-                                Err(e) => format!("Failed: {}", e),
+                                Ok(msg) => msg,
+                                Err(msg) => msg,
                             };
                             let _ = tx.send(RefreshMsg::TestResult(msg));
                             ctx.request_repaint();
@@ -1333,13 +1329,10 @@ impl DrasticSmurfApp {
                                 let ctx = ctx.clone();
                                 let tx = self.refresh_tx.clone();
                                 tokio::spawn(async move {
-                                    let result = c.cluster_health().await;
+                                    let result = c.test_connection_detailed().await;
                                     let msg = match result {
-                                        Ok(h) => format!(
-                                            "Connected! Cluster: {}, Status: {}",
-                                            h.cluster_name, h.status
-                                        ),
-                                        Err(e) => format!("Failed: {}", e),
+                                        Ok(msg) => msg,
+                                        Err(msg) => msg,
                                     };
                                     let _ = tx.send(RefreshMsg::TestResult(msg));
                                     ctx.request_repaint();

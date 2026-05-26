@@ -768,3 +768,182 @@ fn truncate(s: &str, max_len: usize) -> String {
         format!("{}...", &s[..max_len])
     }
 }
+
+impl EsClient {
+    pub async fn test_connection_detailed(&self) -> Result<String, String> {
+        use std::process::Stdio;
+        use tokio::io::AsyncBufReadExt;
+
+        if !self.config.ssh_tunnel || self.config.ssh_host.is_empty() {
+            // Direct connection
+            match self.cluster_health().await {
+                Ok(h) => Ok(format!(
+                    "Connected successfully!\n\n• Cluster: {}\n• Status: {}\n• Nodes: {}\n• Active Shards: {}",
+                    h.cluster_name, h.status, h.number_of_nodes, h.active_shards
+                )),
+                Err(e) => {
+                    Err(format!(
+                        "HTTP Request Failed!\n\nError: {}\n\nPossible causes:\n1. Elasticsearch is not running at {}\n2. Incorrect username or password\n3. Network/firewall blocking connection\n4. TLS/SSL verification failed (override available in cluster settings)",
+                        e, self.config.host
+                    ))
+                }
+            }
+        } else {
+            // SSH tunnel connection
+            let local_port = match Self::find_free_port() {
+                Ok(p) => p,
+                Err(e) => return Err(format!("Failed to find free local port: {}", e)),
+            };
+
+            let es_host = Self::parse_host(&self.config.host);
+            let es_port = Self::parse_port(&self.config.host).unwrap_or(9200);
+
+            let ssh_target = if self.config.ssh_user.is_empty() {
+                self.config.ssh_host.clone()
+            } else {
+                format!("{}@{}", self.config.ssh_user, self.config.ssh_host)
+            };
+
+            let mut cmd = tokio::process::Command::new("ssh");
+            cmd.arg("-N")
+                .arg("-v") // Verbose mode is essential for log output!
+                .arg("-o").arg("ServerAliveInterval=30")
+                .arg("-o").arg("ServerAliveCountMax=2")
+                .arg("-o").arg("ExitOnForwardFailure=yes")
+                .arg("-L").arg(format!("127.0.0.1:{}:{}:{}", local_port, es_host, es_port))
+                .arg("-p").arg(self.config.ssh_port.to_string())
+                .arg(&ssh_target)
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::piped());
+
+            let mut child = match cmd.spawn() {
+                Ok(c) => c,
+                Err(e) => return Err(format!("Failed to spawn SSH process: {}\nIs 'ssh' installed and in PATH?", e)),
+            };
+
+            let stderr = child.stderr.take().unwrap();
+            let mut reader = tokio::io::BufReader::new(stderr).lines();
+            
+            // Collect SSH logs in the background while waiting for connection or timeout
+            let log_lines = std::sync::Arc::new(tokio::sync::Mutex::new(Vec::<String>::new()));
+            let log_lines_clone = log_lines.clone();
+            
+            let mut ssh_finished = false;
+            let mut child_exit_status = None;
+
+            // Spawn a task to read stderr logs
+            let log_reader_handle = tokio::spawn(async move {
+                while let Ok(Some(line)) = reader.next_line().await {
+                    let mut logs = log_lines_clone.lock().await;
+                    // Keep the last 100 lines
+                    if logs.len() > 100 {
+                        logs.remove(0);
+                    }
+                    logs.push(line);
+                }
+            });
+
+            // Wait for a few seconds to let SSH establish connection
+            let mut tunnel_ready = false;
+            for _ in 0..15 { // Max 3 seconds (15 * 200ms)
+                tokio::time::sleep(Duration::from_millis(200)).await;
+                
+                // Check if child exited early
+                if let Ok(Some(status)) = child.try_wait() {
+                    ssh_finished = true;
+                    child_exit_status = Some(status);
+                    break;
+                }
+                
+                // Read current logs to see if connection is established
+                let logs = log_lines.lock().await;
+                let established = logs.iter().any(|line| {
+                    line.contains("Entering interactive session") ||
+                    line.contains("Authentication succeeded") ||
+                    line.contains("Local connections to") ||
+                    line.contains("Local forwarding listening")
+                });
+                
+                if established {
+                    tunnel_ready = true;
+                    break;
+                }
+            }
+
+            // If not found in logs but process is still alive, we can also assume it's running
+            if !ssh_finished && !tunnel_ready {
+                tunnel_ready = true;
+            }
+
+            let result = if tunnel_ready {
+                // Build a temporary test client pointing to the tunnel's local port
+                let mut test_config = self.config.clone();
+                test_config.host = format!("http://127.0.0.1:{}", local_port);
+                
+                if let Ok(test_client) = Self::with_password(&test_config, &self.password) {
+                    // Execute HTTP request
+                    match test_client.cluster_health().await {
+                        Ok(h) => {
+                            let ssh_logs = log_lines.lock().await.join("\n");
+                            Ok(format!(
+                                "Connected successfully through SSH tunnel!\n\n• Cluster: {}\n• Status: {}\n• Nodes: {}\n• Active Shards: {}\n\n=== SSH Connection Logs ===\n{}",
+                                h.cluster_name, h.status, h.number_of_nodes, h.active_shards, ssh_logs
+                            ))
+                        }
+                        Err(e) => {
+                            let ssh_logs = log_lines.lock().await.join("\n");
+                            Err(format!(
+                                "SSH Tunnel established, but Elasticsearch HTTP request failed!\n\nHTTP Error: {}\n\nPossible causes:\n1. Elasticsearch is not running on target host at {}\n2. Incorrect Elasticsearch credentials\n\n=== SSH Connection Logs ===\n{}",
+                                e, self.config.host, ssh_logs
+                            ))
+                        }
+                    }
+                } else {
+                    Err("Failed to build internal test client".to_string())
+                }
+            } else {
+                let ssh_logs = log_lines.lock().await.join("\n");
+                let exit_desc = match child_exit_status {
+                    Some(status) => format!("SSH exited with status: {}", status),
+                    None => "SSH connection timed out".to_string(),
+                };
+                Err(format!(
+                    "SSH Connection Failed!\n\nReason: {}\n\n=== SSH Connection Logs ===\n{}",
+                    exit_desc, ssh_logs
+                ))
+            };
+
+            // Clean up: abort reader and kill child process
+            log_reader_handle.abort();
+            let _ = child.kill().await;
+
+            result
+        }
+    }
+
+    fn find_free_port() -> Result<u16> {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
+        let port = listener.local_addr()?.port();
+        drop(listener);
+        Ok(port)
+    }
+
+    fn parse_host(host: &str) -> String {
+        let host = host.trim();
+        let host = host
+            .strip_prefix("http://")
+            .or_else(|| host.strip_prefix("https://"))
+            .unwrap_or(host);
+        host.split(':').next().unwrap_or(host).to_string()
+    }
+
+    fn parse_port(host: &str) -> Option<u16> {
+        let host = host.trim();
+        let host = host
+            .strip_prefix("http://")
+            .or_else(|| host.strip_prefix("https://"))
+            .unwrap_or(host);
+        host.split(':').nth(1)?.parse().ok()
+    }
+}
