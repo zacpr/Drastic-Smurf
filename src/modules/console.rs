@@ -1130,13 +1130,19 @@ pub fn render_console_module(
                         }
                     });
                     
-                    let response_height = (ui.available_height() - 8.0).max(80.0);
-                    ui.add_sized(
-                        [ui.available_width(), response_height],
-                        egui::TextEdit::multiline(&mut state.response)
-                            .code_editor()
-                            .desired_rows(6),
-                    );
+                    let response_height = (ui.available_height() - 16.0).max(80.0);
+                    egui::ScrollArea::vertical()
+                        .id_salt("console_response_scroll")
+                        .max_height(response_height)
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| {
+                            ui.add(
+                                egui::TextEdit::multiline(&mut state.response)
+                                    .code_editor()
+                                    .desired_width(ui.available_width())
+                                    .desired_rows(6),
+                            );
+                        });
                 });
         });
     });
