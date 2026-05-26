@@ -1508,7 +1508,8 @@ if self.snapshot_manual_refresh {
             .frame(
                 egui::Frame::new()
                     .fill(central_fill)
-                    .stroke(egui::Stroke::new(1.0, Theme::border())),
+                    .stroke(egui::Stroke::new(1.0, Theme::border()))
+                    .inner_margin(egui::Vec2::new(16.0, 16.0)),
             )
             .show(ctx, |ui| {
                 self.render_tabs(ui);
