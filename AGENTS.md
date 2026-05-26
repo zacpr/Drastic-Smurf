@@ -67,6 +67,9 @@ $ cargo build
 # Build release
 $ cargo build --release
 
+# Build Windows release (cross-compile)
+$ cargo build --release --target x86_64-pc-windows-gnu
+
 # Run
 $ cargo run
 ```
