@@ -301,7 +301,7 @@ pub fn render_wizard_overlay(
                             ui.label(egui::RichText::new("📊").size(36.0));
                             ui.add_space(8.0);
                             ui.label(
-                                egui::RichText::new("A comprehensive 1-to-2 column health dashboard.")
+                                egui::RichText::new("A Cross-cluster health dashboard.")
                                     .size(13.0)
                                     .strong()
                             );
