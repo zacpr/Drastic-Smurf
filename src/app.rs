@@ -113,8 +113,14 @@ impl DrasticSmurfApp {
             console_state.selected_cluster = first.clone();
         }
 
-        let config = crate::core::config::AppConfig::load().unwrap_or_default();
+        let mut config = crate::core::config::AppConfig::load().unwrap_or_default();
         crate::ui::theme::Theme::set(config.theme.clone());
+
+        let show_wizard = !config.wizard_completed;
+        if show_wizard {
+            config.wizard_completed = true;
+            let _ = config.save();
+        }
 
         let mut app = Self {
             cluster_manager: manager.clone(),
@@ -166,7 +172,7 @@ impl DrasticSmurfApp {
             show_log_window: false,
             konami_six_count: 0,
             title_hovered: false,
-            wizard_state: if !config.wizard_completed {
+            wizard_state: if show_wizard {
                 Some(crate::ui::wizard::WizardState::default())
             } else {
                 None

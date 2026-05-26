@@ -250,3 +250,20 @@ impl AppConfig {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_load_real_config() {
+        match AppConfig::load() {
+            Ok(cfg) => {
+                println!("SUCCESSFULLY LOADED! wizard_completed: {}", cfg.wizard_completed);
+            }
+            Err(e) => {
+                panic!("ERROR LOADING REAL CONFIG: {:?}", e);
+            }
+        }
+    }
+}
