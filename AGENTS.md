@@ -20,7 +20,7 @@
 |--------|--------|-------------|
 | **Snapshot Monitoring** | ✅ Functional | Cards with progress bars, speed/ETA, sparklines, SLM policy info. Modeled after `es-snap-mon`. Responsive 1→2 column layout. |
 | **Cluster Status** | ✅ Functional | Health dashboard with nodes, shards, indices, docs, store size, JVM heap. Responsive 1→2 column layout. |
-| **Task Monitoring** | ✅ Functional | Filterable task grid (cluster, action, description, running time, cancellable). |
+| **Task Monitoring** | ✅ Functional | Filterable task grid (cluster, action, description, running time, cancellable) with dynamic category dropdown filtering. |
 | **Clusters** | ✅ Functional | Centralized cluster management: list, add/edit, test connection, import/export. |
 | **Elastic Console** | ✅ Enhanced | Category-based Elasticsearch & Kibana presets (40+ items), official documentation links, automatic connection target host toggles (ES vs Kibana), custom variables with interpolation, command history cycling, and saved queries. |
 | **Discover** | ✅ Functional | A cutdown mimic of Kibana's Discover. Index pattern interrogating, Lucene/KQL search queries, dynamic available fields selection, and collapsible document JSON drawers. |
@@ -145,7 +145,7 @@ $ cargo generate-rpm
 
 1. **Tests** — Add unit tests for snapshot stat calculations and config roundtrips. (Completed: `human_duration`, `human_nanos`, `human_bytes`, and `human_docs` formatting helpers are now fully tested!)
 2. **Status module depth** — Currently shows a flat card list. The plan calls for an overview of all clusters, selected subset view, and detailed single-cluster view.
-3. **Task type filtering** — Text search exists, but task-type dropdown filtering is not implemented.
+3. **Task type filtering** — (Completed: Task-type dropdown filtering is fully implemented, allowing users to select and filter by action namespaces like indices, cluster, or transport!)
 4. **Console enhancements** — No JSON syntax highlighting or response folding.
 5. **Passphrase-encrypted export** — Export is currently plaintext JSON without passwords. Encrypted export could be added later.
 6. **AGENTS.md upkeep** — Update this file whenever modules, build steps, or security boundaries change.
