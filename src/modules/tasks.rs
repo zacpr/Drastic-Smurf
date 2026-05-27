@@ -7,6 +7,7 @@ use egui::{Ui, Vec2, Frame, Margin, CornerRadius};
 pub struct TasksState {
     pub tasks: Vec<(String, TaskInfo)>,
     pub filter: String,
+    pub selected_type: String,
     pub errors: std::collections::HashMap<String, String>,
     pub expanded_tasks: std::collections::HashSet<String>, // format: "{cluster}:{node}:{id}"
 }
@@ -15,18 +16,58 @@ pub fn render_tasks_module(ui: &mut Ui, state: &mut TasksState) {
     ui.heading("Task Monitoring");
     ui.add_space(16.0);
 
+    // Extract dynamic categories from current tasks list
+    let mut categories: std::collections::HashSet<String> = std::collections::HashSet::new();
+    categories.insert("All".to_string());
+    for (_, task) in &state.tasks {
+        if let Some(pos) = task.action.find(':') {
+            categories.insert(task.action[..pos].to_string());
+        } else {
+            categories.insert(task.action.clone());
+        }
+    }
+    let mut cat_list: Vec<String> = categories.into_iter().collect();
+    cat_list.sort_by(|a, b| {
+        if a == "All" {
+            std::cmp::Ordering::Less
+        } else if b == "All" {
+            std::cmp::Ordering::Greater
+        } else {
+            a.cmp(b)
+        }
+    });
+
     // Search and Filter Bar
     ui.horizontal(|ui| {
         ui.label(egui::RichText::new("Filter Tasks:").strong().color(Theme::text_secondary()));
         let filter_edit = egui::TextEdit::singleline(&mut state.filter)
             .hint_text("Search action, description, or cluster...");
-        ui.add_sized([300.0, ui.available_height()], filter_edit);
+        ui.add_sized([250.0, ui.available_height()], filter_edit);
         
         if !state.filter.is_empty() {
             if ui.button("Clear").clicked() {
                 state.filter.clear();
             }
         }
+
+        ui.add_space(8.0);
+        ui.label(egui::RichText::new("Category:").strong().color(Theme::text_secondary()));
+
+        let mut current_cat = if state.selected_type.is_empty() {
+            "All".to_string()
+        } else {
+            state.selected_type.clone()
+        };
+
+        egui::ComboBox::from_id_salt("task_category_select")
+            .selected_text(&current_cat)
+            .show_ui(ui, |ui| {
+                for cat in &cat_list {
+                    ui.selectable_value(&mut current_cat, cat.clone(), cat);
+                }
+            });
+
+        state.selected_type = current_cat;
     });
     ui.add_space(12.0);
 
@@ -71,6 +112,19 @@ pub fn render_tasks_module(ui: &mut Ui, state: &mut TasksState) {
 
             // Filtered tasks count
             let filtered_tasks: Vec<&(String, TaskInfo)> = state.tasks.iter().filter(|(cluster, task)| {
+                // 1. Category filter
+                if !state.selected_type.is_empty() && state.selected_type != "All" {
+                    let cat = if let Some(pos) = task.action.find(':') {
+                        &task.action[..pos]
+                    } else {
+                        &task.action
+                    };
+                    if cat != state.selected_type {
+                        return false;
+                    }
+                }
+
+                // 2. Text filter
                 if state.filter.is_empty() {
                     return true;
                 }
@@ -322,4 +376,78 @@ fn get_task_progress_and_eta(task: &TaskInfo) -> Option<(f32, String)> {
     };
     
     Some((progress, eta_str))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::es_client::TaskInfo;
+
+    #[test]
+    fn test_tasks_state_default() {
+        let state = TasksState::default();
+        assert_eq!(state.filter, "");
+        assert_eq!(state.selected_type, "");
+        assert!(state.tasks.is_empty());
+    }
+
+    #[test]
+    fn test_task_filtering_by_category() {
+        let task_indices = TaskInfo {
+            id: 1,
+            node: "node_1".to_string(),
+            action: "indices:data/write/bulk".to_string(),
+            task_type: "transport".to_string(),
+            start_time_in_millis: 1000,
+            running_time_in_nanos: 1000,
+            cancellable: true,
+            parent_task_id: None,
+            description: None,
+            status: None,
+            headers: None,
+        };
+
+        let task_cluster = TaskInfo {
+            id: 2,
+            node: "node_1".to_string(),
+            action: "cluster:monitor/state".to_string(),
+            task_type: "transport".to_string(),
+            start_time_in_millis: 1000,
+            running_time_in_nanos: 1000,
+            cancellable: true,
+            parent_task_id: None,
+            description: None,
+            status: None,
+            headers: None,
+        };
+
+        let tasks = vec![
+            ("cluster_a".to_string(), task_indices),
+            ("cluster_a".to_string(), task_cluster),
+        ];
+
+        // 1. Check matching category "indices"
+        let filtered_indices: Vec<&(String, TaskInfo)> = tasks.iter().filter(|(_, task)| {
+            let cat = if let Some(pos) = task.action.find(':') {
+                &task.action[..pos]
+            } else {
+                &task.action
+            };
+            cat == "indices"
+        }).collect();
+        assert_eq!(filtered_indices.len(), 1);
+        assert_eq!(filtered_indices[0].1.action, "indices:data/write/bulk");
+
+        // 2. Check matching category "cluster"
+        let filtered_cluster: Vec<&(String, TaskInfo)> = tasks.iter().filter(|(_, task)| {
+            let cat = if let Some(pos) = task.action.find(':') {
+                &task.action[..pos]
+            } else {
+                &task.action
+            };
+            cat == "cluster"
+        }).collect();
+        assert_eq!(filtered_cluster.len(), 1);
+        assert_eq!(filtered_cluster[0].1.action, "cluster:monitor/state");
+    }
 }

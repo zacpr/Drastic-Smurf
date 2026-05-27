@@ -1162,6 +1162,7 @@ impl DrasticSmurfApp {
                         .cloned()
                         .collect(),
                     filter: self.tasks_state.filter.clone(),
+                    selected_type: self.tasks_state.selected_type.clone(),
                     errors: self
                         .tasks_state
                         .errors
@@ -1173,6 +1174,7 @@ impl DrasticSmurfApp {
                 };
                 render_tasks_module(ui, &mut filtered_tasks_state);
                 self.tasks_state.filter = filtered_tasks_state.filter;
+                self.tasks_state.selected_type = filtered_tasks_state.selected_type;
                 self.tasks_state.expanded_tasks = filtered_tasks_state.expanded_tasks;
             }
             Tab::Console => {
