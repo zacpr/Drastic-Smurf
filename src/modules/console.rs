@@ -30,6 +30,7 @@ pub struct ConsoleState {
     pub variables_changed: bool,
     pub active_tab: ConsoleTab,
     pub body_height: Option<f32>,
+    pub json_error: Option<String>,
 }
 
 impl ConsoleState {
@@ -1075,19 +1076,47 @@ pub fn render_console_module(
 
                     // Multiline Body Editor
                     ui.add_space(8.0);
-                    ui.label("Body:");
+                    ui.horizontal(|ui| {
+                        ui.label("Body:");
+                        if let Some(ref err) = state.json_error {
+                            ui.colored_label(crate::ui::theme::Theme::danger(), format!("⚠️ {}", err));
+                        }
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if ui.button("✨ Prettify JSON")
+                                .on_hover_text("Format and auto-indent the JSON body")
+                                .clicked()
+                            {
+                                if !state.body.trim().is_empty() {
+                                    match serde_json::from_str::<serde_json::Value>(&state.body) {
+                                        Ok(parsed) => {
+                                            if let Ok(formatted) = serde_json::to_string_pretty(&parsed) {
+                                                state.body = formatted;
+                                                state.json_error = None;
+                                            }
+                                        }
+                                        Err(e) => {
+                                            state.json_error = Some(e.to_string());
+                                        }
+                                    }
+                                }
+                            }
+                        });
+                    });
                     
                     let mut body_h = state.body_height.unwrap_or(220.0);
                     // Constrain body height to leave at least 150px for the response box
                     let max_body_h = (ui.available_height() - 150.0).max(80.0);
                     body_h = body_h.clamp(80.0, max_body_h);
 
-                    ui.add_sized(
+                    let res = ui.add_sized(
                         [ui.available_width(), body_h],
                         egui::TextEdit::multiline(&mut state.body)
                             .code_editor()
                             .desired_rows(4),
                     );
+                    if res.changed() {
+                        state.json_error = None;
+                    }
 
                     // Draggable Vertical Splitter
                     ui.add_space(4.0);
