@@ -288,6 +288,12 @@ impl EsClient {
         self.exec(req, &method, &url).await
     }
 
+    pub async fn allocation_explain(&self) -> Result<AllocationExplain, EsError> {
+        let (req, method, url) = self.request(reqwest::Method::GET, "/_cluster/allocation/explain");
+        let raw: serde_json::Value = self.exec(req, &method, &url).await?;
+        Ok(parse_allocation_explain(&raw))
+    }
+
     pub async fn snapshot_current(&self, repo: &str) -> Result<SnapshotResponse, EsError> {
         let path = format!("/_snapshot/{}/_current", repo);
         let (req, method, url) = self.request(reqwest::Method::GET, &path);
@@ -433,6 +439,18 @@ impl EsClient {
 }
 
 // --- Response Models ---
+
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, Default)]
+pub struct AllocationExplain {
+    pub index: String,
+    pub shard: u32,
+    pub primary: bool,
+    pub current_state: String,
+    pub reason: Option<String>,
+    pub details: Option<String>,
+    pub explanation: Option<String>,
+    pub decider_reasons: Vec<String>,
+}
 
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 
@@ -995,4 +1013,83 @@ pub struct TimestampField {
 pub struct DataStreamBackingIndex {
     pub index_name: String,
     pub index_uuid: String,
+}
+
+pub fn parse_allocation_explain(raw: &serde_json::Value) -> AllocationExplain {
+    let mut explain = AllocationExplain {
+        index: raw["index"].as_str().unwrap_or("unknown").to_string(),
+        shard: raw["shard"].as_u64().unwrap_or(0) as u32,
+        primary: raw["primary"].as_bool().unwrap_or(false),
+        current_state: raw["current_state"].as_str().unwrap_or("unknown").to_string(),
+        ..Default::default()
+    };
+    
+    if let Some(ui) = raw.get("unassigned_info") {
+        explain.reason = ui.get("reason").and_then(|r| r.as_str()).map(|s| s.to_string());
+        explain.details = ui.get("details").and_then(|d| d.as_str()).map(|s| s.to_string());
+    }
+    
+    explain.explanation = raw.get("allocate_explanation")
+        .or_else(|| raw.get("explanation"))
+        .and_then(|e| e.as_str())
+        .map(|s| s.to_string());
+
+    if let Some(decisions) = raw.get("node_decisions").and_then(|d| d.as_array()) {
+        for node in decisions {
+            let node_name = node["node_name"].as_str().unwrap_or("unknown");
+            if let Some(decs) = node["decisions"].as_array() {
+                for dec in decs {
+                    if dec["decision"].as_str() == Some("NO") {
+                        if let Some(exp) = dec["explanation"].as_str() {
+                            explain.decider_reasons.push(format!("{}: {}", node_name, exp));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    explain
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_parse_allocation_explain() {
+        let raw = json!({
+            "index": "logs-app-prod",
+            "shard": 2,
+            "primary": true,
+            "current_state": "unassigned",
+            "unassigned_info": {
+                "reason": "INDEX_CREATED",
+                "details": "Waiting for active shards"
+            },
+            "allocate_explanation": "Elasticsearch cannot allocate this primary shard because the disk is full.",
+            "node_decisions": [
+                {
+                    "node_name": "node-us-east-1",
+                    "decisions": [
+                        {
+                            "decision": "NO",
+                            "explanation": "high watermark reached on this node"
+                        }
+                    ]
+                }
+            ]
+        });
+
+        let parsed = parse_allocation_explain(&raw);
+        assert_eq!(parsed.index, "logs-app-prod");
+        assert_eq!(parsed.shard, 2);
+        assert!(parsed.primary);
+        assert_eq!(parsed.current_state, "unassigned");
+        assert_eq!(parsed.reason.as_deref(), Some("INDEX_CREATED"));
+        assert_eq!(parsed.details.as_deref(), Some("Waiting for active shards"));
+        assert_eq!(parsed.explanation.as_deref(), Some("Elasticsearch cannot allocate this primary shard because the disk is full."));
+        assert_eq!(parsed.decider_reasons, vec!["node-us-east-1: high watermark reached on this node".to_string()]);
+    }
 }

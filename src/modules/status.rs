@@ -8,6 +8,7 @@ use egui::{Color32, Ui};
 pub struct StatusState {
     pub health_data: Vec<(String, Option<ClusterHealth>)>,
     pub stats_data: Vec<(String, Option<ClusterStats>)>,
+    pub explains: std::collections::HashMap<String, Option<crate::core::es_client::AllocationExplain>>,
     pub errors: std::collections::HashMap<String, String>,
 }
 
@@ -62,12 +63,14 @@ pub fn render_status_module(
                                     .find(|(n, _)| n == &cluster.name)
                                     .and_then(|(_, s)| s.clone());
                                 let error = state.errors.get(&cluster.name).cloned();
+                                let explain = state.explains.get(&cluster.name).cloned().flatten();
                                 render_status_card(
                                     ui,
                                     &cluster.name,
                                     &health,
                                     stats,
                                     error,
+                                    explain,
                                     col_width,
                                     hover_effects,
                                 );
@@ -90,6 +93,7 @@ fn render_status_card(
     health: &Option<ClusterHealth>,
     stats: Option<ClusterStats>,
     error: Option<String>,
+    explain: Option<crate::core::es_client::AllocationExplain>,
     col_width: f32,
     hover_effects: bool,
 ) {
@@ -270,6 +274,64 @@ if count.voting_only > 0 {
                             ui.add_space(12.0);
                         }
                     });
+                }
+            }
+            if let Some(ref exp) = explain {
+                ui.add_space(8.0);
+                ui.separator();
+                ui.add_space(4.0);
+                
+                ui.horizontal(|ui| {
+                    ui.label(
+                        egui::RichText::new("⚠ Diagnostic Report (Unassigned Shards)")
+                            .strong()
+                            .size(11.0)
+                            .color(Theme::warning()),
+                    );
+                });
+                
+                ui.add_space(2.0);
+                
+                let primary_str = if exp.primary { "Primary" } else { "Replica" };
+                ui.label(
+                    egui::RichText::new(format!(
+                        "• Shard: {} #{} ({}) - {}",
+                        exp.index, exp.shard, primary_str, exp.current_state.to_uppercase()
+                    ))
+                    .size(10.5)
+                    .color(Theme::text_primary()),
+                );
+
+                if let Some(ref reason) = exp.reason {
+                    ui.label(
+                        egui::RichText::new(format!("• Reason: {}", reason))
+                            .size(10.5)
+                            .color(Theme::text_muted()),
+                    );
+                }
+
+                if let Some(ref explain_text) = exp.explanation {
+                    ui.label(
+                        egui::RichText::new(format!("• Details: {}", explain_text))
+                            .size(10.5)
+                            .color(Theme::text_muted()),
+                    );
+                }
+
+                if !exp.decider_reasons.is_empty() {
+                    ui.add_space(2.0);
+                    ui.label(
+                        egui::RichText::new("• Allocation Blockers:")
+                            .size(10.5)
+                            .color(Theme::danger()),
+                    );
+                    for dec_reason in &exp.decider_reasons {
+                        ui.label(
+                            egui::RichText::new(format!("  - {}", dec_reason))
+                                .size(10.0)
+                                .color(Theme::text_muted()),
+                        );
+                    }
                 }
             }
         } else {

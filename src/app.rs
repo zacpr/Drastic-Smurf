@@ -55,6 +55,8 @@ pub enum RefreshMsg {
     IndicesError(String, String),
     ObservabilityResult(String, Vec<crate::modules::observability::SyntheticMonitor>),
     ObservabilityError(String, String),
+    ExplainResult(String, Option<crate::core::es_client::AllocationExplain>),
+    ExplainError(String, String),
 }
 
 pub struct DrasticSmurfApp {
@@ -338,7 +340,7 @@ impl DrasticSmurfApp {
         self.last_refresh = Some(Instant::now());
     }
 
-    fn process_refresh_results(&mut self) {
+    fn process_refresh_results(&mut self, ctx: &egui::Context) {
         while let Ok(msg) = self.refresh_rx.try_recv() {
             match msg {
                 RefreshMsg::SnapshotResult(name, status) => {
@@ -409,7 +411,34 @@ impl DrasticSmurfApp {
                         .iter()
                         .find(|(n, _)| n == &name)
                         .and_then(|(_, s)| s.clone());
-                    self.save_status_snapshot(&name, health, stats);
+                    self.save_status_snapshot(&name, health.clone(), stats);
+
+                    // Diagnose yellow/red unassigned shards in the background
+                    if let Some(ref h) = health {
+                        if h.status != "green" {
+                            let manager = self.cluster_manager.clone();
+                            let tx = self.refresh_tx.clone();
+                            let name_clone = name.clone();
+                            let ctx = ctx.clone();
+                            tokio::spawn(async move {
+                                if let Some(client) = manager.get_client(&name_clone) {
+                                    match client.allocation_explain().await {
+                                        Ok(exp) => {
+                                            let _ = tx.send(RefreshMsg::ExplainResult(name_clone, Some(exp)));
+                                        }
+                                        Err(e) => {
+                                            let _ = tx.send(RefreshMsg::ExplainError(name_clone, e.to_string()));
+                                        }
+                                    }
+                                }
+                                ctx.request_repaint();
+                            });
+                        } else {
+                            self.status_state.explains.insert(name.clone(), None);
+                        }
+                    } else {
+                        self.status_state.explains.insert(name.clone(), None);
+                    }
                 }
                 RefreshMsg::HealthError(name, err) => {
                     if err.contains("401") || err.to_lowercase().contains("unauthorized") {
@@ -465,6 +494,12 @@ impl DrasticSmurfApp {
                         self.status_state.stats_data.push((name.clone(), None));
                     }
                     self.status_state.errors.insert(name, err);
+                }
+                RefreshMsg::ExplainResult(name, explain) => {
+                    self.status_state.explains.insert(name, explain);
+                }
+                RefreshMsg::ExplainError(name, _err) => {
+                    self.status_state.explains.insert(name, None);
                 }
                 RefreshMsg::TasksResult(name, tasks) => {
                     self.tasks_state.tasks.retain(|(n, _)| n != &name);
@@ -1319,6 +1354,13 @@ impl DrasticSmurfApp {
                         .filter(|(n, _)| self.cluster_matches_filter(n))
                         .map(|(n, e)| (n.clone(), e.clone()))
                         .collect(),
+                    explains: self
+                        .status_state
+                        .explains
+                        .iter()
+                        .filter(|(n, _)| self.cluster_matches_filter(n))
+                        .map(|(n, e)| (n.clone(), e.clone()))
+                        .collect(),
                 };
                 render_status_module(
                     ui,
@@ -1798,7 +1840,7 @@ impl eframe::App for DrasticSmurfApp {
         ctx.set_visuals(self.theme.to_egui_visuals());
 
         // Process async results
-        self.process_refresh_results();
+        self.process_refresh_results(ctx);
 
         // Handle clusters import
         if let Some(imported) = self.clusters_import.take() {
