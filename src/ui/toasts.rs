@@ -8,6 +8,7 @@ const FADE_DURATION: Duration = Duration::from_secs(1);
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ToastLevel {
     Info,
+    #[allow(dead_code)]
     Warn,
     Error,
 }
@@ -71,6 +72,7 @@ impl Toasts {
         self.items.push(Toast::new(message, ToastLevel::Info));
     }
 
+    #[allow(dead_code)]
     pub fn warn(&mut self, message: impl Into<String>) {
         self.items.push(Toast::new(message, ToastLevel::Warn));
     }

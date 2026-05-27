@@ -425,6 +425,7 @@ impl AppTheme {
         }
     }
 
+    #[allow(dead_code)]
     pub fn snapshot_state_color(&self, state: &str) -> Color32 {
         match state.to_lowercase().as_str() {
             "success" | "completed" => self.snapshot_success,
@@ -457,10 +458,14 @@ impl Theme {
 
     // Layout constants (unchanged, not color-dependent)
     pub const CARD_ROUNDING: CornerRadius = CornerRadius::same(12);
+    #[allow(dead_code)]
     pub const BUTTON_ROUNDING: CornerRadius = CornerRadius::same(8);
+    #[allow(dead_code)]
     pub const INPUT_ROUNDING: CornerRadius = CornerRadius::same(6);
     pub const CARD_PADDING: Vec2 = Vec2::new(16.0, 16.0);
+    #[allow(dead_code)]
     pub const SECTION_SPACING: f32 = 12.0;
+    #[allow(dead_code)]
     pub const ITEM_SPACING: f32 = 8.0;
 
     // Dynamic color accessors
@@ -500,6 +505,7 @@ impl Theme {
     pub fn danger() -> Color32 {
         ACTIVE_THEME.with(|t| t.borrow().danger)
     }
+    #[allow(dead_code)]
     pub fn info() -> Color32 {
         ACTIVE_THEME.with(|t| t.borrow().info)
     }
@@ -532,6 +538,7 @@ impl Theme {
         ACTIVE_THEME.with(|t| t.borrow().health_color(status))
     }
 
+    #[allow(dead_code)]
     pub fn snapshot_state_color(state: &str) -> Color32 {
         ACTIVE_THEME.with(|t| t.borrow().snapshot_state_color(state))
     }

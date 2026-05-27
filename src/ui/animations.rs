@@ -42,6 +42,7 @@ pub fn shimmer_overlay(ui: &Ui, rect: Rect, intensity: f32, speed: f32) {
 }
 
 /// A pulsing glow around a rect, useful for "in progress" indicators.
+#[allow(dead_code)]
 pub fn pulse_glow(ui: &Ui, rect: Rect, color: Color32, speed: f32) {
     let time = anim_time(ui, speed);
     let pulse = (time.sin() + 1.0) / 2.0; // 0..1
@@ -60,6 +61,7 @@ pub fn pulse_glow(ui: &Ui, rect: Rect, color: Color32, speed: f32) {
 
 /// Hover lift effect: when the response is hovered, offset the content slightly
 /// and draw a shadow/glow. Returns the offset to apply to child widgets.
+#[allow(dead_code)]
 pub fn hover_lift(ui: &Ui, response: &Response, amount: f32) -> Vec2 {
     let hovered = response.hovered();
     let ctx = ui.ctx();
@@ -73,6 +75,7 @@ pub fn hover_lift(ui: &Ui, response: &Response, amount: f32) -> Vec2 {
 
 /// Draw a card with optional hover lift and subtle glow.
 /// Returns the inner response so callers can place content inside.
+#[allow(dead_code)]
 pub fn animated_card<R>(
     ui: &mut Ui,
     id_salt: &str,
@@ -128,6 +131,7 @@ pub fn animated_card<R>(
 }
 
 /// An animated progress bar with optional shimmer.
+#[allow(dead_code)]
 pub fn animated_progress_bar(
     ui: &mut Ui,
     fraction: f32,
@@ -183,6 +187,7 @@ pub fn animated_progress_bar(
 }
 
 /// A dot that pulses in size/opacity, useful for live indicators.
+#[allow(dead_code)]
 pub fn pulsing_dot(ui: &mut Ui, color: Color32, speed: f32) -> Response {
     let base_radius = 5.0;
     let time = anim_time(ui, speed);
