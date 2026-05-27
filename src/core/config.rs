@@ -191,6 +191,43 @@ pub struct ClusterData {
     pub variables: Vec<(String, String)>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TimezoneClockConfig {
+    pub label: String,
+    pub zone: String, // "Local", "UTC", "Sydney", "Germany", "Chicago" or custom UTC offset
+    pub enabled: bool,
+}
+
+pub fn default_timezone_clocks() -> Vec<TimezoneClockConfig> {
+    vec![
+        TimezoneClockConfig {
+            label: "Local".to_string(),
+            zone: "Local".to_string(),
+            enabled: true,
+        },
+        TimezoneClockConfig {
+            label: "UTC".to_string(),
+            zone: "UTC".to_string(),
+            enabled: true,
+        },
+        TimezoneClockConfig {
+            label: "Sydney (APAC)".to_string(),
+            zone: "Sydney".to_string(),
+            enabled: true,
+        },
+        TimezoneClockConfig {
+            label: "EMEA (Germany)".to_string(),
+            zone: "Germany".to_string(),
+            enabled: true,
+        },
+        TimezoneClockConfig {
+            label: "AMER (Chicago)".to_string(),
+            zone: "Chicago".to_string(),
+            enabled: true,
+        },
+    ]
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AppConfig {
     pub clusters: Vec<ClusterConfig>,
@@ -204,6 +241,8 @@ pub struct AppConfig {
     pub theme: AppTheme,
     #[serde(default)]
     pub vfx: VfxSettings,
+    #[serde(default = "default_timezone_clocks")]
+    pub timezone_clocks: Vec<TimezoneClockConfig>,
     #[serde(default)]
     pub window_width: Option<f32>,
     #[serde(default)]

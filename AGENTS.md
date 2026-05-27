@@ -26,6 +26,7 @@
 | **Discover** | ✅ Functional | A cutdown mimic of Kibana's Discover. Index pattern interrogating, Lucene/KQL search queries, dynamic available fields selection, and collapsible document JSON drawers. |
 | **Datastreams & Indices** | ✅ Functional | Sub-tabbed browser for Indices and Data Streams, displaying names, status, health states, doc counts, and store sizes. Supports multi-selection checkbox tracking and selection-only filtering. |
 | **Observability Monitors** | ✅ Functional | Kibana Synthetics / Uptime monitors explorer with space-selection support, multi-region status, sparkline history latency, and a customizable Pinned Dashboard. |
+| **World Clocks** | ✅ Functional | Collapsible Sidebar World Timezones displaying ISO 8601 local, UTC, Sydney (APAC), Germany (EMEA), Chicago (AMER), and custom offsets. Supports labels modification, clipboard copy buttons, toggles, deletion, and full Settings Tab persistence. |
 
 ---
 

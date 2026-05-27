@@ -90,6 +90,7 @@ pub struct DrasticSmurfApp {
     pub clusters_import: Option<crate::core::config::AppConfig>,
     pub theme: crate::ui::theme::AppTheme,
     pub vfx: crate::core::config::VfxSettings,
+    pub timezone_clocks: Vec<crate::core::config::TimezoneClockConfig>,
     pub window_size: [f32; 2],
     pub window_pos: Option<[f32; 2]>,
     pub toasts: Toasts,
@@ -174,6 +175,7 @@ impl DrasticSmurfApp {
             clusters_import: None,
             theme: config.theme,
             vfx: config.vfx,
+            timezone_clocks: config.timezone_clocks,
             window_size: [
                 config.window_width.unwrap_or(1280.0),
                 config.window_height.unwrap_or(800.0),
@@ -727,6 +729,10 @@ impl DrasticSmurfApp {
             self.show_add_cluster = true;
         }
 
+        ui.add_space(8.0);
+        ui.separator();
+        self.render_timezone_clocks(ui);
+
         // Push bottom controls to the bottom of the sidebar
         ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
             // Render Overall Status Warning Light first (so it stays at the bottom!)
@@ -852,6 +858,167 @@ impl DrasticSmurfApp {
             ui.separator();
             ui.add_space(8.0);
         });
+    }
+
+    fn render_timezone_clocks(&self, ui: &mut egui::Ui) {
+        use chrono::{Datelike, Timelike, Utc, Weekday, NaiveDate, FixedOffset, TimeZone};
+
+        let now_utc = Utc::now();
+        let local_now = chrono::Local::now();
+
+        let get_timezone_time = |utc_now: &chrono::DateTime<Utc>, zone: &str| -> Option<chrono::DateTime<FixedOffset>> {
+            let find_nth_sunday = |year: i32, month: u32, n: u32| -> u32 {
+                let mut count = 0;
+                for day in 1..=31 {
+                    if let Some(date) = NaiveDate::from_ymd_opt(year, month, day) {
+                        if date.weekday() == Weekday::Sun {
+                            count += 1;
+                            if count == n {
+                                return day;
+                            }
+                        }
+                    }
+                }
+                let mut last_sun = 1;
+                for day in 1..=31 {
+                    if let Some(date) = NaiveDate::from_ymd_opt(year, month, day) {
+                        if date.weekday() == Weekday::Sun {
+                            last_sun = day;
+                        }
+                    }
+                }
+                last_sun
+            };
+
+            let year = utc_now.year();
+            let month = utc_now.month();
+            let day = utc_now.day();
+
+            if zone == "Local" || zone == "UTC" {
+                return None;
+            }
+
+            let offset_hours = match zone {
+                "Sydney" => {
+                    let end_aedt_day = find_nth_sunday(year, 4, 1);
+                    let start_aedt_day = find_nth_sunday(year, 10, 1);
+
+                    let is_aedt = if month > 10 || month < 4 {
+                        true
+                    } else if month == 4 {
+                        day < end_aedt_day || (day == end_aedt_day && utc_now.hour() < 2)
+                    } else if month == 10 {
+                        day > start_aedt_day || (day == start_aedt_day && utc_now.hour() >= 2)
+                    } else {
+                        false
+                    };
+
+                    if is_aedt { 11 } else { 10 }
+                }
+                "Germany" => {
+                    let start_cest_day = find_nth_sunday(year, 3, 5);
+                    let end_cest_day = find_nth_sunday(year, 10, 5);
+
+                    let is_cest = if month > 3 && month < 10 {
+                        true
+                    } else if month == 3 {
+                        day > start_cest_day || (day == start_cest_day && utc_now.hour() >= 1)
+                    } else if month == 10 {
+                        day < end_cest_day || (day == end_cest_day && utc_now.hour() < 1)
+                    } else {
+                        false
+                    };
+
+                    if is_cest { 2 } else { 1 }
+                }
+                "Chicago" => {
+                    let start_cdt_day = find_nth_sunday(year, 3, 2);
+                    let end_cdt_day = find_nth_sunday(year, 11, 1);
+
+                    let is_cdt = if month > 3 && month < 11 {
+                        true
+                    } else if month == 3 {
+                        day > start_cdt_day || (day == start_cdt_day && utc_now.hour() >= 8)
+                    } else if month == 11 {
+                        day < end_cdt_day || (day == end_cdt_day && utc_now.hour() < 7)
+                    } else {
+                        false
+                    };
+
+                    if is_cdt { -5 } else { -6 }
+                }
+                custom_offset => {
+                    let clean = custom_offset.trim();
+                    let sign = if clean.starts_with('-') { -1 } else { 1 };
+                    let number_str: String = clean.chars().filter(|c| c.is_ascii_digit()).collect();
+                    if let Ok(hours) = number_str.parse::<i32>() {
+                        sign * hours
+                    } else {
+                        0
+                    }
+                }
+            };
+
+            let offset = FixedOffset::east_opt(offset_hours * 3600).unwrap();
+            Some(offset.from_utc_datetime(&utc_now.naive_utc()))
+        };
+
+        ui.add_space(8.0);
+        
+        egui::CollapsingHeader::new(egui::RichText::new("🕒 World Clocks").strong().size(12.0).color(Theme::text_secondary()))
+            .default_open(true)
+            .show(ui, |ui| {
+                ui.add_space(4.0);
+
+                let mut rendered_any = false;
+                for clock in &self.timezone_clocks {
+                    if !clock.enabled {
+                        continue;
+                    }
+                    rendered_any = true;
+
+                    let time_str = match clock.zone.as_str() {
+                        "Local" => local_now.format("%Y-%m-%dT%H:%M:%S%:z").to_string(),
+                        "UTC" => now_utc.format("%Y-%m-%dT%H:%M:%SZ").to_string(),
+                        other_zone => {
+                            if let Some(t) = get_timezone_time(&now_utc, other_zone) {
+                                t.format("%Y-%m-%dT%H:%M:%S%:z").to_string()
+                            } else {
+                                now_utc.format("%Y-%m-%dT%H:%M:%SZ").to_string()
+                            }
+                        }
+                    };
+
+                    ui.vertical(|ui| {
+                        ui.horizontal(|ui| {
+                            ui.label(egui::RichText::new(&clock.label).strong().size(10.5).color(Theme::text_primary()));
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                if ui.button("📋")
+                                    .on_hover_text(format!("Copy {} ISO 8601 to clipboard", clock.label))
+                                    .clicked()
+                                {
+                                    ui.ctx().copy_text(time_str.clone());
+                                }
+                            });
+                        });
+                        
+                        ui.add(
+                            egui::Label::new(
+                                egui::RichText::new(&time_str)
+                                    .code()
+                                    .size(10.0)
+                                    .color(Theme::accent())
+                            )
+                        ).on_hover_text(format!("Click copy button to copy this timezone's exact ISO 8601 string: {}", time_str));
+
+                        ui.add_space(4.0);
+                    });
+                }
+
+                if !rendered_any {
+                    ui.colored_label(Theme::text_muted(), "All clocks disabled in Settings.");
+                }
+            });
     }
 
     fn render_tabs(&mut self, ui: &mut egui::Ui) {
@@ -1296,15 +1463,92 @@ impl DrasticSmurfApp {
                 let mut theme_changed = false;
                 let mut vfx_changed = false;
                 let mut tour_triggered = false;
-                render_appearance_module(
-                    ui,
-                    &mut self.appearance_state,
-                    &mut self.theme,
-                    &mut self.vfx,
-                    &mut theme_changed,
-                    &mut vfx_changed,
-                    &mut tour_triggered,
-                );
+                
+                egui::ScrollArea::vertical()
+                    .id_salt("settings_scroll")
+                    .show(ui, |ui| {
+                        render_appearance_module(
+                            ui,
+                            &mut self.appearance_state,
+                            &mut self.theme,
+                            &mut self.vfx,
+                            &mut theme_changed,
+                            &mut vfx_changed,
+                            &mut tour_triggered,
+                        );
+
+                        ui.add_space(16.0);
+
+                        // Timezone Clocks Manager Card
+                        let mut clocks_changed = false;
+                        egui::Frame::new()
+                            .fill(Theme::bg_card())
+                            .corner_radius(Theme::CARD_ROUNDING)
+                            .inner_margin(Theme::CARD_PADDING)
+                            .show(ui, |ui| {
+                                ui.heading("🕒 World Clocks Configuration");
+                                ui.add_space(4.0);
+                                ui.label(egui::RichText::new("Configure timezones displayed in the left sidebar. Offsets are calculated dynamically based on regional DST rules or custom values.").color(Theme::text_muted()).size(11.0));
+                                ui.add_space(12.0);
+
+                                let mut to_delete = None;
+                                for (idx, clock) in self.timezone_clocks.iter_mut().enumerate() {
+                                    ui.horizontal(|ui| {
+                                        if ui.checkbox(&mut clock.enabled, "").changed() {
+                                            clocks_changed = true;
+                                        }
+
+                                        let label_edit = egui::TextEdit::singleline(&mut clock.label)
+                                            .hint_text("Label (e.g. AMER (Chicago))");
+                                        let res1 = ui.add_sized([150.0, ui.available_height()], label_edit);
+
+                                        let zone_edit = egui::TextEdit::singleline(&mut clock.zone)
+                                            .hint_text("Zone (Local, UTC, Sydney, Germany, Chicago, or +5, -3)");
+                                        let res2 = ui.add_sized([180.0, ui.available_height()], zone_edit);
+
+                                        if res1.changed() || res2.changed() {
+                                            clocks_changed = true;
+                                        }
+
+                                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                            if ui.button("🗑").on_hover_text("Delete Clock").clicked() {
+                                                to_delete = Some(idx);
+                                                clocks_changed = true;
+                                            }
+                                        });
+                                    });
+                                    ui.add_space(8.0);
+                                }
+
+                                if let Some(idx) = to_delete {
+                                    self.timezone_clocks.remove(idx);
+                                }
+
+                                ui.add_space(8.0);
+                                ui.horizontal(|ui| {
+                                    if ui.button("➕ Add Custom Clock").clicked() {
+                                        self.timezone_clocks.push(crate::core::config::TimezoneClockConfig {
+                                            label: "Custom Clock".to_string(),
+                                            zone: "+0".to_string(),
+                                            enabled: true,
+                                        });
+                                        clocks_changed = true;
+                                    }
+
+                                    if ui.button("🔄 Reset to Defaults").clicked() {
+                                        self.timezone_clocks = crate::core::config::default_timezone_clocks();
+                                        clocks_changed = true;
+                                    }
+                                });
+                            });
+
+                        if clocks_changed {
+                            if let Err(e) = self.cluster_manager.save_timezone_clocks(self.timezone_clocks.clone()) {
+                                self.toasts.error(format!("Failed to save timezone settings: {}", e));
+                            }
+                        }
+                    });
+
                 if tour_triggered {
                     self.wizard_state = Some(crate::ui::wizard::WizardState::default());
                     self.toasts.info("Onboarding tour started!");

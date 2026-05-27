@@ -25,6 +25,7 @@ pub struct ClusterManager {
     refresh_interval_secs: Arc<Mutex<u64>>,
     theme: Arc<Mutex<crate::ui::theme::AppTheme>>,
     vfx: Arc<Mutex<crate::core::config::VfxSettings>>,
+    timezone_clocks: Arc<Mutex<Vec<crate::core::config::TimezoneClockConfig>>>,
     dirty: Arc<AtomicBool>,
     save_after: Arc<Mutex<Option<Instant>>>,
 }
@@ -46,6 +47,7 @@ impl ClusterManager {
             refresh_interval_secs: Arc::new(Mutex::new(15)),
             theme: Arc::new(Mutex::new(crate::ui::theme::AppTheme::default())),
             vfx: Arc::new(Mutex::new(crate::core::config::VfxSettings::default())),
+            timezone_clocks: Arc::new(Mutex::new(crate::core::config::default_timezone_clocks())),
             dirty: Arc::new(AtomicBool::new(false)),
             save_after: Arc::new(Mutex::new(None)),
         }
@@ -77,6 +79,10 @@ impl ClusterManager {
             let mut v = self.vfx.lock().unwrap();
             *v = config.vfx;
         }
+        {
+            let mut tc = self.timezone_clocks.lock().unwrap();
+            *tc = config.timezone_clocks;
+        }
 
         let clusters = self.clusters.lock().unwrap();
         let mut clients = self.clients.lock().unwrap();
@@ -105,6 +111,7 @@ impl ClusterManager {
         let refresh_interval_secs = *self.refresh_interval_secs.lock().unwrap();
         let theme = self.theme.lock().unwrap().clone();
         let vfx = self.vfx.lock().unwrap().clone();
+        let timezone_clocks = self.timezone_clocks.lock().unwrap().clone();
         
         let mut config = crate::core::config::AppConfig::load().unwrap_or_default();
         config.clusters = clusters.clone();
@@ -113,6 +120,7 @@ impl ClusterManager {
         config.refresh_interval_secs = refresh_interval_secs;
         config.theme = theme;
         config.vfx = vfx;
+        config.timezone_clocks = timezone_clocks;
         
         config.save()?;
         Ok(())
@@ -156,6 +164,20 @@ impl ClusterManager {
         {
             let mut v = self.vfx.lock().unwrap();
             *v = vfx;
+        }
+        self.mark_dirty();
+        Ok(())
+    }
+
+    #[allow(dead_code)]
+    pub fn timezone_clocks(&self) -> Vec<crate::core::config::TimezoneClockConfig> {
+        self.timezone_clocks.lock().unwrap().clone()
+    }
+
+    pub fn save_timezone_clocks(&self, clocks: Vec<crate::core::config::TimezoneClockConfig>) -> anyhow::Result<()> {
+        {
+            let mut tc = self.timezone_clocks.lock().unwrap();
+            *tc = clocks;
         }
         self.mark_dirty();
         Ok(())
