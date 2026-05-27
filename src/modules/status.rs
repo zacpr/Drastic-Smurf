@@ -12,6 +12,7 @@ pub struct StatusState {
     pub es_versions: std::collections::HashMap<String, String>,
     pub kibana_versions: std::collections::HashMap<String, String>,
     pub allocations: std::collections::HashMap<String, Vec<crate::core::es_client::CatAllocation>>,
+    pub pending_tasks: std::collections::HashMap<String, Vec<serde_json::Value>>,
     pub errors: std::collections::HashMap<String, String>,
 }
 
@@ -19,6 +20,8 @@ pub fn render_status_module(
     ui: &mut Ui,
     clusters: &[ClusterConfig],
     state: &StatusState,
+    on_hot_threads: &mut Option<(String, String)>,
+    on_show_pending: &mut Option<String>,
     hover_effects: bool,
 ) {
     ui.heading("Cluster Status");
@@ -70,6 +73,7 @@ pub fn render_status_module(
                                 let es_version = state.es_versions.get(&cluster.name).cloned();
                                 let kibana_version = state.kibana_versions.get(&cluster.name).cloned();
                                 let allocations = state.allocations.get(&cluster.name).cloned();
+                                let pending_tasks = state.pending_tasks.get(&cluster.name).cloned();
                                 render_status_card(
                                     ui,
                                     &cluster.name,
@@ -78,8 +82,11 @@ pub fn render_status_module(
                                     es_version,
                                     kibana_version,
                                     allocations,
+                                    pending_tasks,
                                     error,
                                     explain,
+                                    on_hot_threads,
+                                    on_show_pending,
                                     col_width,
                                     hover_effects,
                                 );
@@ -104,8 +111,11 @@ fn render_status_card(
     es_version: Option<String>,
     kibana_version: Option<String>,
     allocations: Option<Vec<crate::core::es_client::CatAllocation>>,
+    pending_tasks: Option<Vec<serde_json::Value>>,
     error: Option<String>,
     explain: Option<crate::core::es_client::AllocationExplain>,
+    on_hot_threads: &mut Option<(String, String)>,
+    on_show_pending: &mut Option<String>,
     col_width: f32,
     hover_effects: bool,
 ) {
@@ -164,6 +174,24 @@ fn render_status_card(
                         "Unreachable",
                         Theme::danger(),
                     ));
+                }
+
+                if let Some(ref tasks) = pending_tasks {
+                    if !tasks.is_empty() {
+                        let btn = ui.add(
+                            egui::Button::new(
+                                egui::RichText::new(format!("⚠️ {} Pending", tasks.len()))
+                                    .size(10.0)
+                                    .strong()
+                                    .color(Color32::WHITE)
+                            )
+                            .fill(Theme::danger())
+                            .corner_radius(4.0)
+                        ).on_hover_text("Delayed master metadata updates/actions. Click to inspect pending task queue.");
+                        if btn.clicked() {
+                            *on_show_pending = Some(name.to_string());
+                        }
+                    }
                 }
             });
         });
@@ -379,6 +407,17 @@ if count.voting_only > 0 {
                                     .size(11.0)
                                     .color(Theme::text_primary()),
                             );
+
+                            ui.add_space(4.0);
+                            let hot_btn = ui.add(
+                                egui::Link::new(
+                                    egui::RichText::new("🔥")
+                                        .size(10.5)
+                                )
+                            ).on_hover_text("View live node thread usage / stack trace diagnostics");
+                            if hot_btn.clicked() {
+                                *on_hot_threads = Some((name.to_string(), node_name.to_string()));
+                            }
 
                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                 ui.label(

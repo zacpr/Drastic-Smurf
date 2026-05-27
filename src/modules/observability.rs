@@ -26,6 +26,7 @@ pub struct ObservabilityState {
     pub active_tab: ObsTab,
     pub monitors: Vec<SyntheticMonitor>,
     pub pinned_monitor_ids: Vec<String>,
+    pub pinned_monitor_layouts: std::collections::HashMap<String, crate::core::config::PinnedMonitorLayout>,
     pub filter: String,
     pub is_loading: bool,
     pub error: Option<String>,
@@ -39,6 +40,7 @@ impl ObservabilityState {
             active_tab: ObsTab::Dashboard,
             monitors: Vec::new(),
             pinned_monitor_ids: Vec::new(),
+            pinned_monitor_layouts: std::collections::HashMap::new(),
             filter: String::new(),
             is_loading: false,
             error: None,
@@ -120,12 +122,14 @@ impl ObservabilityState {
         ];
 
         // Default pin some monitors to make Dashboard look awesome out-of-the-box!
-        self.pinned_monitor_ids = vec![
-            "pay_gw".to_string(),
-            "user_auth".to_string(),
-            "search_cluster".to_string(),
-            "billing_queue".to_string(),
-        ];
+        if self.pinned_monitor_ids.is_empty() {
+            self.pinned_monitor_ids = vec![
+                "pay_gw".to_string(),
+                "user_auth".to_string(),
+                "search_cluster".to_string(),
+                "billing_queue".to_string(),
+            ];
+        }
     }
 }
 
@@ -332,7 +336,7 @@ fn render_browse_tab(ui: &mut Ui, state: &mut ObservabilityState) {
         });
 }
 
-fn render_dashboard_tab(ui: &mut Ui, state: &ObservabilityState) {
+fn render_dashboard_tab(ui: &mut Ui, state: &mut ObservabilityState) {
     let pinned_monitors: Vec<&SyntheticMonitor> = state.monitors.iter()
         .filter(|m| state.pinned_monitor_ids.contains(&m.id))
         .filter(|m| state.filter.is_empty() || m.name.to_lowercase().contains(&state.filter.to_lowercase()))
@@ -346,88 +350,147 @@ fn render_dashboard_tab(ui: &mut Ui, state: &ObservabilityState) {
         return;
     }
 
-    // Grid columns (2 column layout)
-    let width = ui.available_width();
-    let num_columns = if width > 500.0 { 2 } else { 1 };
-    let card_w = (width - 12.0) / num_columns as f32;
+    // Help cue
+    ui.horizontal(|ui| {
+        ui.label(
+            egui::RichText::new("💡 Pinned monitors are fully interactive floating widgets! Drag by title bars to arrange, and drag corners to resize them manually.")
+                .color(Theme::text_muted())
+                .size(11.0)
+                .italics(),
+        );
+    });
+    ui.add_space(8.0);
 
-    egui::ScrollArea::vertical()
-        .id_salt("obs_dashboard_scroll")
-        .show(ui, |ui| {
-            ui.horizontal_wrapped(|ui| {
-                for m in pinned_monitors {
-                    egui::Frame::new()
-                        .fill(Theme::bg_card())
-                        .corner_radius(Theme::CARD_ROUNDING)
-                        .inner_margin(Theme::CARD_PADDING)
-                        .stroke(egui::Stroke::new(1.0, Theme::border()))
-                        .show(ui, |ui| {
-                            ui.set_width(card_w - 12.0);
-                            
-                            // Top Row: Status Dot & Name
-                            ui.horizontal(|ui| {
-                                let dot_color = if m.status == "up" {
-                                    Theme::success()
-                                } else {
-                                    Theme::danger()
-                                };
-                                ui.add(crate::ui::widgets::ConnectionDot::new(true).color(dot_color).size(8.0));
-                                ui.label(RichText::new(&m.name).strong().color(Theme::text_primary()).size(13.0));
-                                
-                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                    let pill_text = m.monitor_type.to_uppercase();
-                                    ui.add(crate::ui::widgets::StatePill::new(pill_text, Theme::text_muted()));
-                                });
-                            });
+    let mut to_unpin = None;
 
-                            ui.add_space(4.0);
-                            ui.label(RichText::new(&m.url).color(Theme::text_muted()).size(10.0));
-                            ui.add_space(8.0);
+    for (idx, m) in pinned_monitors.iter().enumerate() {
+        let window_title = format!("🖥️ {} ({})", m.name, m.monitor_type.to_uppercase());
+        let id = egui::Id::new(format!("obs_widget_{}", m.id));
 
-                            // Metrics grid
-                            ui.horizontal(|ui| {
-                                ui.vertical(|ui| {
-                                    ui.label(RichText::new("Latency").color(Theme::text_muted()).size(10.0));
-                                    let lat = if m.status == "up" {
-                                        format!("{}ms", m.latency_ms)
-                                    } else {
-                                        "Offline".to_string()
-                                    };
-                                    ui.label(RichText::new(lat).strong().color(Theme::text_primary()).size(14.0));
-                                });
+        // Use saved layout if present
+        let (default_x, default_y) = if let Some(layout) = state.pinned_monitor_layouts.get(&m.id) {
+            (layout.x, layout.y)
+        } else {
+            let col = idx % 3;
+            let row = idx / 3;
+            (240.0 + (col as f32 * 340.0), 200.0 + (row as f32 * 210.0))
+        };
 
-                                ui.add_space(30.0);
+        let (default_w, default_h) = if let Some(layout) = state.pinned_monitor_layouts.get(&m.id) {
+            (layout.w, layout.h)
+        } else {
+            (320.0, 175.0)
+        };
 
-                                ui.vertical(|ui| {
-                                    ui.label(RichText::new("Last Checked").color(Theme::text_muted()).size(10.0));
-                                    ui.label(RichText::new(&m.last_checked).strong().color(Theme::text_primary()).size(12.0));
-                                });
+        let mut is_open = true;
 
-                                ui.add_space(30.0);
-
-                                ui.vertical(|ui| {
-                                    ui.label(RichText::new("Locations").color(Theme::text_muted()).size(10.0));
-                                    let loc_text = m.locations.join(", ");
-                                    ui.label(RichText::new(loc_text).color(Theme::text_primary()).size(10.0));
-                                });
-                            });
-
-                            ui.add_space(8.0);
-
-                            // Sparkline showing latency history!
-                            if m.status == "up" && !m.latency_history.is_empty() {
-                                ui.label(RichText::new("Latency Trend (last 6 checks)").color(Theme::text_muted()).size(9.0));
-                                ui.add_space(2.0);
-                                let history_f64: Vec<f64> = m.latency_history.iter().map(|&x| x as f64).collect();
-                                ui.add(crate::ui::widgets::MiniSparkline::new(history_f64)
-                                    .color(Theme::accent())
-                                    .width(card_w - 40.0)
-                                    .height(20.0));
-                            } else {
-                                ui.add_space(22.0); // Keep height uniform
-                            }
+        egui::Window::new(&window_title)
+            .id(id)
+            .open(&mut is_open)
+            .default_size([default_w, default_h])
+            .min_size([250.0, 130.0])
+            .default_pos([default_x, default_y])
+            .collapsible(true)
+            .resizable(true)
+            .show(ui.ctx(), |ui| {
+                ui.vertical(|ui| {
+                    // Top Row: Status Dot, Name/Status, Last Checked
+                    ui.horizontal(|ui| {
+                        let dot_color = if m.status == "up" {
+                            Theme::success()
+                        } else {
+                            Theme::danger()
+                        };
+                        ui.add(crate::ui::widgets::ConnectionDot::new(true).color(dot_color).size(8.0));
+                        ui.label(
+                            egui::RichText::new(m.status.to_uppercase())
+                                .strong()
+                                .color(dot_color)
+                                .size(12.5)
+                        );
+                        
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            ui.label(
+                                egui::RichText::new(&m.last_checked)
+                                    .size(10.0)
+                                    .color(Theme::text_muted())
+                            );
                         });
-                }
+                    });
+                    
+                    ui.add_space(3.0);
+                    ui.label(
+                        egui::RichText::new(&m.url)
+                            .color(Theme::text_muted())
+                            .size(10.0)
+                    );
+                    ui.separator();
+                    
+                    // Metrics Row
+                    ui.horizontal(|ui| {
+                        ui.vertical(|ui| {
+                            ui.label(egui::RichText::new("Latency").color(Theme::text_muted()).size(9.5));
+                            let lat = if m.status == "up" {
+                                format!("{}ms", m.latency_ms)
+                            } else {
+                                "Offline".to_string()
+                            };
+                            let lat_color = if m.status == "up" { Theme::text_primary() } else { Theme::danger() };
+                            ui.label(
+                                egui::RichText::new(lat)
+                                    .strong()
+                                    .color(lat_color)
+                                    .size(13.5)
+                            );
+                        });
+                        
+                        ui.add_space(24.0);
+                        
+                        ui.vertical(|ui| {
+                            ui.label(egui::RichText::new("Locations").color(Theme::text_muted()).size(9.5));
+                            let loc_text = m.locations.join(", ");
+                            ui.label(
+                                egui::RichText::new(loc_text)
+                                    .color(Theme::text_primary())
+                                    .size(10.0)
+                            );
+                        });
+                    });
+                    
+                    ui.add_space(6.0);
+                    
+                    // Latency sparkline
+                    if m.status == "up" && !m.latency_history.is_empty() {
+                        let history_f64: Vec<f64> = m.latency_history.iter().map(|&x| x as f64).collect();
+                        let available_w = ui.available_width();
+                        ui.add(crate::ui::widgets::MiniSparkline::new(history_f64)
+                            .color(Theme::accent())
+                            .width(available_w.max(100.0))
+                            .height(22.0));
+                    }
+                });
             });
-        });
+
+        // Query the window's real-time position/size to store layout persistently
+        if let Some(rect) = ui.ctx().memory(|mem| mem.area_rect(id)) {
+            state.pinned_monitor_layouts.insert(
+                m.id.clone(),
+                crate::core::config::PinnedMonitorLayout {
+                    x: rect.min.x,
+                    y: rect.min.y,
+                    w: rect.width(),
+                    h: rect.height(),
+                },
+            );
+        }
+
+        if !is_open {
+            to_unpin = Some(m.id.clone());
+        }
+    }
+
+    if let Some(id) = to_unpin {
+        state.pinned_monitor_ids.retain(|x| x != &id);
+        state.pinned_monitor_layouts.remove(&id);
+    }
 }

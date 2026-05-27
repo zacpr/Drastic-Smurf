@@ -388,6 +388,15 @@ impl EsClient {
         self.send_to_host(kibana_host, reqwest::Method::GET, &path, None).await
     }
 
+    pub async fn get_node_hot_threads(&self, node_name: &str) -> Result<String, EsError> {
+        let path = format!("/_nodes/{}/hot_threads", node_name);
+        self.execute_raw(reqwest::Method::GET, &path, None).await
+    }
+
+    pub async fn get_pending_tasks(&self) -> Result<serde_json::Value, EsError> {
+        self.execute(reqwest::Method::GET, "/_cluster/pending_tasks", None).await
+    }
+
     pub async fn cluster_stats(&self) -> Result<ClusterStats, EsError> {
         let (req, method, url) = self.request(reqwest::Method::GET, "/_cluster/stats");
         self.exec(req, &method, &url).await

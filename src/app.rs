@@ -62,6 +62,9 @@ pub enum RefreshMsg {
     EsVersionResult(String, String),
     KibanaVersionResult(String, String),
     AllocationResult(String, Vec<crate::core::es_client::CatAllocation>),
+    HotThreadsResult(String, String, Result<String, String>),
+    PendingTasksResult(String, Vec<serde_json::Value>),
+    IndexDetailResult(String, Result<crate::modules::indices::IndexDetail, String>),
 }
 
 pub struct DrasticSmurfApp {
@@ -110,6 +113,10 @@ pub struct DrasticSmurfApp {
     pub konami_six_count: u32,
     pub title_hovered: bool,
     pub wizard_state: Option<crate::ui::wizard::WizardState>,
+    pub hot_threads_node: Option<(String, String)>,
+    pub hot_threads_text: Option<String>,
+    pub hot_threads_loading: bool,
+    pub show_pending_cluster: Option<String>,
 }
 
 impl Default for DrasticSmurfApp {
@@ -145,6 +152,10 @@ impl DrasticSmurfApp {
             let _ = config.save();
         }
 
+        let mut observability_state = ObservabilityState::new();
+        observability_state.pinned_monitor_ids = config.pinned_monitor_ids.clone();
+        observability_state.pinned_monitor_layouts = config.pinned_monitor_layouts.clone();
+
         let mut app = Self {
             cluster_manager: manager.clone(),
             current_tab: if clusters.is_empty() {
@@ -159,7 +170,7 @@ impl DrasticSmurfApp {
             console_state,
             discover_state: DiscoverState::default(),
             indices_state: IndicesState::new(),
-            observability_state: ObservabilityState::new(),
+            observability_state,
             clusters_state: ClustersState::default(),
             appearance_state: AppearanceState {
                 selected_preset: config.theme.name.clone(),
@@ -208,6 +219,10 @@ impl DrasticSmurfApp {
             } else {
                 None
             },
+            hot_threads_node: None,
+            hot_threads_text: None,
+            hot_threads_loading: false,
+            show_pending_cluster: None,
         };
 
         for cluster in &clusters {
@@ -380,6 +395,22 @@ impl DrasticSmurfApp {
                         }
                     }
                     ctx_alloc.request_repaint();
+                });
+
+                // Pending tasks refresh
+                let tx_tasks = tx.clone();
+                let name_tasks = name.clone();
+                let ctx_tasks = ctx.clone();
+                let manager_tasks = manager.clone();
+                tokio::spawn(async move {
+                    if let Some(client) = manager_tasks.get_client(&name_tasks) {
+                        if let Ok(tasks_val) = client.get_pending_tasks().await {
+                            if let Some(arr) = tasks_val.get("tasks").and_then(|a| a.as_array()) {
+                                let _ = tx_tasks.send(RefreshMsg::PendingTasksResult(name_tasks, arr.clone()));
+                            }
+                        }
+                    }
+                    ctx_tasks.request_repaint();
                 });
 
                 // Tasks refresh
@@ -666,6 +697,35 @@ impl DrasticSmurfApp {
                 }
                 RefreshMsg::AllocationResult(name, allocations) => {
                     self.status_state.allocations.insert(name, allocations);
+                }
+                RefreshMsg::PendingTasksResult(name, tasks) => {
+                    self.status_state.pending_tasks.insert(name, tasks);
+                }
+                RefreshMsg::HotThreadsResult(cluster_name, node_name, res) => {
+                    if let Some((ref active_cluster, ref active_node)) = self.hot_threads_node {
+                        if active_cluster == &cluster_name && active_node == &node_name {
+                            self.hot_threads_loading = false;
+                            match res {
+                                Ok(text) => {
+                                    self.hot_threads_text = Some(text);
+                                }
+                                Err(err) => {
+                                    self.hot_threads_text = Some(format!("Error loading Hot Threads: {}", err));
+                                }
+                            }
+                        }
+                    }
+                }
+                RefreshMsg::IndexDetailResult(_name, res) => {
+                    self.indices_state.detail_loading = false;
+                    match res {
+                        Ok(detail) => {
+                            self.indices_state.selected_detail = Some(detail);
+                        }
+                        Err(e) => {
+                            self.toasts.error(format!("Failed to fetch index details: {}", e));
+                        }
+                    }
                 }
             }
         }
@@ -1505,13 +1565,53 @@ impl DrasticSmurfApp {
                         .filter(|(n, _)| self.cluster_matches_filter(n))
                         .map(|(n, a)| (n.clone(), a.clone()))
                         .collect(),
+                    pending_tasks: self
+                        .status_state
+                        .pending_tasks
+                        .iter()
+                        .filter(|(n, _)| self.cluster_matches_filter(n))
+                        .map(|(n, t)| (n.clone(), t.clone()))
+                        .collect(),
                 };
+                let mut on_hot_threads = None;
+                let mut on_show_pending = None;
                 render_status_module(
                     ui,
                     &clusters,
                     &filtered_state,
+                    &mut on_hot_threads,
+                    &mut on_show_pending,
                     self.vfx.hover_effects && !self.vfx.reduce_motion,
                 );
+
+                if let Some((cluster_name, node_name)) = on_hot_threads {
+                    self.hot_threads_node = Some((cluster_name.clone(), node_name.clone()));
+                    self.hot_threads_text = None;
+                    self.hot_threads_loading = true;
+
+                    let tx = self.refresh_tx.clone();
+                    let ctx = ui.ctx().clone();
+                    let manager = self.cluster_manager.clone();
+                    tokio::spawn(async move {
+                        if let Some(client) = manager.get_client(&cluster_name) {
+                            match client.get_node_hot_threads(&node_name).await {
+                                Ok(text) => {
+                                    let _ = tx.send(RefreshMsg::HotThreadsResult(cluster_name, node_name, Ok(text)));
+                                }
+                                Err(e) => {
+                                    let _ = tx.send(RefreshMsg::HotThreadsResult(cluster_name, node_name, Err(e.to_string())));
+                                }
+                            }
+                        } else {
+                            let _ = tx.send(RefreshMsg::HotThreadsResult(cluster_name, node_name, Err("Failed to obtain client".to_string())));
+                        }
+                        ctx.request_repaint();
+                    });
+                }
+
+                if let Some(cluster_name) = on_show_pending {
+                    self.show_pending_cluster = Some(cluster_name);
+                }
             }
             Tab::Tasks => {
                 let mut filtered_tasks_state = TasksState {
@@ -1651,12 +1751,102 @@ impl DrasticSmurfApp {
                     .filter(|c| self.cluster_matches_filter(&c.name))
                     .map(|c| c.name.clone())
                     .collect();
+                let mut on_fetch_detail = None;
                 render_indices_module(
                     ui,
                     &mut self.indices_state,
                     &cluster_names,
                     &mut self.indices_refresh,
+                    &mut on_fetch_detail,
                 );
+
+                if let Some((target_name, is_datastream)) = on_fetch_detail {
+                    self.indices_state.detail_loading = true;
+                    self.indices_state.selected_detail = None;
+
+                    let tx = self.refresh_tx.clone();
+                    let ctx = ui.ctx().clone();
+                    let manager = self.cluster_manager.clone();
+                    let cluster_name = self.indices_state.selected_cluster.clone();
+
+                    tokio::spawn(async move {
+                        if let Some(client) = manager.get_client(&cluster_name) {
+                            let mut detail = crate::modules::indices::IndexDetail {
+                                name: target_name.clone(),
+                                is_datastream,
+                                ilm_policy: None,
+                                ilm_explain: None,
+                                index_template: None,
+                                settings: None,
+                            };
+
+                            // 1. Fetch settings
+                            let settings_path = format!("/{}/_settings", target_name);
+                            if let Ok(settings_val) = client.execute(reqwest::Method::GET, &settings_path, None).await {
+                                detail.settings = Some(settings_val.clone());
+                                if let Some(obj) = settings_val.get(&target_name).or_else(|| {
+                                    settings_val.as_object().and_then(|o| o.values().next())
+                                }) {
+                                    if let Some(ilm_name) = obj.pointer("/settings/index/lifecycle/name").and_then(|v| v.as_str()) {
+                                        detail.ilm_policy = Some(ilm_name.to_string());
+                                    }
+                                }
+                            }
+
+                            // 2. Fetch ILM explain
+                            let ilm_path = format!("/{}/_ilm/explain", target_name);
+                            if let Ok(ilm_val) = client.execute(reqwest::Method::GET, &ilm_path, None).await {
+                                detail.ilm_explain = Some(ilm_val.clone());
+                                if detail.ilm_policy.is_none() {
+                                    if let Some(policy_name) = ilm_val.pointer("/indices").and_then(|ind| ind.as_object())
+                                        .and_then(|obj| obj.values().next())
+                                        .and_then(|val| val.get("policy"))
+                                        .and_then(|p| p.as_str()) {
+                                            detail.ilm_policy = Some(policy_name.to_string());
+                                    }
+                                }
+                            }
+
+                            // 3. Match template
+                            if is_datastream {
+                                let ds_path = format!("/_data_stream/{}", target_name);
+                                if let Ok(ds_val) = client.execute(reqwest::Method::GET, &ds_path, None).await {
+                                    if let Some(template_name) = ds_val.pointer("/data_streams/0/template").and_then(|v| v.as_str()) {
+                                        detail.index_template = Some(template_name.to_string());
+                                    }
+                                    if detail.ilm_policy.is_none() {
+                                        if let Some(ilm_name) = ds_val.pointer("/data_streams/0/ilm_policy").and_then(|v| v.as_str()) {
+                                            detail.ilm_policy = Some(ilm_name.to_string());
+                                        }
+                                    }
+                                }
+                            } else {
+                                if let Ok(templates_val) = client.execute(reqwest::Method::GET, "/_index_template", None).await {
+                                    if let Some(templates_arr) = templates_val.get("index_templates").and_then(|a| a.as_array()) {
+                                        for t in templates_arr {
+                                            if let Some(name) = t.get("name").and_then(|n| n.as_str()) {
+                                                if let Some(patterns) = t.pointer("/index_template/index_patterns").and_then(|p| p.as_array()) {
+                                                    let matches = patterns.iter()
+                                                        .filter_map(|p| p.as_str())
+                                                        .any(|p| crate::modules::indices::index_pattern_matches(p, &target_name));
+                                                    if matches {
+                                                        detail.index_template = Some(name.to_string());
+                                                        break;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            let _ = tx.send(RefreshMsg::IndexDetailResult(target_name, Ok(detail)));
+                        } else {
+                            let _ = tx.send(RefreshMsg::IndexDetailResult(target_name, Err("Failed to build client".to_string())));
+                        }
+                        ctx.request_repaint();
+                    });
+                }
             }
             Tab::Observability => {
                 let cluster_names: Vec<String> = self
@@ -2474,6 +2664,285 @@ if self.snapshot_manual_refresh {
             }
         }
 
+        // Render Hot Threads Popup Window
+        if let Some((ref cluster_name, ref node_name)) = self.hot_threads_node {
+            let mut is_open = true;
+            egui::Window::new(format!("🔥 Node Hot Threads - {} ({})", node_name, cluster_name))
+                .open(&mut is_open)
+                .collapsible(false)
+                .resizable(true)
+                .default_size([750.0, 520.0])
+                .show(ctx, |ui| {
+                    if self.hot_threads_loading {
+                        ui.horizontal(|ui| {
+                            ui.spinner();
+                            ui.label(format!("Sampling hot threads on node {}...", node_name));
+                        });
+                    } else if let Some(ref text) = self.hot_threads_text {
+                        egui::ScrollArea::both()
+                            .id_salt("hot_threads_scroll")
+                            .show(ui, |ui| {
+                            ui.add(
+                                egui::TextEdit::multiline(&mut text.as_str())
+                                    .font(egui::TextStyle::Monospace)
+                                    .text_color(Theme::text_primary())
+                                    .frame(false)
+                                    .layouter(&mut |ui, string, _wrap_width| {
+                                        let mut layout_job = egui::text::LayoutJob::default();
+                                        layout_job.append(string, 0.0, egui::TextFormat {
+                                            font_id: egui::FontId::monospace(10.5),
+                                            color: Theme::text_primary(),
+                                            ..Default::default()
+                                        });
+                                        ui.fonts(|f| f.layout_job(layout_job))
+                                    })
+                            );
+                        });
+                    } else {
+                        ui.label("No thread dump available.");
+                    }
+                });
+            if !is_open {
+                self.hot_threads_node = None;
+                self.hot_threads_text = None;
+                self.hot_threads_loading = false;
+            }
+        }
+
+        // Render Pending Tasks Popup Window
+        if let Some(ref cluster_name) = self.show_pending_cluster {
+            let mut is_open = true;
+            let pending_list = self.status_state.pending_tasks.get(cluster_name).cloned();
+
+            egui::Window::new(format!("⏳ Pending Master Tasks - {}", cluster_name))
+                .open(&mut is_open)
+                .collapsible(false)
+                .resizable(true)
+                .default_size([650.0, 400.0])
+                .show(ctx, |ui| {
+                    if let Some(tasks) = pending_list {
+                        if tasks.is_empty() {
+                            ui.label(
+                                egui::RichText::new("No pending metadata tasks currently in queue.")
+                                    .color(Theme::text_muted())
+                                    .size(13.0),
+                            );
+                        } else {
+                            ui.label(
+                                egui::RichText::new(format!("{} tasks waiting for master node execution:", tasks.len()))
+                                    .strong()
+                                    .color(Theme::accent())
+                                    .size(12.0),
+                            );
+                            ui.add_space(8.0);
+
+                            egui::ScrollArea::vertical()
+                                .id_salt("pending_tasks_scroll")
+                                .show(ui, |ui| {
+                                for task in &tasks {
+                                    let priority = task.get("priority").and_then(|p| p.as_str()).unwrap_or("NORMAL");
+                                    let insert_order = task.get("insert_order").and_then(|o| o.as_i64()).unwrap_or(0);
+                                    let source = task.get("source").and_then(|s| s.as_str()).unwrap_or("Unknown source");
+                                    let time_in_queue = task.get("time_in_queue").and_then(|t| t.as_str()).unwrap_or("0s");
+
+                                    let bg_color = match priority {
+                                        "HIGH" | "URGENT" => Theme::danger().to_opaque().linear_multiply(0.15),
+                                        _ => Theme::bg_input(),
+                                    };
+
+                                    egui::Frame::new()
+                                        .fill(bg_color)
+                                        .corner_radius(Theme::CARD_ROUNDING)
+                                        .inner_margin(8.0)
+                                        .stroke(egui::Stroke::new(1.0, Theme::bg_input()))
+                                        .show(ui, |ui| {
+                                            ui.horizontal(|ui| {
+                                                ui.label(
+                                                    egui::RichText::new(format!("#{}", insert_order))
+                                                        .monospace()
+                                                        .size(11.0)
+                                                        .color(Theme::text_muted()),
+                                                );
+                                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                                    let badge_color = match priority {
+                                                        "HIGH" | "URGENT" => Theme::danger(),
+                                                        _ => Theme::accent(),
+                                                    };
+                                                    ui.add(crate::ui::widgets::StatePill::new(priority, badge_color));
+                                                });
+                                            });
+                                            ui.add_space(4.0);
+                                            ui.label(
+                                                egui::RichText::new(source)
+                                                    .strong()
+                                                    .size(11.5)
+                                                    .color(Theme::text_primary()),
+                                            );
+                                            ui.add_space(2.0);
+                                            ui.label(
+                                                egui::RichText::new(format!("Time in queue: {}", time_in_queue))
+                                                    .size(10.5)
+                                                    .color(Theme::text_muted()),
+                                            );
+                                        });
+                                    ui.add_space(8.0);
+                                }
+                            });
+                        }
+                    } else {
+                        ui.label("Loading pending tasks or cluster is unreachable...");
+                    }
+                });
+
+            if !is_open {
+                self.show_pending_cluster = None;
+            }
+        }
+
+        // Render Index/DataStream Details Popup Window
+        if self.indices_state.detail_loading {
+            let mut is_open = true;
+            egui::Window::new("⏳ Loading Details...")
+                .open(&mut is_open)
+                .collapsible(false)
+                .resizable(false)
+                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+                .show(ctx, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.spinner();
+                        ui.label("Fetching settings, lifecycle configurations, and index templates...");
+                    });
+                });
+            if !is_open {
+                self.indices_state.detail_loading = false;
+            }
+        }
+
+        if let Some(ref detail) = self.indices_state.selected_detail {
+            let mut is_open = true;
+            let title = if detail.is_datastream {
+                format!("📦 Data Stream Details - {}", detail.name)
+            } else {
+                format!("🗄️ Index Details - {}", detail.name)
+            };
+
+            egui::Window::new(title)
+                .open(&mut is_open)
+                .collapsible(false)
+                .resizable(true)
+                .default_size([700.0, 500.0])
+                .show(ctx, |ui| {
+                    egui::ScrollArea::vertical()
+                        .id_salt("index_detail_scroll")
+                        .show(ui, |ui| {
+                            // Section 1: Quick Header Metrics/Information
+                            ui.horizontal(|ui| {
+                                ui.label(egui::RichText::new("Target Name:").strong().size(13.0).color(Theme::text_muted()));
+                                ui.label(egui::RichText::new(&detail.name).strong().size(13.0).color(Theme::accent()));
+                                
+                                ui.add_space(20.0);
+                                ui.label(egui::RichText::new("Type:").strong().size(13.0).color(Theme::text_muted()));
+                                let type_str = if detail.is_datastream { "Data Stream" } else { "Regular Index" };
+                                ui.add(crate::ui::widgets::StatePill::new(type_str, Theme::accent()));
+                            });
+                            ui.add_space(10.0);
+
+                            // Section 2: Index Template Information
+                            egui::Frame::new()
+                                .fill(Theme::bg_input())
+                                .corner_radius(Theme::CARD_ROUNDING)
+                                .inner_margin(12.0)
+                                .show(ui, |ui| {
+                                    ui.horizontal(|ui| {
+                                        ui.label(egui::RichText::new("Matched Index Template:").strong().size(12.0).color(Theme::text_primary()));
+                                        if let Some(ref template) = detail.index_template {
+                                            ui.label(egui::RichText::new(template).strong().size(12.0).color(Theme::success()));
+                                        } else {
+                                            ui.label(egui::RichText::new("None (Directly created or no matching pattern found)").size(11.5).color(Theme::text_muted()).italics());
+                                        }
+                                    });
+                                });
+                            ui.add_space(12.0);
+
+                            // Section 3: Index Lifecycle Management (ILM) Policy
+                            egui::Frame::new()
+                                .fill(Theme::bg_input())
+                                .corner_radius(Theme::CARD_ROUNDING)
+                                .inner_margin(12.0)
+                                .show(ui, |ui| {
+                                    ui.horizontal(|ui| {
+                                        ui.label(egui::RichText::new("ILM Policy:").strong().size(12.0).color(Theme::text_primary()));
+                                        if let Some(ref policy) = detail.ilm_policy {
+                                            ui.label(egui::RichText::new(policy).strong().size(12.0).color(Theme::accent()));
+                                        } else {
+                                            ui.label(egui::RichText::new("No policy defined").size(11.5).color(Theme::text_muted()).italics());
+                                        }
+                                    });
+
+                                    if let Some(ref explain) = detail.ilm_explain {
+                                        ui.add_space(8.0);
+                                        let mut found_explain = false;
+                                        if let Some(indices_obj) = explain.pointer("/indices").and_then(|i| i.as_object()) {
+                                            if let Some(val) = indices_obj.values().next() {
+                                                found_explain = true;
+                                                let phase = val.get("phase").and_then(|v| v.as_str()).unwrap_or("—");
+                                                let action = val.get("action").and_then(|v| v.as_str()).unwrap_or("—");
+                                                let step = val.get("step").and_then(|v| v.as_str()).unwrap_or("—");
+                                                let age = val.get("age").and_then(|v| v.as_str()).unwrap_or("");
+                                                
+                                                ui.horizontal(|ui| {
+                                                    ui.label(egui::RichText::new("ILM Explain status:").size(11.0).color(Theme::text_muted()));
+                                                    ui.add(crate::ui::widgets::StatePill::new(format!("Phase: {}", phase), Theme::accent()));
+                                                    ui.add(crate::ui::widgets::StatePill::new(format!("Action: {}", action), Theme::text_secondary()));
+                                                    ui.add(crate::ui::widgets::StatePill::new(format!("Step: {}", step), Theme::text_muted()));
+                                                    if !age.is_empty() {
+                                                        ui.label(egui::RichText::new(format!("(Age: {})", age)).size(10.5).color(Theme::text_muted()));
+                                                    }
+                                                });
+                                            }
+                                        }
+                                        if !found_explain && explain.get("policy").is_some() {
+                                            let phase = explain.get("phase").and_then(|v| v.as_str()).unwrap_or("—");
+                                            let action = explain.get("action").and_then(|v| v.as_str()).unwrap_or("—");
+                                            let step = explain.get("step").and_then(|v| v.as_str()).unwrap_or("—");
+                                            ui.horizontal(|ui| {
+                                                ui.label(egui::RichText::new("ILM Explain status:").size(11.0).color(Theme::text_muted()));
+                                                ui.add(crate::ui::widgets::StatePill::new(format!("Phase: {}", phase), Theme::accent()));
+                                                ui.add(crate::ui::widgets::StatePill::new(format!("Action: {}", action), Theme::text_secondary()));
+                                                ui.add(crate::ui::widgets::StatePill::new(format!("Step: {}", step), Theme::text_muted()));
+                                            });
+                                        }
+                                    }
+                                });
+                            ui.add_space(12.0);
+
+                            // Section 4: Raw Settings / Config Folding Tree
+                            ui.collapsing(egui::RichText::new("⚙️ Index Settings").strong().size(13.0).color(Theme::text_primary()), |ui| {
+                                if let Some(ref settings) = detail.settings {
+                                    let formatted_settings = serde_json::to_string_pretty(settings).unwrap_or_default();
+                                    egui::Frame::new()
+                                        .fill(Theme::bg_input())
+                                        .corner_radius(4.0)
+                                        .inner_margin(8.0)
+                                        .show(ui, |ui| {
+                                            ui.add(
+                                                egui::TextEdit::multiline(&mut formatted_settings.as_str())
+                                                    .font(egui::TextStyle::Monospace)
+                                                    .text_color(Theme::text_primary())
+                                                    .frame(false)
+                                            );
+                                        });
+                                } else {
+                                    ui.label("Settings not available.");
+                                }
+                            });
+                        });
+                });
+            if !is_open {
+                self.indices_state.selected_detail = None;
+            }
+        }
+
         // Render toasts on top of everything
         self.toasts.render(ctx);
     }
@@ -2490,6 +2959,8 @@ if self.snapshot_manual_refresh {
             config.window_pos_x = Some(pos[0]);
             config.window_pos_y = Some(pos[1]);
         }
+        config.pinned_monitor_ids = self.observability_state.pinned_monitor_ids.clone();
+        config.pinned_monitor_layouts = self.observability_state.pinned_monitor_layouts.clone();
         if let Err(e) = config.save() {
             tracing::warn!("Failed to save window state: {}", e);
         }

@@ -230,6 +230,14 @@ pub fn default_timezone_clocks() -> Vec<TimezoneClockConfig> {
     ]
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PinnedMonitorLayout {
+    pub x: f32,
+    pub y: f32,
+    pub w: f32,
+    pub h: f32,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AppConfig {
     pub clusters: Vec<ClusterConfig>,
@@ -257,6 +265,10 @@ pub struct AppConfig {
     pub window_pos_y: Option<f32>,
     #[serde(default)]
     pub wizard_completed: bool,
+    #[serde(default)]
+    pub pinned_monitor_ids: Vec<String>,
+    #[serde(default)]
+    pub pinned_monitor_layouts: HashMap<String, PinnedMonitorLayout>,
 }
 
 fn default_refresh_interval_secs() -> u64 {

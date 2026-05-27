@@ -22,6 +22,16 @@ pub enum SortOrder {
     Descending,
 }
 
+#[derive(Debug, Clone)]
+pub struct IndexDetail {
+    pub name: String,
+    pub is_datastream: bool,
+    pub ilm_policy: Option<String>,
+    pub ilm_explain: Option<serde_json::Value>,
+    pub index_template: Option<String>,
+    pub settings: Option<serde_json::Value>,
+}
+
 pub struct IndicesState {
     pub selected_cluster: String,
     pub active_sub_tab: IndicesSubTab,
@@ -37,6 +47,8 @@ pub struct IndicesState {
     pub sort_order: SortOrder,
     pub previous_doc_counts: std::collections::HashMap<String, i64>,
     pub previous_sizes: std::collections::HashMap<String, u64>,
+    pub selected_detail: Option<IndexDetail>,
+    pub detail_loading: bool,
 }
 
 impl IndicesState {
@@ -56,6 +68,8 @@ impl IndicesState {
             sort_order: SortOrder::Ascending,
             previous_doc_counts: std::collections::HashMap::new(),
             previous_sizes: std::collections::HashMap::new(),
+            selected_detail: None,
+            detail_loading: false,
         }
     }
 
@@ -86,6 +100,7 @@ pub fn render_indices_module(
     state: &mut IndicesState,
     clusters: &[String],
     on_refresh: &mut Option<(String, bool)>, // (cluster_name, is_datastream)
+    on_fetch_detail: &mut Option<(String, bool)>, // (target_name, is_datastream)
 ) {
     ui.heading("Datastreams & Indices");
     ui.add_space(8.0);
@@ -223,14 +238,14 @@ pub fn render_indices_module(
                 .auto_shrink([false, false])
                 .show(ui, |ui| {
                     match state.active_sub_tab {
-                        IndicesSubTab::Indices => render_indices_table(ui, state),
-                        IndicesSubTab::DataStreams => render_datastreams_table(ui, state),
+                        IndicesSubTab::Indices => render_indices_table(ui, state, on_fetch_detail),
+                        IndicesSubTab::DataStreams => render_datastreams_table(ui, state, on_fetch_detail),
                     }
                 });
         });
 }
 
-fn render_indices_table(ui: &mut Ui, state: &mut IndicesState) {
+fn render_indices_table(ui: &mut Ui, state: &mut IndicesState, on_fetch_detail: &mut Option<(String, bool)>) {
     // 1. First filter by search text (cloned to avoid borrow conflicts)
     let text_filtered_indices: Vec<CatIndex> = state.indices.iter()
         .filter(|idx| state.filter.is_empty() || idx.index.to_lowercase().contains(&state.filter.to_lowercase()))
@@ -368,7 +383,16 @@ fn render_indices_table(ui: &mut Ui, state: &mut IndicesState) {
                         _ => Color32::from_rgb(100, 100, 100),
                     };
                     ui.add(crate::ui::widgets::ConnectionDot::new(true).color(dot_color).size(6.0));
-                    ui.label(RichText::new(&idx.index).strong().color(Theme::text_primary()));
+                    let name_btn = ui.add(
+                        egui::Link::new(
+                            egui::RichText::new(&idx.index)
+                                .strong()
+                                .color(Theme::text_primary())
+                        )
+                    ).on_hover_text("Click to view settings, index template, and ILM policy details");
+                    if name_btn.clicked() {
+                        *on_fetch_detail = Some((idx.index.clone(), false));
+                    }
                 });
                 
                 // Column 2: Status
@@ -417,7 +441,7 @@ fn render_indices_table(ui: &mut Ui, state: &mut IndicesState) {
         });
 }
 
-fn render_datastreams_table(ui: &mut Ui, state: &mut IndicesState) {
+fn render_datastreams_table(ui: &mut Ui, state: &mut IndicesState, on_fetch_detail: &mut Option<(String, bool)>) {
     // 1. First filter by search text (cloned to avoid borrow conflicts)
     let text_filtered_streams: Vec<DataStream> = state.datastreams.iter()
         .filter(|ds| state.filter.is_empty() || ds.name.to_lowercase().contains(&state.filter.to_lowercase()))
@@ -553,7 +577,16 @@ fn render_datastreams_table(ui: &mut Ui, state: &mut IndicesState) {
                         _ => Color32::from_rgb(100, 100, 100),
                     };
                     ui.add(crate::ui::widgets::ConnectionDot::new(true).color(dot_color).size(6.0));
-                    ui.label(RichText::new(&ds.name).strong().color(Theme::text_primary()));
+                    let name_btn = ui.add(
+                        egui::Link::new(
+                            egui::RichText::new(&ds.name)
+                                .strong()
+                                .color(Theme::text_primary())
+                        )
+                    ).on_hover_text("Click to view settings, index template, and ILM policy details");
+                    if name_btn.clicked() {
+                        *on_fetch_detail = Some((ds.name.clone(), true));
+                    }
                 });
                 
                 // Column 2: Backing Indices
@@ -624,9 +657,53 @@ fn human_bytes(bytes: f64) -> String {
     format!("{:.1} {}", val, suffix[i])
 }
 
+pub fn index_pattern_matches(pattern: &str, index_name: &str) -> bool {
+    let pattern = pattern.trim();
+    if pattern == "*" || pattern == index_name {
+        return true;
+    }
+    
+    let parts: Vec<&str> = pattern.split('*').collect();
+    if parts.len() == 1 {
+        return pattern == index_name;
+    }
+    
+    let mut current_idx = 0;
+    for (i, part) in parts.iter().enumerate() {
+        if part.is_empty() {
+            continue;
+        }
+        if i == 0 {
+            if !index_name.starts_with(part) {
+                return false;
+            }
+            current_idx = part.len();
+        } else if i == parts.len() - 1 {
+            return index_name[current_idx..].ends_with(part);
+        } else {
+            if let Some(pos) = index_name[current_idx..].find(part) {
+                current_idx += pos + part.len();
+            } else {
+                return false;
+            }
+        }
+    }
+    true
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_index_pattern_matches() {
+        assert!(index_pattern_matches("logs-*", "logs-mysql-000001"));
+        assert!(index_pattern_matches("kibana_sample_data_*", "kibana_sample_data_flights"));
+        assert!(index_pattern_matches("*.logs", "system.logs"));
+        assert!(index_pattern_matches("test-*-prod", "test-database-prod"));
+        assert!(!index_pattern_matches("logs-*", "metrics-cpu"));
+        assert!(!index_pattern_matches("*-prod", "test-prod-old"));
+    }
 
     #[test]
     fn test_indices_state_new() {
