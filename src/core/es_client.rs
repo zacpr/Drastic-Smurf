@@ -353,6 +353,31 @@ impl EsClient {
         self.exec(req, &method, &url).await
     }
 
+    pub async fn cat_allocation(&self) -> Result<Vec<CatAllocation>, EsError> {
+        let (req, method, url) = self.request(reqwest::Method::GET, "/_cat/allocation?format=json");
+        self.exec(req, &method, &url).await
+    }
+
+    pub async fn get_es_version(&self) -> Result<String, EsError> {
+        let res: serde_json::Value = self.execute(reqwest::Method::GET, "/", None).await?;
+        if let Some(v) = res.get("version").and_then(|v| v.get("number")).and_then(|n| n.as_str()) {
+            Ok(v.to_string())
+        } else {
+            Err(EsError::Parse("Unable to parse ES version".to_string()))
+        }
+    }
+
+    pub async fn get_kibana_version(&self, kibana_host: &str) -> Result<String, EsError> {
+        let res = self.send_to_host(kibana_host, reqwest::Method::GET, "/api/status", None).await?;
+        if let Some(version) = res.get("version").and_then(|v| v.get("number")).and_then(|n| n.as_str()) {
+            Ok(version.to_string())
+        } else if let Some(version) = res.get("version").and_then(|v| v.as_str()) {
+            Ok(version.to_string())
+        } else {
+            Err(EsError::Parse("Unable to parse Kibana version".to_string()))
+        }
+    }
+
     pub async fn get_kibana_synthetics_monitors(&self, kibana_host: &str, space_id: Option<&str>) -> Result<serde_json::Value, EsError> {
         let path = match space_id {
             Some(space) if space != "default" && !space.is_empty() => {
@@ -675,6 +700,18 @@ pub struct TaskInfo {
     pub parent_task_id: Option<String>,
     pub headers: Option<serde_json::Value>,
     pub status: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, Default)]
+pub struct CatAllocation {
+    pub shards: Option<String>,
+    #[serde(rename = "disk.percent")]
+    pub disk_percent: Option<String>,
+    #[serde(rename = "disk.avail")]
+    pub disk_avail: Option<String>,
+    #[serde(rename = "disk.total")]
+    pub disk_total: Option<String>,
+    pub node: Option<String>,
 }
 
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]

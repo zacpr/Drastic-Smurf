@@ -9,6 +9,9 @@ pub struct StatusState {
     pub health_data: Vec<(String, Option<ClusterHealth>)>,
     pub stats_data: Vec<(String, Option<ClusterStats>)>,
     pub explains: std::collections::HashMap<String, Option<crate::core::es_client::AllocationExplain>>,
+    pub es_versions: std::collections::HashMap<String, String>,
+    pub kibana_versions: std::collections::HashMap<String, String>,
+    pub allocations: std::collections::HashMap<String, Vec<crate::core::es_client::CatAllocation>>,
     pub errors: std::collections::HashMap<String, String>,
 }
 
@@ -64,11 +67,17 @@ pub fn render_status_module(
                                     .and_then(|(_, s)| s.clone());
                                 let error = state.errors.get(&cluster.name).cloned();
                                 let explain = state.explains.get(&cluster.name).cloned().flatten();
+                                let es_version = state.es_versions.get(&cluster.name).cloned();
+                                let kibana_version = state.kibana_versions.get(&cluster.name).cloned();
+                                let allocations = state.allocations.get(&cluster.name).cloned();
                                 render_status_card(
                                     ui,
                                     &cluster.name,
                                     &health,
                                     stats,
+                                    es_version,
+                                    kibana_version,
+                                    allocations,
                                     error,
                                     explain,
                                     col_width,
@@ -92,6 +101,9 @@ fn render_status_card(
     name: &str,
     health: &Option<ClusterHealth>,
     stats: Option<ClusterStats>,
+    es_version: Option<String>,
+    kibana_version: Option<String>,
+    allocations: Option<Vec<crate::core::es_client::CatAllocation>>,
     error: Option<String>,
     explain: Option<crate::core::es_client::AllocationExplain>,
     col_width: f32,
@@ -118,6 +130,29 @@ fn render_status_card(
                         .size(17.0)
                         .color(Theme::text_primary()),
                 );
+                if es_version.is_some() || kibana_version.is_some() {
+                    ui.horizontal(|ui| {
+                        if let Some(ref es_v) = es_version {
+                            ui.label(
+                                egui::RichText::new(format!("ES v{}", es_v))
+                                    .size(10.0)
+                                    .color(Theme::text_muted())
+                                    .monospace(),
+                            );
+                        }
+                        if let Some(ref kb_v) = kibana_version {
+                            if es_version.is_some() {
+                                ui.label(egui::RichText::new("|").size(10.0).color(Theme::text_muted()));
+                            }
+                            ui.label(
+                                egui::RichText::new(format!("KB v{}", kb_v))
+                                    .size(10.0)
+                                    .color(Theme::text_muted())
+                                    .monospace(),
+                            );
+                        }
+                    });
+                }
             });
 
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -274,6 +309,92 @@ if count.voting_only > 0 {
                             ui.add_space(12.0);
                         }
                     });
+                }
+            }
+
+            if let Some(ref allocs) = allocations {
+                let data_nodes: Vec<_> = allocs.iter()
+                    .filter(|a| a.node.as_deref().unwrap_or("UNASSIGNED") != "UNASSIGNED")
+                    .collect();
+                
+                if !data_nodes.is_empty() {
+                    ui.add_space(8.0);
+                    ui.separator();
+                    ui.add_space(4.0);
+                    ui.label(
+                        egui::RichText::new("💾 Data Nodes (Shards & Disk)")
+                            .strong()
+                            .size(11.0)
+                            .color(Theme::text_secondary()),
+                    );
+                    ui.add_space(4.0);
+
+                    for node in data_nodes {
+                        let node_name = node.node.as_deref().unwrap_or("Unknown");
+                        let shard_count: u32 = node.shards.as_ref()
+                            .and_then(|s| s.parse().ok())
+                            .unwrap_or(0);
+                        
+                        let disk_percent_val: f32 = node.disk_percent.as_ref()
+                            .and_then(|p| p.parse::<f32>().ok())
+                            .unwrap_or(0.0);
+                        let free_percent = 100.0 - disk_percent_val;
+
+                        // Shards ratio: approaches 1000
+                        let shard_ratio = (shard_count as f32 / 1000.0).clamp(0.0, 1.0);
+
+                        // Disk ratio: falls to 15%
+                        let space_ratio = if free_percent <= 15.0 {
+                            1.0
+                        } else if free_percent >= 50.0 {
+                            0.0
+                        } else {
+                            (50.0 - free_percent) / (50.0 - 15.0)
+                        };
+
+                        let ratio = f32::max(shard_ratio, space_ratio);
+
+                        // Calm green to Yellow to Red interpolation
+                        let color = if ratio <= 0.5 {
+                            let t = ratio * 2.0;
+                            let r = (46.0 * (1.0 - t) + 241.0 * t) as u8;
+                            let g = (204.0 * (1.0 - t) + 196.0 * t) as u8;
+                            let b = (113.0 * (1.0 - t) + 15.0 * t) as u8;
+                            Color32::from_rgb(r, g, b)
+                        } else {
+                            let t = (ratio - 0.5) * 2.0;
+                            let r = (241.0 * (1.0 - t) + 231.0 * t) as u8;
+                            let g = (196.0 * (1.0 - t) + 76.0 * t) as u8;
+                            let b = (15.0 * (1.0 - t) + 60.0 * t) as u8;
+                            Color32::from_rgb(r, g, b)
+                        };
+
+                        ui.horizontal(|ui| {
+                            let (rect, _) = ui.allocate_exact_size(egui::Vec2::new(8.0, 8.0), egui::Sense::hover());
+                            ui.painter().circle_filled(rect.center(), 4.0, color);
+                            ui.add_space(2.0);
+
+                            ui.label(
+                                egui::RichText::new(node_name)
+                                    .size(11.0)
+                                    .color(Theme::text_primary()),
+                            );
+
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                ui.label(
+                                    egui::RichText::new(format!(
+                                        "{} shards | {:.1}% free ({})",
+                                        shard_count,
+                                        free_percent,
+                                        node.disk_avail.as_deref().unwrap_or("—")
+                                    ))
+                                    .size(10.0)
+                                    .color(Theme::text_muted())
+                                    .monospace(),
+                                );
+                            });
+                        });
+                    }
                 }
             }
             if let Some(ref exp) = explain {

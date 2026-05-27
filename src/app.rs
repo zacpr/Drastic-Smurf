@@ -59,6 +59,9 @@ pub enum RefreshMsg {
     ExplainError(String, String),
     HistoryResult(String, Vec<crate::core::es_client::SnapshotInfo>),
     HistoryError(String, String),
+    EsVersionResult(String, String),
+    KibanaVersionResult(String, String),
+    AllocationResult(String, Vec<crate::core::es_client::CatAllocation>),
 }
 
 pub struct DrasticSmurfApp {
@@ -318,6 +321,61 @@ impl DrasticSmurfApp {
                         }
                     }
                     ctx4.request_repaint();
+                });
+
+                // ES version refresh
+                let tx_es = tx.clone();
+                let name_es = name.clone();
+                let ctx_es = ctx.clone();
+                let manager_es = manager.clone();
+                tokio::spawn(async move {
+                    if let Some(client) = manager_es.get_client(&name_es) {
+                        if let Ok(ver) = client.get_es_version().await {
+                            let _ = tx_es.send(RefreshMsg::EsVersionResult(name_es, ver));
+                        }
+                    }
+                    ctx_es.request_repaint();
+                });
+
+                // Kibana version refresh
+                let tx_kb = tx.clone();
+                let name_kb = name.clone();
+                let ctx_kb = ctx.clone();
+                let manager_kb = manager.clone();
+                tokio::spawn(async move {
+                    if let Some(client) = manager_kb.get_client(&name_kb) {
+                        let config = manager_kb.clusters().into_iter().find(|c| c.name == name_kb);
+                        if let Some(config) = config {
+                            let kibana_host = if config.kibana_host.is_empty() {
+                                config.host.clone()
+                            } else {
+                                let h = config.kibana_host.trim();
+                                if h.starts_with("http://") || h.starts_with("https://") {
+                                    h.to_string()
+                                } else {
+                                    format!("http://{}", h)
+                                }
+                            };
+                            if let Ok(ver) = client.get_kibana_version(&kibana_host).await {
+                                let _ = tx_kb.send(RefreshMsg::KibanaVersionResult(name_kb, ver));
+                            }
+                        }
+                    }
+                    ctx_kb.request_repaint();
+                });
+
+                // Allocation refresh
+                let tx_alloc = tx.clone();
+                let name_alloc = name.clone();
+                let ctx_alloc = ctx.clone();
+                let manager_alloc = manager.clone();
+                tokio::spawn(async move {
+                    if let Some(client) = manager_alloc.get_client(&name_alloc) {
+                        if let Ok(allocs) = client.cat_allocation().await {
+                            let _ = tx_alloc.send(RefreshMsg::AllocationResult(name_alloc, allocs));
+                        }
+                    }
+                    ctx_alloc.request_repaint();
                 });
 
                 // Tasks refresh
@@ -595,6 +653,15 @@ impl DrasticSmurfApp {
                 RefreshMsg::HistoryError(name, err) => {
                     self.toasts.error(format!("Failed to fetch history for '{}': {}", name, err));
                     self.history_loading = false;
+                }
+                RefreshMsg::EsVersionResult(name, version) => {
+                    self.status_state.es_versions.insert(name, version);
+                }
+                RefreshMsg::KibanaVersionResult(name, version) => {
+                    self.status_state.kibana_versions.insert(name, version);
+                }
+                RefreshMsg::AllocationResult(name, allocations) => {
+                    self.status_state.allocations.insert(name, allocations);
                 }
             }
         }
@@ -1412,6 +1479,27 @@ impl DrasticSmurfApp {
                         .iter()
                         .filter(|(n, _)| self.cluster_matches_filter(n))
                         .map(|(n, e)| (n.clone(), e.clone()))
+                        .collect(),
+                    es_versions: self
+                        .status_state
+                        .es_versions
+                        .iter()
+                        .filter(|(n, _)| self.cluster_matches_filter(n))
+                        .map(|(n, v)| (n.clone(), v.clone()))
+                        .collect(),
+                    kibana_versions: self
+                        .status_state
+                        .kibana_versions
+                        .iter()
+                        .filter(|(n, _)| self.cluster_matches_filter(n))
+                        .map(|(n, v)| (n.clone(), v.clone()))
+                        .collect(),
+                    allocations: self
+                        .status_state
+                        .allocations
+                        .iter()
+                        .filter(|(n, _)| self.cluster_matches_filter(n))
+                        .map(|(n, a)| (n.clone(), a.clone()))
                         .collect(),
                 };
                 render_status_module(
