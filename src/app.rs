@@ -1372,12 +1372,14 @@ impl DrasticSmurfApp {
                 }
 
                 let mut on_save_query = None;
+                let mut on_delete_query = None;
                 render_console_module(
                     ui,
                     &mut self.console_state,
                     &names,
                     &mut self.console_send,
                     &mut on_save_query,
+                    &mut on_delete_query,
                 );
 
                 if let Some(query) = on_save_query {
@@ -1401,6 +1403,18 @@ impl DrasticSmurfApp {
                     if let Some(data) = self.cluster_manager.get_cluster_data(cluster) {
                         self.console_state.saved_queries = data.saved_queries;
                     }
+                }
+
+                if let Some(query_name) = on_delete_query {
+                    let cluster = &self.console_state.selected_cluster;
+                    if let Some(mut data) = self.cluster_manager.get_cluster_data(cluster) {
+                        data.saved_queries.retain(|q| q.name != query_name);
+                        self.cluster_manager.set_cluster_data(cluster, data);
+                    }
+                    if let Some(data) = self.cluster_manager.get_cluster_data(cluster) {
+                        self.console_state.saved_queries = data.saved_queries;
+                    }
+                    self.toasts.info(format!("Deleted query '{}'", query_name));
                 }
 
                 // Persist variable changes back to ClusterData when modified
@@ -1832,6 +1846,11 @@ impl eframe::App for DrasticSmurfApp {
                     let _ = tx.send(RefreshMsg::ConsoleResult(result));
                     ctx.request_repaint();
                 });
+            } else {
+                let _ = self.refresh_tx.send(RefreshMsg::ConsoleResult(Err(
+                    "Failed to obtain cluster client. Ensure the cluster is configured and reachable."
+                        .to_string(),
+                )));
             }
         }
 
@@ -1849,6 +1868,11 @@ impl eframe::App for DrasticSmurfApp {
                     let _ = tx.send(RefreshMsg::DiscoverResult(result));
                     ctx.request_repaint();
                 });
+            } else {
+                let _ = self.refresh_tx.send(RefreshMsg::DiscoverResult(Err(
+                    "Failed to obtain cluster client. Ensure the cluster is configured and reachable."
+                        .to_string(),
+                )));
             }
         }
 
@@ -1874,6 +1898,12 @@ impl eframe::App for DrasticSmurfApp {
                     }
                     ctx.request_repaint();
                 });
+            } else {
+                let _ = self.refresh_tx.send(RefreshMsg::IndicesError(
+                    cluster_name,
+                    "Failed to obtain cluster client. Ensure the cluster is configured and reachable."
+                        .to_string(),
+                ));
             }
         }
 
@@ -1952,6 +1982,12 @@ impl eframe::App for DrasticSmurfApp {
                     }
                     ctx.request_repaint();
                 });
+            } else {
+                let _ = self.refresh_tx.send(RefreshMsg::ObservabilityError(
+                    cluster_name,
+                    "Failed to obtain cluster client. Ensure the cluster is configured and reachable."
+                        .to_string(),
+                ));
             }
         }
 

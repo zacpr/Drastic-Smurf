@@ -628,6 +628,7 @@ pub fn render_console_module(
     clusters: &[String],
     on_send: &mut Option<(String, String, String, Option<String>, bool)>,
     on_save_query: &mut Option<SavedQuery>,
+    on_delete_query: &mut Option<String>,
 ) {
     ui.heading("Elastic Console");
     ui.add_space(8.0);
@@ -863,15 +864,26 @@ pub fn render_console_module(
                                                 .size(11.0),
                                         );
                                     } else {
+                                        let mut to_delete = None;
                                         for query in &state.saved_queries {
-                                            let label_text = format!("{} ({} {})", query.name, query.method, query.path);
-                                            if ui.button(&label_text).clicked() {
-                                                state.method = query.method.clone();
-                                                state.path = query.path.clone();
-                                                state.body = query.body.clone().unwrap_or_default();
-                                                state.history_index = None;
-                                            }
+                                            ui.horizontal(|ui| {
+                                                let label_text = format!("{} ({} {})", query.name, query.method, query.path);
+                                                if ui.button(&label_text).clicked() {
+                                                    state.method = query.method.clone();
+                                                    state.path = query.path.clone();
+                                                    state.body = query.body.clone().unwrap_or_default();
+                                                    state.history_index = None;
+                                                }
+                                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                                    if ui.button("🗑").on_hover_text("Delete Saved Query").clicked() {
+                                                        to_delete = Some(query.name.clone());
+                                                    }
+                                                });
+                                            });
                                             ui.add_space(4.0);
+                                        }
+                                        if let Some(name) = to_delete {
+                                            *on_delete_query = Some(name);
                                         }
                                     }
                                 }
