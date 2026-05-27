@@ -143,7 +143,7 @@ $ cargo generate-rpm
 
 ## Next Steps / Known Gaps
 
-1. **Tests** — Add unit tests for `human_duration`, snapshot stat calculations, and config roundtrips. (Partially completed: `human_bytes` and formatting tests are now implemented!)
+1. **Tests** — Add unit tests for snapshot stat calculations and config roundtrips. (Completed: `human_duration`, `human_nanos`, `human_bytes`, and `human_docs` formatting helpers are now fully tested!)
 2. **Status module depth** — Currently shows a flat card list. The plan calls for an overview of all clusters, selected subset view, and detailed single-cluster view.
 3. **Task type filtering** — Text search exists, but task-type dropdown filtering is not implemented.
 4. **Console enhancements** — No JSON syntax highlighting or response folding.
