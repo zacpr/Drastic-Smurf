@@ -26,6 +26,7 @@ pub struct ClusterManager {
     theme: Arc<Mutex<crate::ui::theme::AppTheme>>,
     vfx: Arc<Mutex<crate::core::config::VfxSettings>>,
     timezone_clocks: Arc<Mutex<Vec<crate::core::config::TimezoneClockConfig>>>,
+    cluster_filter: Arc<Mutex<String>>,
     dirty: Arc<AtomicBool>,
     save_after: Arc<Mutex<Option<Instant>>>,
 }
@@ -48,6 +49,7 @@ impl ClusterManager {
             theme: Arc::new(Mutex::new(crate::ui::theme::AppTheme::default())),
             vfx: Arc::new(Mutex::new(crate::core::config::VfxSettings::default())),
             timezone_clocks: Arc::new(Mutex::new(crate::core::config::default_timezone_clocks())),
+            cluster_filter: Arc::new(Mutex::new(String::new())),
             dirty: Arc::new(AtomicBool::new(false)),
             save_after: Arc::new(Mutex::new(None)),
         }
@@ -83,6 +85,10 @@ impl ClusterManager {
             let mut tc = self.timezone_clocks.lock().unwrap();
             *tc = config.timezone_clocks;
         }
+        {
+            let mut cf = self.cluster_filter.lock().unwrap();
+            *cf = config.cluster_filter;
+        }
 
         let clusters = self.clusters.lock().unwrap();
         let mut clients = self.clients.lock().unwrap();
@@ -112,6 +118,7 @@ impl ClusterManager {
         let theme = self.theme.lock().unwrap().clone();
         let vfx = self.vfx.lock().unwrap().clone();
         let timezone_clocks = self.timezone_clocks.lock().unwrap().clone();
+        let cluster_filter = self.cluster_filter.lock().unwrap().clone();
         
         let mut config = crate::core::config::AppConfig::load().unwrap_or_default();
         config.clusters = clusters.clone();
@@ -121,6 +128,7 @@ impl ClusterManager {
         config.theme = theme;
         config.vfx = vfx;
         config.timezone_clocks = timezone_clocks;
+        config.cluster_filter = cluster_filter;
         
         config.save()?;
         Ok(())
@@ -332,6 +340,15 @@ impl ClusterManager {
 
     pub fn set_auto_refresh(&self, value: bool) {
         *self.auto_refresh.lock().unwrap() = value;
+        self.mark_dirty();
+    }
+
+    pub fn cluster_filter(&self) -> String {
+        self.cluster_filter.lock().unwrap().clone()
+    }
+
+    pub fn set_cluster_filter(&self, value: String) {
+        *self.cluster_filter.lock().unwrap() = value;
         self.mark_dirty();
     }
 

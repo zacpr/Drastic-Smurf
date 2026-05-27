@@ -244,6 +244,8 @@ pub struct AppConfig {
     #[serde(default = "default_timezone_clocks")]
     pub timezone_clocks: Vec<TimezoneClockConfig>,
     #[serde(default)]
+    pub cluster_filter: String,
+    #[serde(default)]
     pub window_width: Option<f32>,
     #[serde(default)]
     pub window_height: Option<f32>,

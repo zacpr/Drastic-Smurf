@@ -11,10 +11,19 @@ async fn main() -> eframe::Result<()> {
 
     let config = crate::core::config::AppConfig::load().unwrap_or_default();
 
+    let num_clusters = config.clusters.len();
+    let (default_w, default_h) = if num_clusters <= 2 {
+        (1280.0, 800.0)
+    } else if num_clusters <= 4 {
+        (1280.0, 950.0)
+    } else {
+        (1650.0, 1000.0)
+    };
+
     let mut viewport = egui::ViewportBuilder::default()
         .with_inner_size([
-            config.window_width.unwrap_or(1280.0),
-            config.window_height.unwrap_or(800.0),
+            config.window_width.unwrap_or(default_w),
+            config.window_height.unwrap_or(default_h),
         ])
         .with_min_inner_size([800.0, 600.0]);
 

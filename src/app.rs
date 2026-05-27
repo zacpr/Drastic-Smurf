@@ -185,7 +185,7 @@ impl DrasticSmurfApp {
                 _ => None,
             },
             toasts: Toasts::default(),
-            cluster_filter: String::new(),
+            cluster_filter: manager.cluster_filter(),
             log_entries,
             show_log_window: false,
             konami_six_count: 0,
@@ -667,11 +667,14 @@ impl DrasticSmurfApp {
         );
         ui.add_space(4.0);
 
-        ui.add(
+        let filter_res = ui.add(
             egui::TextEdit::singleline(&mut self.cluster_filter)
                 .hint_text("🔍 Filter clusters...")
                 .desired_width(f32::INFINITY),
         );
+        if filter_res.changed() {
+            self.cluster_manager.set_cluster_filter(self.cluster_filter.clone());
+        }
         ui.add_space(4.0);
 
         let clusters = self.cluster_manager.clusters();
@@ -1057,7 +1060,12 @@ impl DrasticSmurfApp {
     fn render_content(&mut self, ui: &mut egui::Ui) {
         match self.current_tab {
             Tab::Clusters => {
-                let clusters = self.cluster_manager.clusters();
+                let clusters: Vec<_> = self
+                    .cluster_manager
+                    .clusters()
+                    .into_iter()
+                    .filter(|c| self.cluster_matches_filter(&c.name))
+                    .collect();
                 let data = self.cluster_manager.all_cluster_data();
                 let mut on_save = None;
                 let mut on_delete = None;
@@ -1432,7 +1440,13 @@ impl DrasticSmurfApp {
             }
             Tab::Discover => {
                 let mut search_triggered = None;
-                let cluster_names: Vec<String> = self.cluster_manager.clusters().iter().map(|c| c.name.clone()).collect();
+                let cluster_names: Vec<String> = self
+                    .cluster_manager
+                    .clusters()
+                    .iter()
+                    .filter(|c| self.cluster_matches_filter(&c.name))
+                    .map(|c| c.name.clone())
+                    .collect();
                 render_discover_module(
                     ui,
                     &mut self.discover_state,
