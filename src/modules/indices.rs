@@ -119,6 +119,14 @@ pub fn render_indices_module(
             *on_refresh = Some((state.selected_cluster.clone(), true));
         }
 
+        ui.add_space(8.0);
+        if state.is_loading {
+            ui.spinner();
+        } else {
+            crate::ui::animations::pulsing_dot(ui, Theme::success(), 2.0);
+            ui.label(RichText::new("Live").size(10.0).color(Theme::text_muted()));
+        }
+
         ui.add_space(16.0);
 
         // Sub-tab selectors
