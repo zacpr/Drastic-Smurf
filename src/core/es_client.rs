@@ -321,6 +321,17 @@ impl EsClient {
         self.exec(req, &method, &url).await
     }
 
+    pub async fn slm_policies_all(&self) -> Result<SlmPolicyResponse, EsError> {
+        let (req, method, url) = self.request(reqwest::Method::GET, "/_slm/policy");
+        self.exec(req, &method, &url).await
+    }
+
+    pub async fn snapshot_all(&self, repo: &str) -> Result<SnapshotResponse, EsError> {
+        let path = format!("/_snapshot/{}/_all", repo);
+        let (req, method, url) = self.request(reqwest::Method::GET, &path);
+        self.exec(req, &method, &url).await
+    }
+
     pub async fn tasks(&self, actions: Option<&str>) -> Result<TasksResponse, EsError> {
         let mut path = String::from("/_tasks");
         if let Some(a) = actions {

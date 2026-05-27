@@ -179,6 +179,8 @@ pub struct SnapshotCacheEntry {
     pub slm_last_run: Option<String>,
     pub slm_next_run: Option<String>,
     pub slm_in_progress: bool,
+    #[serde(default)]
+    pub slm_policies: Vec<(String, crate::core::es_client::SlmPolicyDetail)>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

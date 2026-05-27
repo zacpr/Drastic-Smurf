@@ -135,6 +135,8 @@ pub struct ClusterSnapshotStatus {
     pub slm_last_run: Option<String>,
     pub slm_next_run: Option<String>,
     pub slm_in_progress: bool,
+    #[serde(default)]
+    pub slm_policies: Vec<(String, crate::core::es_client::SlmPolicyDetail)>,
 }
 
 #[derive(Debug, Clone)]
@@ -344,14 +346,20 @@ pub async fn fetch_cluster_snapshot(
 
     status.snapshot_info = snapshot_info;
 
-    // SLM policy
-    if !config.slm_policy.is_empty() {
-        let policy = &config.slm_policy;
-        match client.slm_policy(policy).await {
-            Ok(resp) => {
-                if let Some((_, detail)) = resp.policies.into_iter().next() {
-                    status.slm_last_run = detail.last_success.and_then(|s| s.time);
-                    status.slm_next_run = detail.next_execution;
+    // Fetch all SLM policies
+    match client.slm_policies_all().await {
+        Ok(resp) => {
+            let mut policies: Vec<_> = resp.policies.into_iter().collect();
+            policies.sort_by(|a, b| {
+                a.1.next_execution_millis.cmp(&b.1.next_execution_millis)
+            });
+            status.slm_policies = policies;
+
+            // Set main slm status for backward compatibility
+            if !config.slm_policy.is_empty() {
+                if let Some(detail) = status.slm_policies.iter().find(|(name, _)| name == &config.slm_policy).map(|(_, d)| d) {
+                    status.slm_last_run = detail.last_success.as_ref().and_then(|s| s.time.clone());
+                    status.slm_next_run = detail.next_execution.clone();
                     status.slm_in_progress = detail
                         .stats
                         .as_ref()
@@ -359,9 +367,19 @@ pub async fn fetch_cluster_snapshot(
                         .unwrap_or(0)
                         > 0;
                 }
+            } else if !status.slm_policies.is_empty() {
+                let detail = &status.slm_policies[0].1;
+                status.slm_last_run = detail.last_success.as_ref().and_then(|s| s.time.clone());
+                status.slm_next_run = detail.next_execution.clone();
+                status.slm_in_progress = detail
+                    .stats
+                    .as_ref()
+                    .and_then(|s| s.total_snapshots_taken)
+                    .unwrap_or(0)
+                    > 0;
             }
-            _ => {}
         }
+        _ => {}
     }
 
     status
@@ -373,6 +391,7 @@ pub fn render_snapshot_module(
     histories: &std::collections::HashMap<String, SnapshotHistory>,
     on_edit: &mut Option<String>,
     on_delete: &mut Option<String>,
+    on_show_history: &mut Option<String>,
     shimmer: bool,
     on_refresh: &mut bool,
 ) {
@@ -418,7 +437,7 @@ pub fn render_snapshot_module(
                         for (i, status) in statuses.iter().enumerate() {
                             if i % cols == col_idx {
                                 render_cluster_card(
-                                    ui, status, histories, on_edit, on_delete, col_width, shimmer,
+                                    ui, status, histories, on_edit, on_delete, on_show_history, col_width, shimmer,
                                 );
                                 ui.add_space(card_spacing);
                             }
@@ -439,6 +458,7 @@ fn render_cluster_card(
     histories: &std::collections::HashMap<String, SnapshotHistory>,
     on_edit: &mut Option<String>,
     on_delete: &mut Option<String>,
+    on_show_history: &mut Option<String>,
     col_width: f32,
     shimmer: bool,
 ) {
@@ -499,6 +519,27 @@ fn render_cluster_card(
                 );
                 if edit.clicked() {
                     *on_edit = Some(status.config.name.clone());
+                }
+                if edit.hovered() {
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                }
+
+                if status.reachable && !status.config.snapshot_repo.is_empty() {
+                    let history = ui.add(
+                        egui::Label::new(
+                            egui::RichText::new("History")
+                                .size(10.0)
+                                .color(Theme::accent()),
+                        )
+                        .sense(egui::Sense::click()),
+                    );
+                    if history.clicked() {
+                        *on_show_history = Some(status.config.name.clone());
+                    }
+                    if history.hovered() {
+                        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                    }
+                    ui.add_space(8.0);
                 }
                 if edit.hovered() {
                     ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
@@ -691,6 +732,36 @@ fn render_cluster_card(
                         );
                     }
                 });
+            }
+
+            if status.reachable && !status.slm_policies.is_empty() {
+                ui.add_space(8.0);
+                ui.separator();
+                ui.add_space(4.0);
+                ui.label(
+                    egui::RichText::new("📅 Upcoming Scheduled Backups")
+                        .strong()
+                        .size(11.0)
+                        .color(Theme::accent()),
+                );
+                ui.add_space(2.0);
+                for (policy_id, detail) in &status.slm_policies {
+                    let next_run = detail.next_execution.as_deref().unwrap_or("Not scheduled");
+                    ui.horizontal(|ui| {
+                        ui.label(
+                            egui::RichText::new(format!("• {}:", policy_id))
+                                .size(10.5)
+                                .color(Theme::text_primary())
+                                .strong(),
+                        );
+                        ui.label(
+                            egui::RichText::new(next_run)
+                                .size(10.5)
+                                .color(Theme::text_muted())
+                                .monospace(),
+                        );
+                    });
+                }
             }
         } else if status.reachable {
             ui.add_space(8.0);

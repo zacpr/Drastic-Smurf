@@ -57,6 +57,8 @@ pub enum RefreshMsg {
     ObservabilityError(String, String),
     ExplainResult(String, Option<crate::core::es_client::AllocationExplain>),
     ExplainError(String, String),
+    HistoryResult(String, Vec<crate::core::es_client::SnapshotInfo>),
+    HistoryError(String, String),
 }
 
 pub struct DrasticSmurfApp {
@@ -85,6 +87,9 @@ pub struct DrasticSmurfApp {
     pub refresh_tx: Sender<RefreshMsg>,
     pub refresh_rx: Receiver<RefreshMsg>,
     pub pending_delete: Option<String>,
+    pub show_history_cluster: Option<String>,
+    pub history_loading: bool,
+    pub cluster_histories_fetched: HashMap<String, Vec<crate::core::es_client::SnapshotInfo>>,
     pub console_send: Option<(String, String, String, Option<String>, bool)>,
     pub discover_send: Option<(String, String, String)>,
     pub indices_refresh: Option<(String, bool)>,
@@ -170,6 +175,9 @@ impl DrasticSmurfApp {
             refresh_tx: tx,
             refresh_rx: rx,
             pending_delete: None,
+            show_history_cluster: None,
+            history_loading: false,
+            cluster_histories_fetched: HashMap::new(),
             console_send: None,
             discover_send: None,
             indices_refresh: None,
@@ -226,6 +234,7 @@ impl DrasticSmurfApp {
                         slm_last_run: latest.slm_last_run.clone(),
                         slm_next_run: latest.slm_next_run.clone(),
                         slm_in_progress: latest.slm_in_progress,
+                        slm_policies: latest.slm_policies.clone(),
                     };
                     app.snapshot_statuses.push(status);
                 }
@@ -579,6 +588,14 @@ impl DrasticSmurfApp {
                     self.clusters_state.fetched_slm_policies = policies;
                     self.clusters_state.test_result = Some(format!("Fetched SLM policies for '{}'", name));
                 }
+                RefreshMsg::HistoryResult(name, history) => {
+                    self.cluster_histories_fetched.insert(name, history);
+                    self.history_loading = false;
+                }
+                RefreshMsg::HistoryError(name, err) => {
+                    self.toasts.error(format!("Failed to fetch history for '{}': {}", name, err));
+                    self.history_loading = false;
+                }
             }
         }
     }
@@ -635,6 +652,7 @@ impl DrasticSmurfApp {
             slm_last_run: status.slm_last_run.clone(),
             slm_next_run: status.slm_next_run.clone(),
             slm_in_progress: status.slm_in_progress,
+            slm_policies: status.slm_policies.clone(),
         };
         if let Some(mut data) = self.cluster_manager.get_cluster_data(name) {
             data.snapshot_cache.push(entry);
@@ -1093,6 +1111,7 @@ impl DrasticSmurfApp {
     }
 
     fn render_content(&mut self, ui: &mut egui::Ui) {
+        let ctx = ui.ctx().clone();
         match self.current_tab {
             Tab::Clusters => {
                 let clusters: Vec<_> = self
@@ -1287,6 +1306,7 @@ impl DrasticSmurfApp {
                 let mut on_edit = None;
                 let mut on_delete = None;
                 let mut on_refresh = false;
+                let mut on_show_history = None;
                 let filtered_statuses: Vec<_> = self
                     .snapshot_statuses
                     .iter()
@@ -1299,11 +1319,43 @@ impl DrasticSmurfApp {
                     &self.snapshot_histories,
                     &mut on_edit,
                     &mut on_delete,
+                    &mut on_show_history,
                     self.vfx.shimmer_effects && !self.vfx.reduce_motion,
                     &mut on_refresh,
                 );
                 if on_refresh {
                     self.snapshot_manual_refresh = true;
+                }
+                if let Some(name) = on_show_history {
+                    self.show_history_cluster = Some(name.clone());
+                    self.history_loading = true;
+                    let manager = self.cluster_manager.clone();
+                    let tx = self.refresh_tx.clone();
+                    let name_clone = name.clone();
+                    let ctx = ctx.clone();
+                    tokio::spawn(async move {
+                        if let Some(client) = manager.get_client(&name_clone) {
+                            let repo = manager.clusters().into_iter()
+                                .find(|c| c.name == name_clone)
+                                .map(|c| c.snapshot_repo.clone())
+                                .unwrap_or_default();
+                            if !repo.is_empty() {
+                                match client.snapshot_all(&repo).await {
+                                    Ok(resp) => {
+                                        let _ = tx.send(RefreshMsg::HistoryResult(name_clone, resp.snapshots));
+                                    }
+                                    Err(e) => {
+                                        let _ = tx.send(RefreshMsg::HistoryError(name_clone, e.to_string()));
+                                    }
+                                }
+                            } else {
+                                let _ = tx.send(RefreshMsg::HistoryError(name_clone, "No snapshot repository configured for this cluster.".to_string()));
+                            }
+                        } else {
+                            let _ = tx.send(RefreshMsg::HistoryError(name_clone, "Failed to get cluster client.".to_string()));
+                        }
+                        ctx.request_repaint();
+                    });
                 }
                 if let Some(name) = on_edit {
                     if let Some(cluster) = self
@@ -2166,6 +2218,160 @@ if self.snapshot_manual_refresh {
                     crate::ui::log_buffer::render_log_viewer(ctx, &entries);
                 },
             );
+        }
+
+        // Render Snapshot History Popup Window
+        if let Some(ref cluster_name) = self.show_history_cluster {
+            let mut is_open = true;
+            let history_list = self.cluster_histories_fetched.get(cluster_name).cloned();
+            
+            egui::Window::new(format!("📜 Snapshot History - {}", cluster_name))
+                .open(&mut is_open)
+                .collapsible(false)
+                .resizable(true)
+                .default_size([750.0, 480.0])
+                .show(ctx, |ui| {
+                    if self.history_loading {
+                        ui.horizontal(|ui| {
+                            ui.spinner();
+                            ui.label("Fetching backup history from cluster...");
+                        });
+                    } else if let Some(snapshots) = history_list {
+                        if snapshots.is_empty() {
+                            ui.label(
+                                egui::RichText::new("No past snapshots found in this repository.")
+                                    .color(Theme::text_muted())
+                                    .size(13.0),
+                            );
+                        } else {
+                            ui.label(
+                                egui::RichText::new(format!(
+                                    "Showing the latest {} snapshot executions in this repository.",
+                                    snapshots.len()
+                                ))
+                                .color(Theme::text_muted())
+                                .size(11.0),
+                            );
+                            ui.add_space(8.0);
+
+                            egui::ScrollArea::vertical()
+                                .id_salt("snapshot_history_scroll")
+                                .show(ui, |ui| {
+                                    use egui_extras::{Column, TableBuilder};
+                                    
+                                    TableBuilder::new(ui)
+                                        .striped(true)
+                                        .resizable(true)
+                                        .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
+                                        .column(Column::auto().at_least(180.0)) // Name
+                                        .column(Column::auto().at_least(100.0)) // State
+                                        .column(Column::auto().at_least(160.0)) // Started
+                                        .column(Column::auto().at_least(160.0)) // Finished
+                                        .column(Column::auto().at_least(90.0))  // Duration
+                                        .column(Column::auto().at_least(100.0)) // Shards
+                                        .header(22.0, |mut header| {
+                                            header.col(|ui| { ui.strong("Snapshot Name"); });
+                                            header.col(|ui| { ui.strong("State"); });
+                                            header.col(|ui| { ui.strong("Time Started"); });
+                                            header.col(|ui| { ui.strong("Time Finished"); });
+                                            header.col(|ui| { ui.strong("Time Elapsed"); });
+                                            header.col(|ui| { ui.strong("Shards"); });
+                                        })
+                                        .body(|body| {
+                                            let mut sorted_snapshots = snapshots.clone();
+                                            sorted_snapshots.sort_by(|a, b| {
+                                                b.start_time_in_millis.cmp(&a.start_time_in_millis)
+                                            });
+
+                                            body.rows(20.0, sorted_snapshots.len(), |mut row| {
+                                                let idx = row.index();
+                                                let snap = &sorted_snapshots[idx];
+
+                                                // Column 1: Name
+                                                row.col(|ui| {
+                                                    ui.label(
+                                                        egui::RichText::new(&snap.snapshot)
+                                                            .monospace()
+                                                            .size(10.5)
+                                                            .color(Theme::text_primary()),
+                                                    );
+                                                });
+
+                                                // Column 2: State badge
+                                                row.col(|ui| {
+                                                    let state = crate::modules::snapshot::SnapshotState::from_str(&snap.state);
+                                                    ui.add(crate::ui::widgets::StatePill::new(state.as_str(), state.color()));
+                                                });
+
+                                                // Column 3: Time Started
+                                                row.col(|ui| {
+                                                    let start = snap.start_time.as_deref().unwrap_or("—");
+                                                    ui.label(
+                                                        egui::RichText::new(start)
+                                                            .size(10.0)
+                                                            .color(Theme::text_muted()),
+                                                    );
+                                                });
+
+                                                // Column 4: Time Finished
+                                                row.col(|ui| {
+                                                    let end = snap.end_time.as_deref().unwrap_or("—");
+                                                    ui.label(
+                                                        egui::RichText::new(end)
+                                                            .size(10.0)
+                                                            .color(Theme::text_muted()),
+                                                    );
+                                                });
+
+                                                // Column 5: Time Elapsed
+                                                row.col(|ui| {
+                                                    let elapsed = snap.duration_in_millis
+                                                        .map(|ms| crate::ui::widgets::human_duration((ms / 1000) as u64))
+                                                        .unwrap_or_else(|| "—".to_string());
+                                                    ui.label(
+                                                        egui::RichText::new(elapsed)
+                                                            .size(10.0)
+                                                            .color(Theme::text_muted()),
+                                                    );
+                                                });
+
+                                                // Column 6: Shards
+                                                row.col(|ui| {
+                                                    if let Some(ref shards) = snap.shards {
+                                                        let color = if shards.failed > 0 {
+                                                            Theme::danger()
+                                                        } else {
+                                                            Theme::snapshot_success()
+                                                        };
+                                                        ui.label(
+                                                            egui::RichText::new(format!(
+                                                                "S: {} / F: {}",
+                                                                shards.successful, shards.failed
+                                                            ))
+                                                            .size(10.0)
+                                                            .color(color)
+                                                            .strong(),
+                                                        );
+                                                    } else {
+                                                        ui.label(
+                                                            egui::RichText::new("—")
+                                                                .size(10.0)
+                                                                .color(Theme::text_muted()),
+                                                        );
+                                                    }
+                                                });
+                                            });
+                                        });
+                                });
+                        }
+                    } else {
+                        ui.label("Error: Unable to load history data.");
+                    }
+                });
+
+            if !is_open {
+                self.show_history_cluster = None;
+            }
         }
 
         // Render toasts on top of everything
