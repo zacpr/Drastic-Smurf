@@ -347,7 +347,11 @@ impl DrasticSmurfApp {
                         let config = manager_kb.clusters().into_iter().find(|c| c.name == name_kb);
                         if let Some(config) = config {
                             let kibana_host = if config.kibana_host.is_empty() {
-                                config.host.clone()
+                                if config.host.contains("elastic") {
+                                    config.host.replace("elastic", "kibana")
+                                } else {
+                                    config.host.clone()
+                                }
                             } else {
                                 let h = config.kibana_host.trim();
                                 if h.starts_with("http://") || h.starts_with("https://") {
@@ -2017,7 +2021,11 @@ impl eframe::App for DrasticSmurfApp {
                     let result = if use_kibana {
                         if let Some(ref config) = cluster_config {
                             let kibana_host = if config.kibana_host.is_empty() {
-                                config.host.clone()
+                                if config.host.contains("elastic") {
+                                    config.host.replace("elastic", "kibana")
+                                } else {
+                                    config.host.clone()
+                                }
                             } else {
                                 let h = config.kibana_host.trim();
                                 if h.starts_with("http://") || h.starts_with("https://") {
@@ -2118,7 +2126,11 @@ impl eframe::App for DrasticSmurfApp {
                 tokio::spawn(async move {
                     if let Some(ref config) = cluster_config {
                         let kibana_host = if config.kibana_host.is_empty() {
-                            config.host.clone()
+                            if config.host.contains("elastic") {
+                                config.host.replace("elastic", "kibana")
+                            } else {
+                                config.host.clone()
+                            }
                         } else {
                             let h = config.kibana_host.trim();
                             if h.starts_with("http://") || h.starts_with("https://") {
