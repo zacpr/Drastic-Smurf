@@ -470,3 +470,39 @@ impl Widget for WarningLight {
         response
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_human_duration() {
+        assert_eq!(human_duration(0), "0s");
+        assert_eq!(human_duration(45), "45s");
+        assert_eq!(human_duration(125), "2m 5s");
+        assert_eq!(human_duration(3665), "1h 1m");
+        assert_eq!(human_duration(90065), "1d 1h");
+    }
+
+    #[test]
+    fn test_human_nanos() {
+        assert_eq!(human_nanos(500), "0µs");
+        assert_eq!(human_nanos(5000), "5µs");
+        assert_eq!(human_nanos(5_000_000), "5ms");
+        assert_eq!(human_nanos(5_000_000_000), "5s");
+    }
+
+    #[test]
+    fn test_human_bytes() {
+        assert_eq!(human_bytes(0), "0 B");
+        assert_eq!(human_bytes(1024), "1.00 KB");
+        assert_eq!(human_bytes(1_500_000), "1.43 MB");
+    }
+
+    #[test]
+    fn test_human_docs() {
+        assert_eq!(human_docs(0), "0");
+        assert_eq!(human_docs(500), "500");
+        assert_eq!(human_docs(1500), "1.5K (1500)");
+    }
+}
