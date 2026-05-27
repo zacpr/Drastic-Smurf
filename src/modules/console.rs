@@ -1087,15 +1087,13 @@ pub fn render_console_module(
                                 .clicked()
                             {
                                 if !state.body.trim().is_empty() {
-                                    match serde_json::from_str::<serde_json::Value>(&state.body) {
-                                        Ok(parsed) => {
-                                            if let Ok(formatted) = serde_json::to_string_pretty(&parsed) {
-                                                state.body = formatted;
-                                                state.json_error = None;
-                                            }
+                                    match prettify_json_body(&state.body) {
+                                        Ok(formatted) => {
+                                            state.body = formatted;
+                                            state.json_error = None;
                                         }
                                         Err(e) => {
-                                            state.json_error = Some(e.to_string());
+                                            state.json_error = Some(e);
                                         }
                                     }
                                 }
@@ -1177,6 +1175,101 @@ pub fn render_console_module(
     });
 }
 
+pub fn prettify_json_body(body: &str) -> Result<String, String> {
+    if body.trim().is_empty() {
+        return Ok(String::new());
+    }
+
+    // 1. Find all unquoted placeholders like `{{label}}` and temporarily replace them with valid quoted strings.
+    let mut temp_body = body.to_string();
+    let mut placeholders = Vec::new();
+    let mut start_idx = 0;
+    
+    while let Some(open_pos) = temp_body[start_idx..].find("{{") {
+        let abs_open = start_idx + open_pos;
+        if let Some(close_pos) = temp_body[abs_open..].find("}}") {
+            let abs_close = abs_open + close_pos + 2;
+            let placeholder_content = &temp_body[abs_open..abs_close];
+            
+            // Check if it's already inside quotes
+            let is_quoted = if abs_open > 0 && abs_close < temp_body.len() {
+                let prev_char = temp_body.as_bytes()[abs_open - 1] as char;
+                let next_char = temp_body.as_bytes()[abs_close] as char;
+                prev_char == '"' && next_char == '"'
+            } else {
+                false
+            };
+
+            if !is_quoted {
+                let dummy_id = format!("__SMURF_UNQUOTED_VAR_{}__", placeholders.len());
+                placeholders.push((dummy_id.clone(), placeholder_content.to_string()));
+                temp_body = temp_body.replace(placeholder_content, &format!("\"{}\"", dummy_id));
+                start_idx = 0;
+                continue;
+            }
+            start_idx = abs_close;
+        } else {
+            break;
+        }
+    }
+
+    // 2. Strip comments to be completely loose/tolerant (Kibana style!)
+    let mut clean_lines = Vec::new();
+    for line in temp_body.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("//") || trimmed.starts_with("#") {
+            continue;
+        }
+        let mut actual_content = line;
+        if let Some(idx) = line.find("//") {
+            actual_content = &line[..idx];
+        } else if let Some(idx) = line.find("#") {
+            actual_content = &line[..idx];
+        }
+        clean_lines.push(actual_content.to_string());
+    }
+    let joined = clean_lines.join("\n");
+    
+    // Strip trailing commas
+    let mut parsed_ready = String::new();
+    let mut chars = joined.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == ',' {
+            let mut temp = chars.clone();
+            let mut is_trailing = false;
+            while let Some(&next_c) = temp.peek() {
+                if next_c.is_whitespace() {
+                    temp.next();
+                } else if next_c == '}' || next_c == ']' {
+                    is_trailing = true;
+                    break;
+                } else {
+                    break;
+                }
+            }
+            if is_trailing {
+                continue;
+            }
+        }
+        parsed_ready.push(c);
+    }
+
+    // 3. Parse and prettify using serde_json
+    let parsed = serde_json::from_str::<serde_json::Value>(&parsed_ready)
+        .map_err(|e| e.to_string())?;
+    
+    let mut formatted = serde_json::to_string_pretty(&parsed)
+        .map_err(|e| e.to_string())?;
+
+    // 4. Restore the unquoted placeholders!
+    for (dummy_id, original) in placeholders.iter().rev() {
+        let quoted_dummy = format!("\"{}\"", dummy_id);
+        formatted = formatted.replace(&quoted_dummy, original);
+    }
+
+    Ok(formatted)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1192,12 +1285,27 @@ mod tests {
         let result = interpolate_variables(path, &vars);
         assert_eq!(result, "/my-index-123/_search?node=node-blue");
 
-        // Test with missing variable (should leave placeholder untouched)
         let path_missing = "/{{missing_var}}/docs";
         let result_missing = interpolate_variables(path_missing, &vars);
         assert_eq!(result_missing, "/{{missing_var}}/docs");
 
-        // Test empty input
         assert_eq!(interpolate_variables("", &vars), "");
+    }
+
+    #[test]
+    fn test_prettify_json_body() {
+        let input = r#"{
+            // Some comment
+            "index": "logs",
+            "shards": {{shards}},
+            "nested": {
+                "val": "{{my_val}}",
+            }
+        }"#;
+
+        let res = prettify_json_body(input).unwrap();
+        assert!(res.contains("\"shards\": {{shards}}"));
+        assert!(res.contains("\"val\": \"{{my_val}}\""));
+        assert!(!res.contains("// Some comment"));
     }
 }
