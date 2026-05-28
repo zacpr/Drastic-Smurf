@@ -8,7 +8,7 @@ license = "MIT"
 repository = "https://github.com/zacpr/a_drastic_smurf"
 
 [dependencies]
-eframe = { version = "0.31", features = ["default", "wgpu"] }
+eframe = { version = "0.31", features = ["default", "glow"] }
 egui = "0.31"
 egui_extras = { version = "0.31", features = ["image"] }
 tokio = { version = "1.44", features = ["rt-multi-thread", "sync", "time", "macros", "process"] }

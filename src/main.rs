@@ -32,6 +32,7 @@ async fn main() -> eframe::Result<()> {
     }
 
     let options = NativeOptions {
+        renderer: eframe::Renderer::Glow,
         viewport,
         ..Default::default()
     };
