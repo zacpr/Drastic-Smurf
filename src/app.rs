@@ -2947,6 +2947,27 @@ if self.snapshot_manual_refresh {
         self.toasts.render(ctx);
     }
 
+    #[cfg(target_os = "windows")]
+    fn on_exit(&mut self) {
+        if let Err(e) = self.cluster_manager.save() {
+            tracing::warn!("Failed to save config on exit: {}", e);
+        }
+        // Save window state directly
+        let mut config = crate::core::config::AppConfig::load().unwrap_or_default();
+        config.window_width = Some(self.window_size[0]);
+        config.window_height = Some(self.window_size[1]);
+        if let Some(pos) = self.window_pos {
+            config.window_pos_x = Some(pos[0]);
+            config.window_pos_y = Some(pos[1]);
+        }
+        config.pinned_monitor_ids = self.observability_state.pinned_monitor_ids.clone();
+        config.pinned_monitor_layouts = self.observability_state.pinned_monitor_layouts.clone();
+        if let Err(e) = config.save() {
+            tracing::warn!("Failed to save window state: {}", e);
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         if let Err(e) = self.cluster_manager.save() {
             tracing::warn!("Failed to save config on exit: {}", e);

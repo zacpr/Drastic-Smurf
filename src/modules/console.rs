@@ -427,6 +427,42 @@ const PRESETS: &[ConsolePreset] = &[
         description: "Register a standard local user account with credentials and administrative role mappings.",
         use_kibana: false,
     },
+    ConsolePreset {
+        category: "Security & API Keys",
+        name: "Get Security Roles",
+        method: "GET",
+        path: "/_security/role?pretty",
+        body: None,
+        description: "Retrieve definitions for all security roles, including cluster and index privileges.",
+        use_kibana: false,
+    },
+    ConsolePreset {
+        category: "Security & API Keys",
+        name: "Get Role Mappings",
+        method: "GET",
+        path: "/_security/role_mapping?pretty",
+        body: None,
+        description: "Retrieve all configured role mappings that map external users or groups to security roles.",
+        use_kibana: false,
+    },
+    ConsolePreset {
+        category: "Security & API Keys",
+        name: "Get Single Security Role",
+        method: "GET",
+        path: "/_security/role/{{role_name}}?pretty",
+        body: None,
+        description: "Retrieve the privileges and setup for a specific security role.",
+        use_kibana: false,
+    },
+    ConsolePreset {
+        category: "Security & API Keys",
+        name: "Get Single Role Mapping",
+        method: "GET",
+        path: "/_security/role_mapping/{{mapping_name}}?pretty",
+        body: None,
+        description: "Retrieve rules and role assignments for a specific role mapping.",
+        use_kibana: false,
+    },
     // --- Troubleshooting & Maintenance ---
     ConsolePreset {
         category: "Troubleshooting & Maintenance",
@@ -1164,6 +1200,9 @@ pub fn render_console_module(
                     // Multiline Response Terminal
                     ui.horizontal(|ui| {
                         ui.label("Response:");
+                        if ui.small_button("📋 Copy JSON").clicked() {
+                            ui.ctx().copy_text(state.response.clone());
+                        }
                         if ui.small_button("Clear").clicked() {
                             state.response.clear();
                         }
