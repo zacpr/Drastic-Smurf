@@ -414,9 +414,9 @@ pub fn render_wizard_overlay(
                     if let Some(next) = state.step.next() {
                         // Next / Skip
                         let next_btn_text = if state.step == WizardStep::AddCluster && cluster_manager.clusters().is_empty() {
-                            "Skip & Add Later ➔"
+                            "Skip & Add Later ▶"
                         } else {
-                            "Next ➔"
+                            "Next ▶"
                         };
 
                         let next_btn = egui::Button::new(egui::RichText::new(next_btn_text).color(Color32::WHITE)).fill(Theme::accent());
