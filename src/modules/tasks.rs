@@ -1,7 +1,7 @@
 use crate::core::es_client::TaskInfo;
-use crate::ui::widgets::human_nanos;
 use crate::ui::theme::Theme;
-use egui::{Ui, Vec2, Frame, Margin, CornerRadius};
+use crate::ui::widgets::human_nanos;
+use egui::{CornerRadius, Frame, Margin, Ui, Vec2};
 
 #[derive(Debug, Clone, Default)]
 pub struct TasksState {
@@ -39,11 +39,15 @@ pub fn render_tasks_module(ui: &mut Ui, state: &mut TasksState) {
 
     // Search and Filter Bar
     ui.horizontal(|ui| {
-        ui.label(egui::RichText::new("Filter Tasks:").strong().color(Theme::text_secondary()));
+        ui.label(
+            egui::RichText::new("Filter Tasks:")
+                .strong()
+                .color(Theme::text_secondary()),
+        );
         let filter_edit = egui::TextEdit::singleline(&mut state.filter)
             .hint_text("Search action, description, or cluster...");
         ui.add_sized([250.0, ui.available_height()], filter_edit);
-        
+
         if !state.filter.is_empty() {
             if ui.button("Clear").clicked() {
                 state.filter.clear();
@@ -51,7 +55,11 @@ pub fn render_tasks_module(ui: &mut Ui, state: &mut TasksState) {
         }
 
         ui.add_space(8.0);
-        ui.label(egui::RichText::new("Category:").strong().color(Theme::text_secondary()));
+        ui.label(
+            egui::RichText::new("Category:")
+                .strong()
+                .color(Theme::text_secondary()),
+        );
 
         let mut current_cat = if state.selected_type.is_empty() {
             "All".to_string()
@@ -237,10 +245,10 @@ pub fn render_tasks_module(ui: &mut Ui, state: &mut TasksState) {
                                     // Custom visual progress bar
                                     let progress_pct = progress * 100.0;
                                     ui.label(egui::RichText::new(format!("Progress: {:.1}%", progress_pct)).size(12.0).color(Theme::text_primary()));
-                                    
+
                                     let bar_width = 180.0;
                                     let (rect, _response) = ui.allocate_at_least(Vec2::new(bar_width, 10.0), egui::Sense::hover());
-                                    
+
                                     // Draw background
                                     ui.painter().rect_filled(rect, CornerRadius::same(5), Theme::bg_input());
                                     // Draw progress
@@ -347,39 +355,52 @@ fn get_task_progress_and_eta(task: &TaskInfo) -> Option<(f32, String)> {
     if total <= 0.0 {
         return None;
     }
-    let created = status_val.get("created").and_then(|v| v.as_f64()).unwrap_or(0.0);
-    let updated = status_val.get("updated").and_then(|v| v.as_f64()).unwrap_or(0.0);
-    let deleted = status_val.get("deleted").and_then(|v| v.as_f64()).unwrap_or(0.0);
+    let created = status_val
+        .get("created")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(0.0);
+    let updated = status_val
+        .get("updated")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(0.0);
+    let deleted = status_val
+        .get("deleted")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(0.0);
     let completed = created + updated + deleted;
     if completed <= 0.0 {
         return None;
     }
-    
+
     let progress = (completed / total) as f32;
     let running_time_secs = task.running_time_in_nanos as f64 / 1_000_000_000.0;
-    
+
     if progress >= 1.0 {
         return Some((1.0, "Finishing...".to_string()));
     }
-    
+
     if running_time_secs < 5.0 {
         return Some((progress, "Calculating ETA...".to_string()));
     }
-    
+
     let total_est_secs = running_time_secs / progress as f64;
     let remaining_secs = total_est_secs - running_time_secs;
     if remaining_secs < 0.0 {
         return None;
     }
-    
+
     let eta_str = if remaining_secs < 60.0 {
         format!("{:.0}s remaining", remaining_secs)
     } else if remaining_secs < 3600.0 {
-        format!("{:.0}m {:.0}s remaining", (remaining_secs / 60.0).floor(), remaining_secs % 60.0)
+        format!(
+            "{:.0}m {:.0}s remaining",
+            (remaining_secs / 60.0).floor(),
+            remaining_secs % 60.0
+        )
     } else {
         format!("{:.1}h remaining", remaining_secs / 3600.0)
     };
-    
+
     Some((progress, eta_str))
 }
 
@@ -432,26 +453,32 @@ mod tests {
         ];
 
         // 1. Check matching category "indices"
-        let filtered_indices: Vec<&(String, TaskInfo)> = tasks.iter().filter(|(_, task)| {
-            let cat = if let Some(pos) = task.action.find(':') {
-                &task.action[..pos]
-            } else {
-                &task.action
-            };
-            cat == "indices"
-        }).collect();
+        let filtered_indices: Vec<&(String, TaskInfo)> = tasks
+            .iter()
+            .filter(|(_, task)| {
+                let cat = if let Some(pos) = task.action.find(':') {
+                    &task.action[..pos]
+                } else {
+                    &task.action
+                };
+                cat == "indices"
+            })
+            .collect();
         assert_eq!(filtered_indices.len(), 1);
         assert_eq!(filtered_indices[0].1.action, "indices:data/write/bulk");
 
         // 2. Check matching category "cluster"
-        let filtered_cluster: Vec<&(String, TaskInfo)> = tasks.iter().filter(|(_, task)| {
-            let cat = if let Some(pos) = task.action.find(':') {
-                &task.action[..pos]
-            } else {
-                &task.action
-            };
-            cat == "cluster"
-        }).collect();
+        let filtered_cluster: Vec<&(String, TaskInfo)> = tasks
+            .iter()
+            .filter(|(_, task)| {
+                let cat = if let Some(pos) = task.action.find(':') {
+                    &task.action[..pos]
+                } else {
+                    &task.action
+                };
+                cat == "cluster"
+            })
+            .collect();
         assert_eq!(filtered_cluster.len(), 1);
         assert_eq!(filtered_cluster[0].1.action, "cluster:monitor/state");
     }

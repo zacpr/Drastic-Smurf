@@ -23,10 +23,23 @@ pub fn render_appearance_module(
 
     ui.horizontal(|ui| {
         let accent_color = Theme::accent();
-        if ui.add(egui::Button::new(egui::RichText::new("🚀 Start Onboarding Tour").color(Theme::contrast_text_color(accent_color))).fill(accent_color)).clicked() {
+        if ui
+            .add(
+                egui::Button::new(
+                    egui::RichText::new("🚀 Start Onboarding Tour")
+                        .color(Theme::contrast_text_color(accent_color)),
+                )
+                .fill(accent_color),
+            )
+            .clicked()
+        {
             *on_tour_triggered = true;
         }
-        ui.label(egui::RichText::new("Learn how to use all features step-by-step.").color(Theme::text_muted()).size(11.0));
+        ui.label(
+            egui::RichText::new("Learn how to use all features step-by-step.")
+                .color(Theme::text_muted())
+                .size(11.0),
+        );
     });
     ui.add_space(16.0);
 

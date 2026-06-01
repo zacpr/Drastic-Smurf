@@ -32,7 +32,7 @@ pub fn paint_cursor_glow(ctx: &Context, settings: &VfxSettings, _rect: Rect) {
     if let Some(mouse_pos) = ctx.input(|i| i.pointer.latest_pos()) {
         let painter = ctx.layer_painter(egui::LayerId::background());
         let accent = Theme::accent();
-        
+
         let glow_radius = 120.0;
         let steps = 12;
         for i in 0..steps {

@@ -8,7 +8,8 @@ use egui::{Color32, Ui};
 pub struct StatusState {
     pub health_data: Vec<(String, Option<ClusterHealth>)>,
     pub stats_data: Vec<(String, Option<ClusterStats>)>,
-    pub explains: std::collections::HashMap<String, Option<crate::core::es_client::AllocationExplain>>,
+    pub explains:
+        std::collections::HashMap<String, Option<crate::core::es_client::AllocationExplain>>,
     pub es_versions: std::collections::HashMap<String, String>,
     pub kibana_versions: std::collections::HashMap<String, String>,
     pub allocations: std::collections::HashMap<String, Vec<crate::core::es_client::CatAllocation>>,
@@ -40,67 +41,72 @@ pub fn render_status_module(
     egui::ScrollArea::vertical()
         .id_salt("status")
         .show(ui, |ui| {
-        if clusters.is_empty() {
-            ui.label(
-                egui::RichText::new("No clusters configured. Add a cluster to begin monitoring.")
+            if clusters.is_empty() {
+                ui.label(
+                    egui::RichText::new(
+                        "No clusters configured. Add a cluster to begin monitoring.",
+                    )
                     .color(Theme::text_muted())
                     .size(14.0),
-            );
-            return;
-        }
-
-        ui.horizontal(|ui| {
-            for col in 0..cols {
-                let col_idx = col;
-                ui.allocate_ui_with_layout(
-                    egui::Vec2::new(col_width, ui.available_height()),
-                    egui::Layout::top_down(egui::Align::Min),
-                    |ui| {
-                        for (i, cluster) in clusters.iter().enumerate() {
-                            if i % cols == col_idx {
-                                let health = state
-                                    .health_data
-                                    .iter()
-                                    .find(|(n, _)| n == &cluster.name)
-                                    .and_then(|(_, h)| h.clone());
-                                let stats = state
-                                    .stats_data
-                                    .iter()
-                                    .find(|(n, _)| n == &cluster.name)
-                                    .and_then(|(_, s)| s.clone());
-                                let error = state.errors.get(&cluster.name).cloned();
-                                let explain = state.explains.get(&cluster.name).cloned().flatten();
-                                let es_version = state.es_versions.get(&cluster.name).cloned();
-                                let kibana_version = state.kibana_versions.get(&cluster.name).cloned();
-                                let allocations = state.allocations.get(&cluster.name).cloned();
-                                let pending_tasks = state.pending_tasks.get(&cluster.name).cloned();
-                                render_status_card(
-                                    ui,
-                                    cluster,
-                                    &health,
-                                    stats,
-                                    es_version,
-                                    kibana_version,
-                                    allocations,
-                                    pending_tasks,
-                                    error,
-                                    explain,
-                                    on_hot_threads,
-                                    on_show_pending,
-                                    col_width,
-                                    hover_effects,
-                                );
-                                ui.add_space(card_spacing);
-                            }
-                        }
-                    },
                 );
-                if col + 1 < cols {
-                    ui.add_space(card_spacing);
-                }
+                return;
             }
+
+            ui.horizontal(|ui| {
+                for col in 0..cols {
+                    let col_idx = col;
+                    ui.allocate_ui_with_layout(
+                        egui::Vec2::new(col_width, ui.available_height()),
+                        egui::Layout::top_down(egui::Align::Min),
+                        |ui| {
+                            for (i, cluster) in clusters.iter().enumerate() {
+                                if i % cols == col_idx {
+                                    let health = state
+                                        .health_data
+                                        .iter()
+                                        .find(|(n, _)| n == &cluster.name)
+                                        .and_then(|(_, h)| h.clone());
+                                    let stats = state
+                                        .stats_data
+                                        .iter()
+                                        .find(|(n, _)| n == &cluster.name)
+                                        .and_then(|(_, s)| s.clone());
+                                    let error = state.errors.get(&cluster.name).cloned();
+                                    let explain =
+                                        state.explains.get(&cluster.name).cloned().flatten();
+                                    let es_version = state.es_versions.get(&cluster.name).cloned();
+                                    let kibana_version =
+                                        state.kibana_versions.get(&cluster.name).cloned();
+                                    let allocations = state.allocations.get(&cluster.name).cloned();
+                                    let pending_tasks =
+                                        state.pending_tasks.get(&cluster.name).cloned();
+                                    render_status_card(
+                                        ui,
+                                        cluster,
+                                        &health,
+                                        stats,
+                                        es_version,
+                                        kibana_version,
+                                        allocations,
+                                        pending_tasks,
+                                        error,
+                                        explain,
+                                        on_hot_threads,
+                                        on_show_pending,
+                                        col_width,
+                                        hover_effects,
+                                    );
+                                    ui.add_space(card_spacing);
+                                }
+                            }
+                        },
+                    );
+                    if col + 1 < cols {
+                        ui.add_space(card_spacing);
+                    }
+                }
+            });
         });
-    });
 }
 
 fn render_status_card(
@@ -452,7 +458,7 @@ if count.voting_only > 0 {
                 let data_nodes: Vec<_> = allocs.iter()
                     .filter(|a| a.node.as_deref().unwrap_or("UNASSIGNED") != "UNASSIGNED")
                     .collect();
-                
+
                 if !data_nodes.is_empty() {
                     ui.add_space(8.0);
                     ui.separator();
@@ -470,7 +476,7 @@ if count.voting_only > 0 {
                         let shard_count: u32 = node.shards.as_ref()
                             .and_then(|s| s.parse().ok())
                             .unwrap_or(0);
-                        
+
                         let disk_percent_val: f32 = node.disk_percent.as_ref()
                             .and_then(|p| p.parse::<f32>().ok())
                             .unwrap_or(0.0);
@@ -548,7 +554,7 @@ if count.voting_only > 0 {
                 ui.add_space(8.0);
                 ui.separator();
                 ui.add_space(4.0);
-                
+
                 ui.horizontal(|ui| {
                     ui.label(
                         egui::RichText::new("⚠ Diagnostic Report (Unassigned Shards)")
@@ -557,9 +563,9 @@ if count.voting_only > 0 {
                             .color(Theme::warning()),
                     );
                 });
-                
+
                 ui.add_space(2.0);
-                
+
                 let primary_str = if exp.primary { "Primary" } else { "Replica" };
                 ui.label(
                     egui::RichText::new(format!(
@@ -644,11 +650,12 @@ fn open_link(url: &str) {
     }
     #[cfg(target_os = "windows")]
     {
-        let _ = std::process::Command::new("cmd").args(&["/C", "start", "", url]).spawn();
+        let _ = std::process::Command::new("cmd")
+            .args(&["/C", "start", "", url])
+            .spawn();
     }
     #[cfg(target_os = "linux")]
     {
         let _ = std::process::Command::new("xdg-open").arg(url).spawn();
     }
 }
-

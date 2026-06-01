@@ -92,10 +92,7 @@ pub fn get_password(cluster_name: &str) -> Result<Option<String>> {
                     result.as_ref().unwrap().len()
                 );
             } else {
-                tracing::warn!(
-                    "get_password for '{}': NOT FOUND anywhere",
-                    cluster_name
-                );
+                tracing::warn!("get_password for '{}': NOT FOUND anywhere", cluster_name);
             }
             Ok(result)
         }

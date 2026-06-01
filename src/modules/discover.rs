@@ -178,10 +178,10 @@ fn day_of_week_first_of_month(year: i32, month: u32) -> u32 {
     }
     let k = y % 100;
     let j = y / 100;
-    
+
     // Zeller's formula for positive inputs
     let h = (1 + (13 * (m as i32 + 1)) / 5 + k + k / 4 + j / 4 + 5 * j) % 7;
-    
+
     // Zeller: 0 = Saturday, 1 = Sunday, ..., 6 = Friday
     match h {
         0 => 6, // Saturday
@@ -214,12 +214,21 @@ fn draw_calendar_picker(
                     *month -= 1;
                 }
             }
-            
+
             let month_name = match *month {
-                1 => "Jan", 2 => "Feb", 3 => "Mar", 4 => "Apr",
-                5 => "May", 6 => "Jun", 7 => "Jul", 8 => "Aug",
-                9 => "Sep", 10 => "Oct", 11 => "Nov", 12 => "Dec",
-                _ => "Month"
+                1 => "Jan",
+                2 => "Feb",
+                3 => "Mar",
+                4 => "Apr",
+                5 => "May",
+                6 => "Jun",
+                7 => "Jul",
+                8 => "Aug",
+                9 => "Sep",
+                10 => "Oct",
+                11 => "Nov",
+                12 => "Dec",
+                _ => "Month",
             };
             ui.allocate_ui(egui::Vec2::new(76.0, 18.0), |ui| {
                 ui.vertical_centered(|ui| {
@@ -245,7 +254,11 @@ fn draw_calendar_picker(
             for header in &days_headers {
                 ui.allocate_ui(egui::Vec2::new(20.0, 14.0), |ui| {
                     ui.vertical_centered(|ui| {
-                        ui.label(egui::RichText::new(*header).size(10.0).color(Theme::text_muted()));
+                        ui.label(
+                            egui::RichText::new(*header)
+                                .size(10.0)
+                                .color(Theme::text_muted()),
+                        );
                     });
                 });
             }
@@ -256,38 +269,36 @@ fn draw_calendar_picker(
 
         // 6 rows, 7 columns grid
         let mut current_day = 1;
-        egui::Grid::new(id_salt)
-            .spacing([2.0, 2.0])
-            .show(ui, |ui| {
-                for r in 0..6 {
-                    for c in 0..7 {
-                        let cell_idx = r * 7 + c;
-                        if cell_idx < first_day_weekday as i32 || current_day > total_days {
-                            ui.allocate_ui(egui::Vec2::new(20.0, 20.0), |ui| {
-                                ui.label("");
-                            });
-                        } else {
-                            let is_selected = *day == current_day;
-                            let btn_text = current_day.to_string();
-                            
-                            let mut btn = egui::Button::new(egui::RichText::new(btn_text).size(10.0));
-                            if is_selected {
-                                btn = btn.fill(Theme::accent());
-                            } else {
-                                btn = btn.fill(Color32::TRANSPARENT);
-                            }
+        egui::Grid::new(id_salt).spacing([2.0, 2.0]).show(ui, |ui| {
+            for r in 0..6 {
+                for c in 0..7 {
+                    let cell_idx = r * 7 + c;
+                    if cell_idx < first_day_weekday as i32 || current_day > total_days {
+                        ui.allocate_ui(egui::Vec2::new(20.0, 20.0), |ui| {
+                            ui.label("");
+                        });
+                    } else {
+                        let is_selected = *day == current_day;
+                        let btn_text = current_day.to_string();
 
-                            ui.allocate_ui(egui::Vec2::new(20.0, 20.0), |ui| {
-                                if ui.add(btn).clicked() {
-                                    *day = current_day;
-                                }
-                            });
-                            current_day += 1;
+                        let mut btn = egui::Button::new(egui::RichText::new(btn_text).size(10.0));
+                        if is_selected {
+                            btn = btn.fill(Theme::accent());
+                        } else {
+                            btn = btn.fill(Color32::TRANSPARENT);
                         }
+
+                        ui.allocate_ui(egui::Vec2::new(20.0, 20.0), |ui| {
+                            if ui.add(btn).clicked() {
+                                *day = current_day;
+                            }
+                        });
+                        current_day += 1;
                     }
-                    ui.end_row();
                 }
-            });
+                ui.end_row();
+            }
+        });
     });
 }
 
@@ -340,8 +351,10 @@ pub fn render_discover_module(
                 let selector_label = if state.time_preset == TimeframePreset::Custom {
                     format!(
                         "🕒 Custom ({:02}/{:02} to {:02}/{:02})",
-                        state.custom_from_month, state.custom_from_day,
-                        state.custom_to_month, state.custom_to_day
+                        state.custom_from_month,
+                        state.custom_from_day,
+                        state.custom_to_month,
+                        state.custom_to_day
                     )
                 } else {
                     state.time_preset.label().to_string()
@@ -372,7 +385,11 @@ pub fn render_discover_module(
                 ui.add_space(4.0);
 
                 // Search Button with loading indicator
-                let search_btn_text = if state.is_loading { "Searching..." } else { "🔍 Search" };
+                let search_btn_text = if state.is_loading {
+                    "Searching..."
+                } else {
+                    "🔍 Search"
+                };
                 let accent_color = Theme::accent();
                 let btn = ui.add_enabled(
                     !state.is_loading && !state.selected_cluster.is_empty(),
@@ -385,7 +402,8 @@ pub fn render_discover_module(
                 );
 
                 // Trigger query on Enter or Search click
-                if (btn.clicked() || (search_input.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter))))
+                if (btn.clicked()
+                    || (search_input.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter))))
                     && !state.selected_cluster.is_empty()
                 {
                     trigger_search = true;
@@ -406,9 +424,13 @@ pub fn render_discover_module(
                 ui.horizontal_top(|ui| {
                     // Left Column: Presets
                     ui.vertical(|ui| {
-                        ui.label(egui::RichText::new("Quick Presets").strong().color(Theme::accent()));
+                        ui.label(
+                            egui::RichText::new("Quick Presets")
+                                .strong()
+                                .color(Theme::accent()),
+                        );
                         ui.add_space(6.0);
-                        
+
                         let presets = [
                             TimeframePreset::Last30m,
                             TimeframePreset::Last1h,
@@ -439,7 +461,11 @@ pub fn render_discover_module(
 
                     // Middle Column: From Date/Time
                     ui.vertical(|ui| {
-                        ui.label(egui::RichText::new("From Date & Time").strong().color(Theme::accent()));
+                        ui.label(
+                            egui::RichText::new("From Date & Time")
+                                .strong()
+                                .color(Theme::accent()),
+                        );
                         ui.add_space(6.0);
 
                         draw_calendar_picker(
@@ -453,11 +479,23 @@ pub fn render_discover_module(
                         ui.add_space(6.0);
                         ui.horizontal(|ui| {
                             ui.label("Time:");
-                            ui.add(egui::DragValue::new(&mut state.custom_from_hour).range(0..=23).suffix("h"));
+                            ui.add(
+                                egui::DragValue::new(&mut state.custom_from_hour)
+                                    .range(0..=23)
+                                    .suffix("h"),
+                            );
                             ui.label(":");
-                            ui.add(egui::DragValue::new(&mut state.custom_from_minute).range(0..=59).suffix("m"));
+                            ui.add(
+                                egui::DragValue::new(&mut state.custom_from_minute)
+                                    .range(0..=59)
+                                    .suffix("m"),
+                            );
                             ui.label(":");
-                            ui.add(egui::DragValue::new(&mut state.custom_from_second).range(0..=59).suffix("s"));
+                            ui.add(
+                                egui::DragValue::new(&mut state.custom_from_second)
+                                    .range(0..=59)
+                                    .suffix("s"),
+                            );
                         });
                     });
 
@@ -467,7 +505,11 @@ pub fn render_discover_module(
 
                     // Right Column: To Date/Time
                     ui.vertical(|ui| {
-                        ui.label(egui::RichText::new("To Date & Time").strong().color(Theme::accent()));
+                        ui.label(
+                            egui::RichText::new("To Date & Time")
+                                .strong()
+                                .color(Theme::accent()),
+                        );
                         ui.add_space(6.0);
 
                         draw_calendar_picker(
@@ -481,11 +523,23 @@ pub fn render_discover_module(
                         ui.add_space(6.0);
                         ui.horizontal(|ui| {
                             ui.label("Time:");
-                            ui.add(egui::DragValue::new(&mut state.custom_to_hour).range(0..=23).suffix("h"));
+                            ui.add(
+                                egui::DragValue::new(&mut state.custom_to_hour)
+                                    .range(0..=23)
+                                    .suffix("h"),
+                            );
                             ui.label(":");
-                            ui.add(egui::DragValue::new(&mut state.custom_to_minute).range(0..=59).suffix("m"));
+                            ui.add(
+                                egui::DragValue::new(&mut state.custom_to_minute)
+                                    .range(0..=59)
+                                    .suffix("m"),
+                            );
                             ui.label(":");
-                            ui.add(egui::DragValue::new(&mut state.custom_to_second).range(0..=59).suffix("s"));
+                            ui.add(
+                                egui::DragValue::new(&mut state.custom_to_second)
+                                    .range(0..=59)
+                                    .suffix("s"),
+                            );
                         });
                     });
                 });
@@ -500,9 +554,10 @@ pub fn render_discover_module(
                     let apply_btn = egui::Button::new(
                         egui::RichText::new("Apply Custom Range")
                             .color(Theme::contrast_text_color(success_color))
-                            .strong()
-                    ).fill(success_color);
-                    
+                            .strong(),
+                    )
+                    .fill(success_color);
+
                     if ui.add(apply_btn).clicked() {
                         state.time_preset = TimeframePreset::Custom;
                         state.show_time_selector_popup = false;
@@ -525,64 +580,60 @@ pub fn render_discover_module(
 
         // Formulate query body
         let range_filter = match state.time_preset {
-            TimeframePreset::Last30m => {
-                Some(serde_json::json!({
-                    "@timestamp": {
-                        "gte": "now-30m",
-                        "lte": "now"
-                    }
-                }))
-            }
-            TimeframePreset::Last1h => {
-                Some(serde_json::json!({
-                    "@timestamp": {
-                        "gte": "now-1h",
-                        "lte": "now"
-                    }
-                }))
-            }
-            TimeframePreset::Last6h => {
-                Some(serde_json::json!({
-                    "@timestamp": {
-                        "gte": "now-6h",
-                        "lte": "now"
-                    }
-                }))
-            }
-            TimeframePreset::Last12h => {
-                Some(serde_json::json!({
-                    "@timestamp": {
-                        "gte": "now-12h",
-                        "lte": "now"
-                    }
-                }))
-            }
-            TimeframePreset::Last24h => {
-                Some(serde_json::json!({
-                    "@timestamp": {
-                        "gte": "now-24h",
-                        "lte": "now"
-                    }
-                }))
-            }
-            TimeframePreset::Last72h => {
-                Some(serde_json::json!({
-                    "@timestamp": {
-                        "gte": "now-72h",
-                        "lte": "now"
-                    }
-                }))
-            }
+            TimeframePreset::Last30m => Some(serde_json::json!({
+                "@timestamp": {
+                    "gte": "now-30m",
+                    "lte": "now"
+                }
+            })),
+            TimeframePreset::Last1h => Some(serde_json::json!({
+                "@timestamp": {
+                    "gte": "now-1h",
+                    "lte": "now"
+                }
+            })),
+            TimeframePreset::Last6h => Some(serde_json::json!({
+                "@timestamp": {
+                    "gte": "now-6h",
+                    "lte": "now"
+                }
+            })),
+            TimeframePreset::Last12h => Some(serde_json::json!({
+                "@timestamp": {
+                    "gte": "now-12h",
+                    "lte": "now"
+                }
+            })),
+            TimeframePreset::Last24h => Some(serde_json::json!({
+                "@timestamp": {
+                    "gte": "now-24h",
+                    "lte": "now"
+                }
+            })),
+            TimeframePreset::Last72h => Some(serde_json::json!({
+                "@timestamp": {
+                    "gte": "now-72h",
+                    "lte": "now"
+                }
+            })),
             TimeframePreset::Custom => {
                 let from_str = format!(
                     "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
-                    state.custom_from_year, state.custom_from_month, state.custom_from_day,
-                    state.custom_from_hour, state.custom_from_minute, state.custom_from_second
+                    state.custom_from_year,
+                    state.custom_from_month,
+                    state.custom_from_day,
+                    state.custom_from_hour,
+                    state.custom_from_minute,
+                    state.custom_from_second
                 );
                 let to_str = format!(
                     "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
-                    state.custom_to_year, state.custom_to_month, state.custom_to_day,
-                    state.custom_to_hour, state.custom_to_minute, state.custom_to_second
+                    state.custom_to_year,
+                    state.custom_to_month,
+                    state.custom_to_day,
+                    state.custom_to_hour,
+                    state.custom_to_minute,
+                    state.custom_to_second
                 );
                 Some(serde_json::json!({
                     "@timestamp": {
@@ -675,46 +726,62 @@ pub fn render_discover_module(
                 );
                 ui.add_space(8.0);
 
-                egui::ScrollArea::vertical().id_salt("fields_scroll").show(ui, |ui| {
-                    if state.available_fields.is_empty() {
-                        ui.label(
-                            egui::RichText::new("No fields loaded.\nRun a search to analyze index mapping.")
+                egui::ScrollArea::vertical()
+                    .id_salt("fields_scroll")
+                    .show(ui, |ui| {
+                        if state.available_fields.is_empty() {
+                            ui.label(
+                                egui::RichText::new(
+                                    "No fields loaded.\nRun a search to analyze index mapping.",
+                                )
                                 .color(Theme::text_muted())
                                 .italics(),
-                        );
-                    } else {
-                        // Dynamic fields toggle list
-                        for field in &state.available_fields {
-                            let is_selected = state.selected_fields.contains(field);
-                            ui.horizontal(|ui| {
-                                if is_selected {
-                                    if ui.button(egui::RichText::new("❌").color(Theme::danger())).on_hover_text("Remove column").clicked() {
-                                        state.selected_fields.retain(|x| x != field);
-                                        // Ensure at least _source is left if empty
-                                        if state.selected_fields.is_empty() {
-                                            state.selected_fields.push("_source".to_string());
+                            );
+                        } else {
+                            // Dynamic fields toggle list
+                            for field in &state.available_fields {
+                                let is_selected = state.selected_fields.contains(field);
+                                ui.horizontal(|ui| {
+                                    if is_selected {
+                                        if ui
+                                            .button(
+                                                egui::RichText::new("❌").color(Theme::danger()),
+                                            )
+                                            .on_hover_text("Remove column")
+                                            .clicked()
+                                        {
+                                            state.selected_fields.retain(|x| x != field);
+                                            // Ensure at least _source is left if empty
+                                            if state.selected_fields.is_empty() {
+                                                state.selected_fields.push("_source".to_string());
+                                            }
                                         }
+                                        ui.label(
+                                            egui::RichText::new(field)
+                                                .color(Theme::accent())
+                                                .strong(),
+                                        );
+                                    } else {
+                                        if ui
+                                            .button(
+                                                egui::RichText::new("➕").color(Theme::success()),
+                                            )
+                                            .on_hover_text("Add column")
+                                            .clicked()
+                                        {
+                                            // Remove _source placeholder if adding specific field columns
+                                            state.selected_fields.retain(|x| x != "_source");
+                                            state.selected_fields.push(field.clone());
+                                        }
+                                        ui.label(
+                                            egui::RichText::new(field)
+                                                .color(Theme::text_secondary()),
+                                        );
                                     }
-                                    ui.label(
-                                        egui::RichText::new(field)
-                                            .color(Theme::accent())
-                                            .strong(),
-                                    );
-                                } else {
-                                    if ui.button(egui::RichText::new("➕").color(Theme::success())).on_hover_text("Add column").clicked() {
-                                        // Remove _source placeholder if adding specific field columns
-                                        state.selected_fields.retain(|x| x != "_source");
-                                        state.selected_fields.push(field.clone());
-                                    }
-                                    ui.label(
-                                        egui::RichText::new(field)
-                                            .color(Theme::text_secondary()),
-                                    );
-                                }
-                            });
+                                });
+                            }
                         }
-                    }
-                });
+                    });
             });
 
         // --- COLUMN 1: Search Results Grid ---
@@ -756,135 +823,155 @@ pub fn render_discover_module(
                     ui.add_space(32.0);
                 } else {
                     // Render results table with scrolling
-                    egui::ScrollArea::vertical().id_salt("results_scroll").show(ui, |ui| {
-                        // Draw header row
-                        ui.horizontal(|ui| {
-                            ui.set_width(ui.available_width());
-                            // Space for expand arrow
-                            ui.add_space(20.0);
-
-                            // Timestamp column
-                            ui.allocate_ui(egui::Vec2::new(140.0, 18.0), |ui| {
-                                ui.label(
-                                    egui::RichText::new("Time")
-                                        .strong()
-                                        .color(Theme::accent()),
-                                );
-                            });
-
-                            // Custom fields columns
-                            for col in &state.selected_fields {
-                                ui.label(
-                                    egui::RichText::new(col)
-                                        .strong()
-                                        .color(Theme::accent()),
-                                );
-                            }
-                        });
-
-                        ui.separator();
-
-                        // Draw hits
-                        for hit in &state.results {
-                            let doc_id = hit.get("_id").and_then(|id| id.as_str()).unwrap_or("unknown").to_string();
-                            let is_expanded = state.expanded_doc_id.as_ref() == Some(&doc_id);
-
-                            let source = hit.get("_source").unwrap_or(&Value::Null);
-
-                            // Extract time
-                            let timestamp = source.get("@timestamp")
-                                .and_then(|t| t.as_str())
-                                .unwrap_or("N/A");
-
+                    egui::ScrollArea::vertical()
+                        .id_salt("results_scroll")
+                        .show(ui, |ui| {
+                            // Draw header row
                             ui.horizontal(|ui| {
                                 ui.set_width(ui.available_width());
+                                // Space for expand arrow
+                                ui.add_space(20.0);
 
-                                // Expand/Collapse toggle button
-                                let toggle_symbol = if is_expanded { "▼" } else { "▶" };
-                                if ui.small_button(toggle_symbol).clicked() {
-                                    if is_expanded {
-                                        state.expanded_doc_id = None;
-                                    } else {
-                                        state.expanded_doc_id = Some(doc_id.clone());
-                                    }
-                                }
-
-                                // Render time
+                                // Timestamp column
                                 ui.allocate_ui(egui::Vec2::new(140.0, 18.0), |ui| {
                                     ui.label(
-                                        egui::RichText::new(timestamp)
-                                            .color(Theme::text_secondary())
-                                            .size(11.0),
+                                        egui::RichText::new("Time").strong().color(Theme::accent()),
                                     );
                                 });
 
-                                // Render other columns
+                                // Custom fields columns
                                 for col in &state.selected_fields {
-                                    let cell_val = get_json_path(source, col)
-                                        .unwrap_or(Value::Null);
-
-                                    let cell_text = match &cell_val {
-                                        Value::Null => "-".to_string(),
-                                        Value::String(s) => s.clone(),
-                                        Value::Number(n) => n.to_string(),
-                                        Value::Bool(b) => b.to_string(),
-                                        other => other.to_string(),
-                                    };
-
-                                    // Display value with clean truncation if too long
-                                    let truncated = if cell_text.len() > 60 {
-                                        format!("{}...", &cell_text[..57])
-                                    } else {
-                                        cell_text
-                                    };
-
                                     ui.label(
-                                        egui::RichText::new(truncated)
-                                            .color(Theme::text_primary())
-                                            .size(11.0),
+                                        egui::RichText::new(col).strong().color(Theme::accent()),
                                     );
                                 }
                             });
 
-                            // Expanded detail drawer
-                            if is_expanded {
-                                ui.indent(doc_id.clone(), |ui| {
-                                    egui::Frame::new()
-                                        .fill(Theme::bg_input())
-                                        .corner_radius(Theme::CARD_ROUNDING)
-                                        .inner_margin(Theme::CARD_PADDING)
-                                        .stroke(Stroke::new(1.0, Theme::border()))
-                                        .show(ui, |ui| {
-                                            ui.horizontal(|ui| {
-                                                ui.label(
-                                                    egui::RichText::new(format!("Document Details (ID: {})", doc_id))
+                            ui.separator();
+
+                            // Draw hits
+                            for hit in &state.results {
+                                let doc_id = hit
+                                    .get("_id")
+                                    .and_then(|id| id.as_str())
+                                    .unwrap_or("unknown")
+                                    .to_string();
+                                let is_expanded = state.expanded_doc_id.as_ref() == Some(&doc_id);
+
+                                let source = hit.get("_source").unwrap_or(&Value::Null);
+
+                                // Extract time
+                                let timestamp = source
+                                    .get("@timestamp")
+                                    .and_then(|t| t.as_str())
+                                    .unwrap_or("N/A");
+
+                                ui.horizontal(|ui| {
+                                    ui.set_width(ui.available_width());
+
+                                    // Expand/Collapse toggle button
+                                    let toggle_symbol = if is_expanded { "▼" } else { "▶" };
+                                    if ui.small_button(toggle_symbol).clicked() {
+                                        if is_expanded {
+                                            state.expanded_doc_id = None;
+                                        } else {
+                                            state.expanded_doc_id = Some(doc_id.clone());
+                                        }
+                                    }
+
+                                    // Render time
+                                    ui.allocate_ui(egui::Vec2::new(140.0, 18.0), |ui| {
+                                        ui.label(
+                                            egui::RichText::new(timestamp)
+                                                .color(Theme::text_secondary())
+                                                .size(11.0),
+                                        );
+                                    });
+
+                                    // Render other columns
+                                    for col in &state.selected_fields {
+                                        let cell_val =
+                                            get_json_path(source, col).unwrap_or(Value::Null);
+
+                                        let cell_text = match &cell_val {
+                                            Value::Null => "-".to_string(),
+                                            Value::String(s) => s.clone(),
+                                            Value::Number(n) => n.to_string(),
+                                            Value::Bool(b) => b.to_string(),
+                                            other => other.to_string(),
+                                        };
+
+                                        // Display value with clean truncation if too long
+                                        let truncated = if cell_text.len() > 60 {
+                                            format!("{}...", &cell_text[..57])
+                                        } else {
+                                            cell_text
+                                        };
+
+                                        ui.label(
+                                            egui::RichText::new(truncated)
+                                                .color(Theme::text_primary())
+                                                .size(11.0),
+                                        );
+                                    }
+                                });
+
+                                // Expanded detail drawer
+                                if is_expanded {
+                                    ui.indent(doc_id.clone(), |ui| {
+                                        egui::Frame::new()
+                                            .fill(Theme::bg_input())
+                                            .corner_radius(Theme::CARD_ROUNDING)
+                                            .inner_margin(Theme::CARD_PADDING)
+                                            .stroke(Stroke::new(1.0, Theme::border()))
+                                            .show(ui, |ui| {
+                                                ui.horizontal(|ui| {
+                                                    ui.label(
+                                                        egui::RichText::new(format!(
+                                                            "Document Details (ID: {})",
+                                                            doc_id
+                                                        ))
                                                         .strong()
                                                         .color(Theme::accent()),
-                                                );
-                                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                                    if ui.small_button("📋 Copy JSON").clicked() {
-                                                        let json_pretty = serde_json::to_string_pretty(&source).unwrap_or_default();
-                                                        ui.ctx().copy_text(json_pretty);
-                                                    }
+                                                    );
+                                                    ui.with_layout(
+                                                        egui::Layout::right_to_left(
+                                                            egui::Align::Center,
+                                                        ),
+                                                        |ui| {
+                                                            if ui
+                                                                .small_button("📋 Copy JSON")
+                                                                .clicked()
+                                                            {
+                                                                let json_pretty =
+                                                                    serde_json::to_string_pretty(
+                                                                        &source,
+                                                                    )
+                                                                    .unwrap_or_default();
+                                                                ui.ctx().copy_text(json_pretty);
+                                                            }
+                                                        },
+                                                    );
                                                 });
+                                                ui.add_space(4.0);
+
+                                                // Formatted pretty json output
+                                                let json_pretty =
+                                                    serde_json::to_string_pretty(&source)
+                                                        .unwrap_or_default();
+                                                ui.label(
+                                                    egui::RichText::new(json_pretty)
+                                                        .code()
+                                                        .color(Theme::text_primary())
+                                                        .size(11.0),
+                                                );
                                             });
-                                            ui.add_space(4.0);
+                                    });
+                                }
 
-                                            // Formatted pretty json output
-                                            let json_pretty = serde_json::to_string_pretty(&source).unwrap_or_default();
-                                            ui.label(
-                                                egui::RichText::new(json_pretty)
-                                                    .code()
-                                                    .color(Theme::text_primary())
-                                                    .size(11.0),
-                                            );
-                                        });
-                                });
+                                ui.separator();
                             }
-
-                            ui.separator();
-                        }
-                    });
+                        });
                 }
             });
     });
@@ -904,26 +991,27 @@ mod tests {
                 }
             }
         });
-        assert_eq!(get_json_path(&val, "a.b.c").unwrap(), Value::String("hello".to_string()));
+        assert_eq!(
+            get_json_path(&val, "a.b.c").unwrap(),
+            Value::String("hello".to_string())
+        );
         assert_eq!(get_json_path(&val, "a.b.nonexistent"), None);
     }
 
     #[test]
     fn test_extract_fields() {
         let mut state = DiscoverState::default();
-        state.results = vec![
-            json!({
-                "_id": "1",
-                "_source": {
-                    "@timestamp": "2026-05-26",
-                    "level": "error",
-                    "nested": {
-                        "field": 42,
-                        "array": [1, 2, 3]
-                    }
+        state.results = vec![json!({
+            "_id": "1",
+            "_source": {
+                "@timestamp": "2026-05-26",
+                "level": "error",
+                "nested": {
+                    "field": 42,
+                    "array": [1, 2, 3]
                 }
-            })
-        ];
+            }
+        })];
         state.refresh_fields();
         assert!(state.available_fields.contains(&"@timestamp".to_string()));
         assert!(state.available_fields.contains(&"level".to_string()));

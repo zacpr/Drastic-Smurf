@@ -478,13 +478,13 @@ pub fn evaluate_if_condition(document: &Value, condition: &str) -> Result<bool, 
     if cond.is_empty() {
         return Ok(true);
     }
-    
+
     let mut expr = cond;
     if expr.starts_with("if") {
         expr = expr["if".len()..].trim();
     }
     if expr.starts_with('(') && expr.ends_with(')') {
-        expr = &expr[1..expr.len()-1].trim();
+        expr = &expr[1..expr.len() - 1].trim();
     }
 
     if expr.contains("==") {
@@ -610,7 +610,10 @@ fn get_ctx_val(document: &Value, path: &str) -> Result<Value, String> {
             if is_safe {
                 Ok(Value::Null)
             } else {
-                Err(format!("field \"{}\" not found in document", normalized_path))
+                Err(format!(
+                    "field \"{}\" not found in document",
+                    normalized_path
+                ))
             }
         }
     }
@@ -618,8 +621,10 @@ fn get_ctx_val(document: &Value, path: &str) -> Result<Value, String> {
 
 fn parse_literal(val: &str) -> Value {
     let clean = val.trim();
-    if (clean.starts_with('"') && clean.ends_with('"')) || (clean.starts_with('\'') && clean.ends_with('\'')) {
-        return Value::String(clean[1..clean.len()-1].to_string());
+    if (clean.starts_with('"') && clean.ends_with('"'))
+        || (clean.starts_with('\'') && clean.ends_with('\''))
+    {
+        return Value::String(clean[1..clean.len() - 1].to_string());
     }
     if clean == "true" {
         return Value::Bool(true);
@@ -649,7 +654,10 @@ where
     let r = right.as_f64().or_else(|| right.as_i64().map(|i| i as f64));
     match (l, r) {
         (Some(la), Some(ra)) => Ok(op(la, ra)),
-        _ => Err(format!("cannot compare non-numeric values: {:?} and {:?}", left, right)),
+        _ => Err(format!(
+            "cannot compare non-numeric values: {:?} and {:?}",
+            left, right
+        )),
     }
 }
 

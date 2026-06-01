@@ -71,8 +71,7 @@ pub fn init_logging() -> Arc<RwLock<Vec<LogEntry>>> {
         .with(buffer)
         .with(tracing_subscriber::fmt::Layer::new().with_writer(std::io::stderr));
 
-    tracing::subscriber::set_global_default(subscriber)
-        .expect("Failed to set tracing subscriber");
+    tracing::subscriber::set_global_default(subscriber).expect("Failed to set tracing subscriber");
 
     shared
 }
@@ -92,8 +91,11 @@ fn level_priority(level: &str) -> i32 {
 
 pub fn render_log_viewer(ctx: &egui::Context, entries: &[LogEntry]) {
     let filter_id = egui::Id::new("log_level_filter");
-    let mut selected = ctx
-        .memory_mut(|mem| mem.data.get_temp_mut_or_default::<String>(filter_id).clone());
+    let mut selected = ctx.memory_mut(|mem| {
+        mem.data
+            .get_temp_mut_or_default::<String>(filter_id)
+            .clone()
+    });
 
     egui::CentralPanel::default().show(ctx, |ui| {
         ui.horizontal(|ui| {

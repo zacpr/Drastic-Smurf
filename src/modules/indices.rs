@@ -1,7 +1,7 @@
-use egui::{Ui, Color32, RichText};
-use std::collections::HashSet;
 use crate::core::es_client::{CatIndex, DataStream};
 use crate::ui::theme::Theme;
+use egui::{Color32, RichText, Ui};
+use std::collections::HashSet;
 
 #[derive(Debug, Clone)]
 pub enum IndicesSubTab {
@@ -79,8 +79,18 @@ impl IndicesState {
         self.previous_sizes.clear();
 
         for idx in &self.indices {
-            let docs = idx.docs_count.as_deref().unwrap_or("0").parse::<i64>().unwrap_or(0);
-            let size = idx.store_size.as_deref().unwrap_or("0").parse::<u64>().unwrap_or(0);
+            let docs = idx
+                .docs_count
+                .as_deref()
+                .unwrap_or("0")
+                .parse::<i64>()
+                .unwrap_or(0);
+            let size = idx
+                .store_size
+                .as_deref()
+                .unwrap_or("0")
+                .parse::<u64>()
+                .unwrap_or(0);
             self.previous_doc_counts.insert(idx.index.clone(), docs);
             self.previous_sizes.insert(idx.index.clone(), size);
         }
@@ -202,15 +212,12 @@ pub fn render_indices_module(
             egui::Button::new(
                 RichText::new(&button_text)
                     .color(Theme::text_primary())
-                    .strong()
+                    .strong(),
             )
             .fill(Theme::accent())
         } else {
-            egui::Button::new(
-                RichText::new(&button_text)
-                    .color(Theme::text_secondary())
-            )
-            .fill(Theme::bg_input())
+            egui::Button::new(RichText::new(&button_text).color(Theme::text_secondary()))
+                .fill(Theme::bg_input())
         };
 
         if ui.add(btn).clicked() {
@@ -236,31 +243,47 @@ pub fn render_indices_module(
                 .id_salt("indices_list_scroll")
                 .max_height(height)
                 .auto_shrink([false, false])
-                .show(ui, |ui| {
-                    match state.active_sub_tab {
-                        IndicesSubTab::Indices => render_indices_table(ui, state, on_fetch_detail),
-                        IndicesSubTab::DataStreams => render_datastreams_table(ui, state, on_fetch_detail),
+                .show(ui, |ui| match state.active_sub_tab {
+                    IndicesSubTab::Indices => render_indices_table(ui, state, on_fetch_detail),
+                    IndicesSubTab::DataStreams => {
+                        render_datastreams_table(ui, state, on_fetch_detail)
                     }
                 });
         });
 }
 
-fn render_indices_table(ui: &mut Ui, state: &mut IndicesState, on_fetch_detail: &mut Option<(String, bool)>) {
+fn render_indices_table(
+    ui: &mut Ui,
+    state: &mut IndicesState,
+    on_fetch_detail: &mut Option<(String, bool)>,
+) {
     // 1. First filter by search text (cloned to avoid borrow conflicts)
-    let text_filtered_indices: Vec<CatIndex> = state.indices.iter()
-        .filter(|idx| state.filter.is_empty() || idx.index.to_lowercase().contains(&state.filter.to_lowercase()))
+    let text_filtered_indices: Vec<CatIndex> = state
+        .indices
+        .iter()
+        .filter(|idx| {
+            state.filter.is_empty()
+                || idx
+                    .index
+                    .to_lowercase()
+                    .contains(&state.filter.to_lowercase())
+        })
         .cloned()
         .collect();
 
     // 2. Then filter by selection if active
-    let mut display_indices: Vec<CatIndex> = text_filtered_indices.iter()
+    let mut display_indices: Vec<CatIndex> = text_filtered_indices
+        .iter()
         .filter(|idx| !state.filter_only_selected || state.selected_indices.contains(&idx.index))
         .cloned()
         .collect();
 
     if display_indices.is_empty() {
         if state.filter_only_selected {
-            ui.label(RichText::new("No selected indices match the active filters.").color(Theme::text_muted()));
+            ui.label(
+                RichText::new("No selected indices match the active filters.")
+                    .color(Theme::text_muted()),
+            );
         } else {
             ui.label(RichText::new("No indices found").color(Theme::text_muted()));
         }
@@ -270,17 +293,35 @@ fn render_indices_table(ui: &mut Ui, state: &mut IndicesState, on_fetch_detail: 
     // Sort display indices
     display_indices.sort_by(|a, b| {
         let cmp = match state.sort_field {
-            IndicesSortField::Name => {
-                a.index.to_lowercase().cmp(&b.index.to_lowercase())
-            }
+            IndicesSortField::Name => a.index.to_lowercase().cmp(&b.index.to_lowercase()),
             IndicesSortField::Docs => {
-                let docs_a = a.docs_count.as_deref().unwrap_or("0").parse::<i64>().unwrap_or(0);
-                let docs_b = b.docs_count.as_deref().unwrap_or("0").parse::<i64>().unwrap_or(0);
+                let docs_a = a
+                    .docs_count
+                    .as_deref()
+                    .unwrap_or("0")
+                    .parse::<i64>()
+                    .unwrap_or(0);
+                let docs_b = b
+                    .docs_count
+                    .as_deref()
+                    .unwrap_or("0")
+                    .parse::<i64>()
+                    .unwrap_or(0);
                 docs_a.cmp(&docs_b)
             }
             IndicesSortField::Size => {
-                let size_a = a.store_size.as_deref().unwrap_or("0").parse::<u64>().unwrap_or(0);
-                let size_b = b.store_size.as_deref().unwrap_or("0").parse::<u64>().unwrap_or(0);
+                let size_a = a
+                    .store_size
+                    .as_deref()
+                    .unwrap_or("0")
+                    .parse::<u64>()
+                    .unwrap_or(0);
+                let size_b = b
+                    .store_size
+                    .as_deref()
+                    .unwrap_or("0")
+                    .parse::<u64>()
+                    .unwrap_or(0);
                 size_a.cmp(&size_b)
             }
         };
@@ -305,9 +346,12 @@ fn render_indices_table(ui: &mut Ui, state: &mut IndicesState, on_fetch_detail: 
         .show(ui, |ui| {
             // Header Row
             // Column 0: Checkbox for Select All
-            let all_visible_selected = !text_filtered_indices.is_empty() && text_filtered_indices.iter().all(|idx| state.selected_indices.contains(&idx.index));
+            let all_visible_selected = !text_filtered_indices.is_empty()
+                && text_filtered_indices
+                    .iter()
+                    .all(|idx| state.selected_indices.contains(&idx.index));
             let mut select_all = all_visible_selected;
-            
+
             if ui.checkbox(&mut select_all, "").clicked() {
                 if select_all {
                     for idx in &text_filtered_indices {
@@ -319,9 +363,12 @@ fn render_indices_table(ui: &mut Ui, state: &mut IndicesState, on_fetch_detail: 
                     }
                 }
             }
-            
+
             // Helper function for sortable headers
-            let header_btn = |ui: &mut Ui, label: &str, field: IndicesSortField, state: &mut IndicesState| {
+            let header_btn = |ui: &mut Ui,
+                              label: &str,
+                              field: IndicesSortField,
+                              state: &mut IndicesState| {
                 let is_active = state.sort_field == field;
                 let text = if is_active {
                     let arrow = match state.sort_order {
@@ -332,9 +379,14 @@ fn render_indices_table(ui: &mut Ui, state: &mut IndicesState, on_fetch_detail: 
                 } else {
                     label.to_string()
                 };
-                
-                let text_color = if is_active { Theme::accent() } else { Theme::text_secondary() };
-                let response = ui.selectable_label(is_active, RichText::new(text).strong().color(text_color));
+
+                let text_color = if is_active {
+                    Theme::accent()
+                } else {
+                    Theme::text_secondary()
+                };
+                let response =
+                    ui.selectable_label(is_active, RichText::new(text).strong().color(text_color));
                 if response.clicked() {
                     if is_active {
                         state.sort_order = match state.sort_order {
@@ -350,16 +402,20 @@ fn render_indices_table(ui: &mut Ui, state: &mut IndicesState, on_fetch_detail: 
 
             // Column 1: Index Name
             header_btn(ui, "Index Name", IndicesSortField::Name, state);
-            
+
             // Column 2: Health / Status
-            ui.label(RichText::new("Health / Status").strong().color(Theme::text_secondary()));
-            
+            ui.label(
+                RichText::new("Health / Status")
+                    .strong()
+                    .color(Theme::text_secondary()),
+            );
+
             // Column 3: Docs
             header_btn(ui, "Docs", IndicesSortField::Docs, state);
-            
+
             // Column 4: Size
             header_btn(ui, "Size", IndicesSortField::Size, state);
-            
+
             ui.end_row();
 
             // Data Rows
@@ -373,7 +429,7 @@ fn render_indices_table(ui: &mut Ui, state: &mut IndicesState, on_fetch_detail: 
                         state.selected_indices.remove(&idx.index);
                     }
                 }
-                
+
                 // Column 1: Health dot & Name
                 ui.horizontal(|ui| {
                     let dot_color = match idx.health.as_deref() {
@@ -382,37 +438,57 @@ fn render_indices_table(ui: &mut Ui, state: &mut IndicesState, on_fetch_detail: 
                         Some("red") => Theme::danger(),
                         _ => Color32::from_rgb(100, 100, 100),
                     };
-                    ui.add(crate::ui::widgets::ConnectionDot::new(true).color(dot_color).size(6.0));
-                    let name_btn = ui.add(
-                        egui::Link::new(
+                    ui.add(
+                        crate::ui::widgets::ConnectionDot::new(true)
+                            .color(dot_color)
+                            .size(6.0),
+                    );
+                    let name_btn = ui
+                        .add(egui::Link::new(
                             egui::RichText::new(&idx.index)
                                 .strong()
-                                .color(Theme::text_primary())
-                        )
-                    ).on_hover_text("Click to view settings, index template, and ILM policy details");
+                                .color(Theme::text_primary()),
+                        ))
+                        .on_hover_text(
+                            "Click to view settings, index template, and ILM policy details",
+                        );
                     if name_btn.clicked() {
                         *on_fetch_detail = Some((idx.index.clone(), false));
                     }
                 });
-                
+
                 // Column 2: Status
                 let status = idx.status.clone().unwrap_or_else(|| "open".to_string());
                 ui.label(RichText::new(&status).color(Theme::text_muted()).size(11.0));
-                
+
                 // Column 3: Docs Count
                 let docs = idx.docs_count.as_deref().unwrap_or("0");
                 let docs_formatted = format_number(docs);
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new(docs_formatted).color(Theme::text_muted()).size(11.0));
+                    ui.label(
+                        RichText::new(docs_formatted)
+                            .color(Theme::text_muted())
+                            .size(11.0),
+                    );
                     let current_docs = docs.parse::<i64>().unwrap_or(0);
                     if let Some(&prev_docs) = state.previous_doc_counts.get(&idx.index) {
                         let diff = current_docs - prev_docs;
                         if diff > 0 {
                             let diff_str = format!(" (+{})", format_number(&diff.to_string()));
-                            ui.label(RichText::new(diff_str).color(Theme::success()).size(10.0).strong());
+                            ui.label(
+                                RichText::new(diff_str)
+                                    .color(Theme::success())
+                                    .size(10.0)
+                                    .strong(),
+                            );
                         } else if diff < 0 {
                             let diff_str = format!(" ({})", format_number(&diff.to_string()));
-                            ui.label(RichText::new(diff_str).color(Theme::danger()).size(10.0).strong());
+                            ui.label(
+                                RichText::new(diff_str)
+                                    .color(Theme::danger())
+                                    .size(10.0)
+                                    .strong(),
+                            );
                         }
                     }
                 });
@@ -421,42 +497,72 @@ fn render_indices_table(ui: &mut Ui, state: &mut IndicesState, on_fetch_detail: 
                 let size = idx.store_size.as_deref().unwrap_or("0");
                 let size_formatted = format_size(&size);
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new(size_formatted).color(Theme::text_muted()).size(11.0));
+                    ui.label(
+                        RichText::new(size_formatted)
+                            .color(Theme::text_muted())
+                            .size(11.0),
+                    );
                     let current_size = size.parse::<u64>().unwrap_or(0);
                     if let Some(&prev_size) = state.previous_sizes.get(&idx.index) {
                         if current_size > prev_size {
                             let diff = current_size - prev_size;
                             let diff_str = format!(" (+{})", human_bytes(diff as f64));
-                            ui.label(RichText::new(diff_str).color(Theme::success()).size(10.0).strong());
+                            ui.label(
+                                RichText::new(diff_str)
+                                    .color(Theme::success())
+                                    .size(10.0)
+                                    .strong(),
+                            );
                         } else if current_size < prev_size {
                             let diff = prev_size - current_size;
                             let diff_str = format!(" (-{})", human_bytes(diff as f64));
-                            ui.label(RichText::new(diff_str).color(Theme::danger()).size(10.0).strong());
+                            ui.label(
+                                RichText::new(diff_str)
+                                    .color(Theme::danger())
+                                    .size(10.0)
+                                    .strong(),
+                            );
                         }
                     }
                 });
-                
+
                 ui.end_row();
             }
         });
 }
 
-fn render_datastreams_table(ui: &mut Ui, state: &mut IndicesState, on_fetch_detail: &mut Option<(String, bool)>) {
+fn render_datastreams_table(
+    ui: &mut Ui,
+    state: &mut IndicesState,
+    on_fetch_detail: &mut Option<(String, bool)>,
+) {
     // 1. First filter by search text (cloned to avoid borrow conflicts)
-    let text_filtered_streams: Vec<DataStream> = state.datastreams.iter()
-        .filter(|ds| state.filter.is_empty() || ds.name.to_lowercase().contains(&state.filter.to_lowercase()))
+    let text_filtered_streams: Vec<DataStream> = state
+        .datastreams
+        .iter()
+        .filter(|ds| {
+            state.filter.is_empty()
+                || ds
+                    .name
+                    .to_lowercase()
+                    .contains(&state.filter.to_lowercase())
+        })
         .cloned()
         .collect();
 
     // 2. Then filter by selection if active
-    let mut display_streams: Vec<DataStream> = text_filtered_streams.iter()
+    let mut display_streams: Vec<DataStream> = text_filtered_streams
+        .iter()
         .filter(|ds| !state.filter_only_selected || state.selected_datastreams.contains(&ds.name))
         .cloned()
         .collect();
 
     if display_streams.is_empty() {
         if state.filter_only_selected {
-            ui.label(RichText::new("No selected datastreams match the active filters.").color(Theme::text_muted()));
+            ui.label(
+                RichText::new("No selected datastreams match the active filters.")
+                    .color(Theme::text_muted()),
+            );
         } else {
             ui.label(RichText::new("No data streams found").color(Theme::text_muted()));
         }
@@ -466,12 +572,8 @@ fn render_datastreams_table(ui: &mut Ui, state: &mut IndicesState, on_fetch_deta
     // Sort display streams
     display_streams.sort_by(|a, b| {
         let cmp = match state.sort_field {
-            IndicesSortField::Name => {
-                a.name.to_lowercase().cmp(&b.name.to_lowercase())
-            }
-            IndicesSortField::Docs => {
-                a.indices.len().cmp(&b.indices.len())
-            }
+            IndicesSortField::Name => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
+            IndicesSortField::Docs => a.indices.len().cmp(&b.indices.len()),
             IndicesSortField::Size => {
                 let size_a = a.store_size_bytes.unwrap_or(0);
                 let size_b = b.store_size_bytes.unwrap_or(0);
@@ -499,9 +601,12 @@ fn render_datastreams_table(ui: &mut Ui, state: &mut IndicesState, on_fetch_deta
         .show(ui, |ui| {
             // Header Row
             // Column 0: Checkbox for Select All
-            let all_visible_selected = !text_filtered_streams.is_empty() && text_filtered_streams.iter().all(|ds| state.selected_datastreams.contains(&ds.name));
+            let all_visible_selected = !text_filtered_streams.is_empty()
+                && text_filtered_streams
+                    .iter()
+                    .all(|ds| state.selected_datastreams.contains(&ds.name));
             let mut select_all = all_visible_selected;
-            
+
             if ui.checkbox(&mut select_all, "").clicked() {
                 if select_all {
                     for ds in &text_filtered_streams {
@@ -513,9 +618,12 @@ fn render_datastreams_table(ui: &mut Ui, state: &mut IndicesState, on_fetch_deta
                     }
                 }
             }
-            
+
             // Helper function for sortable headers
-            let header_btn = |ui: &mut Ui, label: &str, field: IndicesSortField, state: &mut IndicesState| {
+            let header_btn = |ui: &mut Ui,
+                              label: &str,
+                              field: IndicesSortField,
+                              state: &mut IndicesState| {
                 let is_active = state.sort_field == field;
                 let text = if is_active {
                     let arrow = match state.sort_order {
@@ -526,9 +634,14 @@ fn render_datastreams_table(ui: &mut Ui, state: &mut IndicesState, on_fetch_deta
                 } else {
                     label.to_string()
                 };
-                
-                let text_color = if is_active { Theme::accent() } else { Theme::text_secondary() };
-                let response = ui.selectable_label(is_active, RichText::new(text).strong().color(text_color));
+
+                let text_color = if is_active {
+                    Theme::accent()
+                } else {
+                    Theme::text_secondary()
+                };
+                let response =
+                    ui.selectable_label(is_active, RichText::new(text).strong().color(text_color));
                 if response.clicked() {
                     if is_active {
                         state.sort_order = match state.sort_order {
@@ -544,16 +657,20 @@ fn render_datastreams_table(ui: &mut Ui, state: &mut IndicesState, on_fetch_deta
 
             // Column 1: Data Stream Name
             header_btn(ui, "Data Stream Name", IndicesSortField::Name, state);
-            
+
             // Column 2: Backing Indices
             header_btn(ui, "Backing Indices", IndicesSortField::Docs, state);
-            
+
             // Column 3: Status
-            ui.label(RichText::new("Status").strong().color(Theme::text_secondary()));
-            
+            ui.label(
+                RichText::new("Status")
+                    .strong()
+                    .color(Theme::text_secondary()),
+            );
+
             // Column 4: Total Size
             header_btn(ui, "Total Size", IndicesSortField::Size, state);
-            
+
             ui.end_row();
 
             // Data Rows
@@ -567,7 +684,7 @@ fn render_datastreams_table(ui: &mut Ui, state: &mut IndicesState, on_fetch_deta
                         state.selected_datastreams.remove(&ds.name);
                     }
                 }
-                
+
                 // Column 1: Health dot & Name
                 ui.horizontal(|ui| {
                     let dot_color = match ds.status.to_lowercase().as_str() {
@@ -576,45 +693,73 @@ fn render_datastreams_table(ui: &mut Ui, state: &mut IndicesState, on_fetch_deta
                         "red" => Theme::danger(),
                         _ => Color32::from_rgb(100, 100, 100),
                     };
-                    ui.add(crate::ui::widgets::ConnectionDot::new(true).color(dot_color).size(6.0));
-                    let name_btn = ui.add(
-                        egui::Link::new(
+                    ui.add(
+                        crate::ui::widgets::ConnectionDot::new(true)
+                            .color(dot_color)
+                            .size(6.0),
+                    );
+                    let name_btn = ui
+                        .add(egui::Link::new(
                             egui::RichText::new(&ds.name)
                                 .strong()
-                                .color(Theme::text_primary())
-                        )
-                    ).on_hover_text("Click to view settings, index template, and ILM policy details");
+                                .color(Theme::text_primary()),
+                        ))
+                        .on_hover_text(
+                            "Click to view settings, index template, and ILM policy details",
+                        );
                     if name_btn.clicked() {
                         *on_fetch_detail = Some((ds.name.clone(), true));
                     }
                 });
-                
+
                 // Column 2: Backing Indices
                 let indices_count = ds.indices.len().to_string();
-                ui.label(RichText::new(indices_count).color(Theme::text_muted()).size(11.0));
-                
+                ui.label(
+                    RichText::new(indices_count)
+                        .color(Theme::text_muted())
+                        .size(11.0),
+                );
+
                 // Column 3: Status
-                ui.label(RichText::new(&ds.status).color(Theme::text_muted()).size(11.0));
-                
+                ui.label(
+                    RichText::new(&ds.status)
+                        .color(Theme::text_muted())
+                        .size(11.0),
+                );
+
                 // Column 4: Total Size
                 let total_bytes = ds.store_size_bytes.unwrap_or(0);
                 let size_formatted = human_bytes(total_bytes as f64);
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new(size_formatted).color(Theme::text_muted()).size(11.0));
+                    ui.label(
+                        RichText::new(size_formatted)
+                            .color(Theme::text_muted())
+                            .size(11.0),
+                    );
                     let current_size = total_bytes as u64;
                     if let Some(&prev_size) = state.previous_sizes.get(&ds.name) {
                         if current_size > prev_size {
                             let diff = current_size - prev_size;
                             let diff_str = format!(" (+{})", human_bytes(diff as f64));
-                            ui.label(RichText::new(diff_str).color(Theme::success()).size(10.0).strong());
+                            ui.label(
+                                RichText::new(diff_str)
+                                    .color(Theme::success())
+                                    .size(10.0)
+                                    .strong(),
+                            );
                         } else if current_size < prev_size {
                             let diff = prev_size - current_size;
                             let diff_str = format!(" (-{})", human_bytes(diff as f64));
-                            ui.label(RichText::new(diff_str).color(Theme::danger()).size(10.0).strong());
+                            ui.label(
+                                RichText::new(diff_str)
+                                    .color(Theme::danger())
+                                    .size(10.0)
+                                    .strong(),
+                            );
                         }
                     }
                 });
-                
+
                 ui.end_row();
             }
         });
@@ -662,12 +807,12 @@ pub fn index_pattern_matches(pattern: &str, index_name: &str) -> bool {
     if pattern == "*" || pattern == index_name {
         return true;
     }
-    
+
     let parts: Vec<&str> = pattern.split('*').collect();
     if parts.len() == 1 {
         return pattern == index_name;
     }
-    
+
     let mut current_idx = 0;
     for (i, part) in parts.iter().enumerate() {
         if part.is_empty() {
@@ -698,7 +843,10 @@ mod tests {
     #[test]
     fn test_index_pattern_matches() {
         assert!(index_pattern_matches("logs-*", "logs-mysql-000001"));
-        assert!(index_pattern_matches("kibana_sample_data_*", "kibana_sample_data_flights"));
+        assert!(index_pattern_matches(
+            "kibana_sample_data_*",
+            "kibana_sample_data_flights"
+        ));
         assert!(index_pattern_matches("*.logs", "system.logs"));
         assert!(index_pattern_matches("test-*-prod", "test-database-prod"));
         assert!(!index_pattern_matches("logs-*", "metrics-cpu"));
@@ -734,7 +882,7 @@ mod tests {
     #[test]
     fn test_indices_update_data_diff_tracking() {
         let mut state = IndicesState::new();
-        
+
         let idx1 = CatIndex {
             index: "logs-1".to_string(),
             docs_count: Some("100".to_string()),
@@ -746,12 +894,12 @@ mod tests {
             pri: None,
             rep: None,
         };
-        
+
         // Initial insert
         state.update_data(vec![idx1], vec![]);
         assert!(state.previous_doc_counts.is_empty());
         assert!(state.previous_sizes.is_empty());
-        
+
         // Refresh with changed values
         let idx2 = CatIndex {
             index: "logs-1".to_string(),
@@ -764,9 +912,9 @@ mod tests {
             pri: None,
             rep: None,
         };
-        
+
         state.update_data(vec![idx2], vec![]);
-        
+
         assert_eq!(*state.previous_doc_counts.get("logs-1").unwrap(), 100);
         assert_eq!(*state.previous_sizes.get("logs-1").unwrap(), 1024);
     }

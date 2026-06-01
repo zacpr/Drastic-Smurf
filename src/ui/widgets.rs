@@ -169,11 +169,9 @@ impl StatePill {
 impl Widget for StatePill {
     fn ui(self, ui: &mut Ui) -> egui::Response {
         let text_color = Theme::contrast_text_color(self.color);
-        let galley = ui.painter().layout_no_wrap(
-            self.text.clone(),
-            egui::FontId::default(),
-            text_color,
-        );
+        let galley =
+            ui.painter()
+                .layout_no_wrap(self.text.clone(), egui::FontId::default(), text_color);
         let padding = Vec2::new(8.0, 4.0);
         let desired_size = galley.size() + padding * 2.0;
         let (rect, response) = ui.allocate_exact_size(desired_size, egui::Sense::hover());
@@ -357,7 +355,7 @@ impl Widget for WarningLight {
             let painter = ui.painter();
             let center_x = rect.center().x;
             let base_y = rect.bottom() - 4.0;
-            
+
             // 1. Draw soft pulsing glow under the dome if active
             let glow_color = match self.status.as_str() {
                 "green" => Some(Color32::from_rgba_premultiplied(46, 125, 50, 15)),
@@ -365,12 +363,16 @@ impl Widget for WarningLight {
                 "red" => Some(Color32::from_rgba_premultiplied(229, 57, 53, 15)),
                 _ => None,
             };
-            
+
             if let Some(gc) = glow_color {
                 let time = ui.input(|i| i.time);
                 let pulse = (time * 3.5).sin() as f32 * 2.5 + 16.0;
                 painter.circle_filled(Pos2::new(center_x, base_y - 12.0), pulse, gc);
-                painter.circle_filled(Pos2::new(center_x, base_y - 12.0), pulse * 0.6, gc.linear_multiply(2.0));
+                painter.circle_filled(
+                    Pos2::new(center_x, base_y - 12.0),
+                    pulse * 0.6,
+                    gc.linear_multiply(2.0),
+                );
             }
 
             // 2. Base plate
@@ -382,17 +384,32 @@ impl Widget for WarningLight {
                 Pos2::new(center_x - 15.5, base_y - 2.0),
                 Pos2::new(center_x + 15.5, base_y + 2.0),
             );
-            painter.rect_filled(base_rect_stroke, CornerRadius::same(2), Color32::from_rgb(70, 70, 72));
-            painter.rect_filled(base_rect_fill, CornerRadius::same(2), Color32::from_rgb(50, 50, 52));
+            painter.rect_filled(
+                base_rect_stroke,
+                CornerRadius::same(2),
+                Color32::from_rgb(70, 70, 72),
+            );
+            painter.rect_filled(
+                base_rect_fill,
+                CornerRadius::same(2),
+                Color32::from_rgb(50, 50, 52),
+            );
 
             // 3. Inner filament bulb (if offline)
             if self.status == "offline" {
                 let bulb_center = Pos2::new(center_x, base_y - 12.0);
                 painter.line_segment(
-                    [Pos2::new(center_x, base_y - 3.0), Pos2::new(center_x, base_y - 9.0)],
-                    Stroke::new(1.0, Color32::from_rgb(100, 100, 100))
+                    [
+                        Pos2::new(center_x, base_y - 3.0),
+                        Pos2::new(center_x, base_y - 9.0),
+                    ],
+                    Stroke::new(1.0, Color32::from_rgb(100, 100, 100)),
                 );
-                painter.circle_stroke(bulb_center, 2.0, Stroke::new(1.0, Color32::from_rgb(140, 140, 140)));
+                painter.circle_stroke(
+                    bulb_center,
+                    2.0,
+                    Stroke::new(1.0, Color32::from_rgb(140, 140, 140)),
+                );
             }
 
             // 4. Dome Lens
@@ -416,25 +433,31 @@ impl Widget for WarningLight {
             painter.rect_filled(dome_rect, dome_rounding, dome_color);
 
             // 5. Fresnel ribs
-            let rib_stroke = Stroke::new(0.8, match self.status.as_str() {
-                "green" => Color32::from_rgba_premultiplied(100, 220, 110, 80),
-                "yellow" => Color32::from_rgba_premultiplied(255, 230, 100, 80),
-                "red" => Color32::from_rgba_premultiplied(255, 120, 100, 80),
-                _ => Color32::from_rgba_premultiplied(130, 130, 135, 40),
-            });
+            let rib_stroke = Stroke::new(
+                0.8,
+                match self.status.as_str() {
+                    "green" => Color32::from_rgba_premultiplied(100, 220, 110, 80),
+                    "yellow" => Color32::from_rgba_premultiplied(255, 230, 100, 80),
+                    "red" => Color32::from_rgba_premultiplied(255, 120, 100, 80),
+                    _ => Color32::from_rgba_premultiplied(130, 130, 135, 40),
+                },
+            );
             for y_offset in [5.0, 10.0, 15.0, 20.0] {
                 let y = base_y - y_offset;
                 let pct = (y_offset - 3.0) / 25.0;
                 let half_w = 12.0 * (1.0 - pct * pct).max(0.0).sqrt();
                 painter.line_segment(
-                    [Pos2::new(center_x - half_w, y), Pos2::new(center_x + half_w, y)],
-                    rib_stroke
+                    [
+                        Pos2::new(center_x - half_w, y),
+                        Pos2::new(center_x + half_w, y),
+                    ],
+                    rib_stroke,
                 );
             }
 
             // 6. Protective Metal Cage
             let cage_stroke = Stroke::new(1.2, Color32::from_rgb(110, 110, 115));
-            
+
             // Left curved bar
             let left_points = vec![
                 Pos2::new(center_x - 13.0, base_y - 3.0),
@@ -444,7 +467,7 @@ impl Widget for WarningLight {
                 Pos2::new(center_x, base_y - 26.5),
             ];
             painter.add(Shape::line(left_points, cage_stroke));
-            
+
             // Right curved bar
             let right_points = vec![
                 Pos2::new(center_x + 13.0, base_y - 3.0),
@@ -457,15 +480,30 @@ impl Widget for WarningLight {
 
             // Center vertical bar
             painter.line_segment(
-                [Pos2::new(center_x, base_y - 3.0), Pos2::new(center_x, base_y - 26.5)],
-                cage_stroke
+                [
+                    Pos2::new(center_x, base_y - 3.0),
+                    Pos2::new(center_x, base_y - 26.5),
+                ],
+                cage_stroke,
             );
 
             // Horizontal reinforcing rings
             let ring_y1 = base_y - 9.0;
             let ring_y2 = base_y - 18.0;
-            painter.line_segment([Pos2::new(center_x - 13.1, ring_y1), Pos2::new(center_x + 13.1, ring_y1)], cage_stroke);
-            painter.line_segment([Pos2::new(center_x - 12.7, ring_y2), Pos2::new(center_x + 12.7, ring_y2)], cage_stroke);
+            painter.line_segment(
+                [
+                    Pos2::new(center_x - 13.1, ring_y1),
+                    Pos2::new(center_x + 13.1, ring_y1),
+                ],
+                cage_stroke,
+            );
+            painter.line_segment(
+                [
+                    Pos2::new(center_x - 12.7, ring_y2),
+                    Pos2::new(center_x + 12.7, ring_y2),
+                ],
+                cage_stroke,
+            );
         }
 
         response
@@ -481,37 +519,45 @@ pub fn json_layouter(ui: &Ui, text: &str, wrap_width: f32) -> std::sync::Arc<egu
 pub fn json_highlight(_ui: &Ui, text: &str) -> egui::text::LayoutJob {
     let mut job = egui::text::LayoutJob::default();
     let trimmed = text.trim_start();
-    
+
     // Check if the output is JSON
     let is_json = trimmed.starts_with('{') || trimmed.starts_with('[');
-    
+
     if is_json {
         // --- JSON MODE ---
-        let key_color = Color32::from_rgb(125, 211, 252);     // Cyan/Blue (Sky 300)
-        let string_color = Color32::from_rgb(251, 146, 60);  // Amber/Orange (Amber 400)
-        let number_color = Color32::from_rgb(74, 222, 128);  // Green (Green 400)
-        let bool_color = Color32::from_rgb(251, 113, 133);   // Rose/Pink (Rose 400)
-        let null_color = Color32::from_rgb(192, 132, 252);   // Purple/Lavender (Purple 400)
-        let punc_color = Color32::from_rgb(156, 163, 175);   // Border Gray (Gray 400)
+        let key_color = Color32::from_rgb(125, 211, 252); // Cyan/Blue (Sky 300)
+        let string_color = Color32::from_rgb(251, 146, 60); // Amber/Orange (Amber 400)
+        let number_color = Color32::from_rgb(74, 222, 128); // Green (Green 400)
+        let bool_color = Color32::from_rgb(251, 113, 133); // Rose/Pink (Rose 400)
+        let null_color = Color32::from_rgb(192, 132, 252); // Purple/Lavender (Purple 400)
+        let punc_color = Color32::from_rgb(156, 163, 175); // Border Gray (Gray 400)
         let comment_color = Color32::from_rgb(107, 114, 128); // Muted Dark Gray (Gray 500)
-        let text_color = Theme::text_primary();              // Default text
-        
+        let text_color = Theme::text_primary(); // Default text
+
         let chars: Vec<char> = text.chars().collect();
         let mut i = 0;
         let font_id = egui::FontId::monospace(11.0);
-        
+
         while i < chars.len() {
             // Handle line comments (//)
-            if chars[i] == '/' && i + 1 < chars.len() && chars[i+1] == '/' {
+            if chars[i] == '/' && i + 1 < chars.len() && chars[i + 1] == '/' {
                 let start = i;
                 while i < chars.len() && chars[i] != '\n' {
                     i += 1;
                 }
                 let slice: String = chars[start..i].iter().collect();
-                job.append(&slice, 0.0, egui::TextFormat { font_id: font_id.clone(), color: comment_color, ..Default::default() });
+                job.append(
+                    &slice,
+                    0.0,
+                    egui::TextFormat {
+                        font_id: font_id.clone(),
+                        color: comment_color,
+                        ..Default::default()
+                    },
+                );
                 continue;
             }
-            
+
             // Handle shell comments (#)
             if chars[i] == '#' {
                 let start = i;
@@ -519,7 +565,15 @@ pub fn json_highlight(_ui: &Ui, text: &str) -> egui::text::LayoutJob {
                     i += 1;
                 }
                 let slice: String = chars[start..i].iter().collect();
-                job.append(&slice, 0.0, egui::TextFormat { font_id: font_id.clone(), color: comment_color, ..Default::default() });
+                job.append(
+                    &slice,
+                    0.0,
+                    egui::TextFormat {
+                        font_id: font_id.clone(),
+                        color: comment_color,
+                        ..Default::default()
+                    },
+                );
                 continue;
             }
 
@@ -540,7 +594,7 @@ pub fn json_highlight(_ui: &Ui, text: &str) -> egui::text::LayoutJob {
                     i += 1;
                 }
                 let slice: String = chars[start..i].iter().collect();
-                
+
                 // Check if this string is a JSON key (followed by some spaces and a colon ':')
                 let mut is_key = false;
                 let mut peek = i;
@@ -550,7 +604,7 @@ pub fn json_highlight(_ui: &Ui, text: &str) -> egui::text::LayoutJob {
                 if peek < chars.len() && chars[peek] == ':' {
                     is_key = true;
                 }
-                
+
                 let color = if is_key {
                     key_color
                 } else {
@@ -562,12 +616,22 @@ pub fn json_highlight(_ui: &Ui, text: &str) -> egui::text::LayoutJob {
                         _ => string_color,
                     }
                 };
-                job.append(&slice, 0.0, egui::TextFormat { font_id: font_id.clone(), color, ..Default::default() });
+                job.append(
+                    &slice,
+                    0.0,
+                    egui::TextFormat {
+                        font_id: font_id.clone(),
+                        color,
+                        ..Default::default()
+                    },
+                );
                 continue;
             }
-            
+
             // Handle numbers
-            if chars[i].is_ascii_digit() || (chars[i] == '-' && i + 1 < chars.len() && chars[i+1].is_ascii_digit()) {
+            if chars[i].is_ascii_digit()
+                || (chars[i] == '-' && i + 1 < chars.len() && chars[i + 1].is_ascii_digit())
+            {
                 let start = i;
                 if chars[i] == '-' {
                     i += 1;
@@ -576,10 +640,18 @@ pub fn json_highlight(_ui: &Ui, text: &str) -> egui::text::LayoutJob {
                     i += 1;
                 }
                 let slice: String = chars[start..i].iter().collect();
-                job.append(&slice, 0.0, egui::TextFormat { font_id: font_id.clone(), color: number_color, ..Default::default() });
+                job.append(
+                    &slice,
+                    0.0,
+                    egui::TextFormat {
+                        font_id: font_id.clone(),
+                        color: number_color,
+                        ..Default::default()
+                    },
+                );
                 continue;
             }
-            
+
             // Handle keywords (true, false, null)
             if chars[i].is_alphabetic() {
                 let start = i;
@@ -592,40 +664,64 @@ pub fn json_highlight(_ui: &Ui, text: &str) -> egui::text::LayoutJob {
                     "null" => null_color,
                     _ => text_color,
                 };
-                job.append(&slice, 0.0, egui::TextFormat { font_id: font_id.clone(), color, ..Default::default() });
+                job.append(
+                    &slice,
+                    0.0,
+                    egui::TextFormat {
+                        font_id: font_id.clone(),
+                        color,
+                        ..Default::default()
+                    },
+                );
                 continue;
             }
-            
+
             // Handle punctuation/brackets
             if "{}[],:".contains(chars[i]) {
                 let slice = chars[i].to_string();
                 i += 1;
-                job.append(&slice, 0.0, egui::TextFormat { font_id: font_id.clone(), color: punc_color, ..Default::default() });
+                job.append(
+                    &slice,
+                    0.0,
+                    egui::TextFormat {
+                        font_id: font_id.clone(),
+                        color: punc_color,
+                        ..Default::default()
+                    },
+                );
                 continue;
             }
-            
+
             // Default white-space or unstyled character
             let slice = chars[i].to_string();
             i += 1;
-            job.append(&slice, 0.0, egui::TextFormat { font_id: font_id.clone(), color: text_color, ..Default::default() });
+            job.append(
+                &slice,
+                0.0,
+                egui::TextFormat {
+                    font_id: font_id.clone(),
+                    color: text_color,
+                    ..Default::default()
+                },
+            );
         }
     } else {
         // --- TABULAR / CAT API MODE ---
-        let header_color = Color32::from_rgb(147, 197, 253);  // Sky Blue for headers
+        let header_color = Color32::from_rgb(147, 197, 253); // Sky Blue for headers
         let success_color = Theme::success();
         let warning_color = Theme::warning();
         let danger_color = Theme::danger();
-        let number_color = Color32::from_rgb(74, 222, 128);   // Vibrant Green
+        let number_color = Color32::from_rgb(74, 222, 128); // Vibrant Green
         let text_color = Theme::text_primary();
-        
+
         let font_id = egui::FontId::monospace(11.0);
-        
+
         let lines: Vec<&str> = text.split('\n').collect();
         for (line_idx, line) in lines.iter().enumerate() {
             let is_header = line_idx == 0 && lines.len() > 1 && !line.trim().is_empty();
             let chars: Vec<char> = line.chars().collect();
             let mut i = 0;
-            
+
             while i < chars.len() {
                 // Headers get bold accent color
                 if is_header && !chars[i].is_whitespace() {
@@ -634,28 +730,47 @@ pub fn json_highlight(_ui: &Ui, text: &str) -> egui::text::LayoutJob {
                         i += 1;
                     }
                     let slice: String = chars[start..i].iter().collect();
-                    job.append(&slice, 0.0, egui::TextFormat {
-                        font_id: font_id.clone(),
-                        color: header_color,
-                        ..Default::default()
-                    });
+                    job.append(
+                        &slice,
+                        0.0,
+                        egui::TextFormat {
+                            font_id: font_id.clone(),
+                            color: header_color,
+                            ..Default::default()
+                        },
+                    );
                     continue;
                 }
-                
+
                 // Numbers & quantities (sizes, percentages, unit values)
-                if chars[i].is_ascii_digit() || (chars[i] == '-' && i + 1 < chars.len() && chars[i+1].is_ascii_digit()) {
+                if chars[i].is_ascii_digit()
+                    || (chars[i] == '-' && i + 1 < chars.len() && chars[i + 1].is_ascii_digit())
+                {
                     let start = i;
                     if chars[i] == '-' {
                         i += 1;
                     }
-                    while i < chars.len() && (chars[i].is_ascii_digit() || chars[i] == '.' || chars[i] == '%' || chars[i].is_alphabetic()) {
+                    while i < chars.len()
+                        && (chars[i].is_ascii_digit()
+                            || chars[i] == '.'
+                            || chars[i] == '%'
+                            || chars[i].is_alphabetic())
+                    {
                         i += 1;
                     }
                     let slice: String = chars[start..i].iter().collect();
-                    job.append(&slice, 0.0, egui::TextFormat { font_id: font_id.clone(), color: number_color, ..Default::default() });
+                    job.append(
+                        &slice,
+                        0.0,
+                        egui::TextFormat {
+                            font_id: font_id.clone(),
+                            color: number_color,
+                            ..Default::default()
+                        },
+                    );
                     continue;
                 }
-                
+
                 // Status indicator keywords
                 if chars[i].is_alphabetic() {
                     let start = i;
@@ -669,21 +784,45 @@ pub fn json_highlight(_ui: &Ui, text: &str) -> egui::text::LayoutJob {
                         "red" | "danger" | "failed" | "error" => danger_color,
                         _ => text_color,
                     };
-                    job.append(&slice, 0.0, egui::TextFormat { font_id: font_id.clone(), color, ..Default::default() });
+                    job.append(
+                        &slice,
+                        0.0,
+                        egui::TextFormat {
+                            font_id: font_id.clone(),
+                            color,
+                            ..Default::default()
+                        },
+                    );
                     continue;
                 }
-                
+
                 let slice = chars[i].to_string();
                 i += 1;
-                job.append(&slice, 0.0, egui::TextFormat { font_id: font_id.clone(), color: text_color, ..Default::default() });
+                job.append(
+                    &slice,
+                    0.0,
+                    egui::TextFormat {
+                        font_id: font_id.clone(),
+                        color: text_color,
+                        ..Default::default()
+                    },
+                );
             }
-            
+
             if line_idx < lines.len() - 1 {
-                job.append("\n", 0.0, egui::TextFormat { font_id: font_id.clone(), color: text_color, ..Default::default() });
+                job.append(
+                    "\n",
+                    0.0,
+                    egui::TextFormat {
+                        font_id: font_id.clone(),
+                        color: text_color,
+                        ..Default::default()
+                    },
+                );
             }
         }
     }
-    
+
     job
 }
 

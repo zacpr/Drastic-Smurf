@@ -51,7 +51,11 @@ pub enum RefreshMsg {
     TestResult(String),
     FetchedRepos(String, Vec<String>),
     FetchedSlmPolicies(String, Vec<String>),
-    IndicesResult(String, Vec<crate::core::es_client::CatIndex>, Vec<crate::core::es_client::DataStream>),
+    IndicesResult(
+        String,
+        Vec<crate::core::es_client::CatIndex>,
+        Vec<crate::core::es_client::DataStream>,
+    ),
     IndicesError(String, String),
     ObservabilityResult(String, Vec<crate::modules::observability::SyntheticMonitor>),
     ObservabilityError(String, String),
@@ -126,9 +130,7 @@ impl Default for DrasticSmurfApp {
 }
 
 impl DrasticSmurfApp {
-    fn with_log_entries(
-        log_entries: Arc<RwLock<Vec<crate::ui::log_buffer::LogEntry>>>,
-    ) -> Self {
+    fn with_log_entries(log_entries: Arc<RwLock<Vec<crate::ui::log_buffer::LogEntry>>>) -> Self {
         let (tx, rx) = channel();
         let manager = ClusterManager::new();
         if let Err(e) = manager.load() {
@@ -361,7 +363,10 @@ impl DrasticSmurfApp {
                 let manager_kb = manager.clone();
                 tokio::spawn(async move {
                     if let Some(client) = manager_kb.get_client(&name_kb) {
-                        let config = manager_kb.clusters().into_iter().find(|c| c.name == name_kb);
+                        let config = manager_kb
+                            .clusters()
+                            .into_iter()
+                            .find(|c| c.name == name_kb);
                         if let Some(config) = config {
                             let kibana_host = if config.kibana_host.is_empty() {
                                 if config.host.contains("elastic") {
@@ -408,7 +413,8 @@ impl DrasticSmurfApp {
                     if let Some(client) = manager_tasks.get_client(&name_tasks) {
                         if let Ok(tasks_val) = client.get_pending_tasks().await {
                             if let Some(arr) = tasks_val.get("tasks").and_then(|a| a.as_array()) {
-                                let _ = tx_tasks.send(RefreshMsg::PendingTasksResult(name_tasks, arr.clone()));
+                                let _ = tx_tasks
+                                    .send(RefreshMsg::PendingTasksResult(name_tasks, arr.clone()));
                             }
                         }
                     }
@@ -450,9 +456,12 @@ impl DrasticSmurfApp {
                 RefreshMsg::SnapshotResult(name, status) => {
                     let status_for_cache = status.clone();
                     // Rebuild client on auth failure
-                    if status.error_message.as_ref().map(|e| {
-                        e.contains("401") || e.to_lowercase().contains("unauthorized")
-                    }).unwrap_or(false) {
+                    if status
+                        .error_message
+                        .as_ref()
+                        .map(|e| e.contains("401") || e.to_lowercase().contains("unauthorized"))
+                        .unwrap_or(false)
+                    {
                         self.cluster_manager.rebuild_client(&name);
                     }
                     // Update speed history
@@ -528,10 +537,16 @@ impl DrasticSmurfApp {
                                 if let Some(client) = manager.get_client(&name_clone) {
                                     match client.allocation_explain().await {
                                         Ok(exp) => {
-                                            let _ = tx.send(RefreshMsg::ExplainResult(name_clone, Some(exp)));
+                                            let _ = tx.send(RefreshMsg::ExplainResult(
+                                                name_clone,
+                                                Some(exp),
+                                            ));
                                         }
                                         Err(e) => {
-                                            let _ = tx.send(RefreshMsg::ExplainError(name_clone, e.to_string()));
+                                            let _ = tx.send(RefreshMsg::ExplainError(
+                                                name_clone,
+                                                e.to_string(),
+                                            ));
                                         }
                                     }
                                 }
@@ -638,14 +653,21 @@ impl DrasticSmurfApp {
                     match result {
                         Ok(val) => {
                             if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&val) {
-                                if let Some(hits) = parsed.get("hits").and_then(|h| h.get("hits")).and_then(|h| h.as_array()) {
+                                if let Some(hits) = parsed
+                                    .get("hits")
+                                    .and_then(|h| h.get("hits"))
+                                    .and_then(|h| h.as_array())
+                                {
                                     self.discover_state.results = hits.clone();
                                     self.discover_state.refresh_fields();
                                 } else {
-                                    self.discover_state.error = Some("Invalid response structure from search API".to_string());
+                                    self.discover_state.error = Some(
+                                        "Invalid response structure from search API".to_string(),
+                                    );
                                 }
                             } else {
-                                self.discover_state.error = Some("Failed to parse search response as JSON".to_string());
+                                self.discover_state.error =
+                                    Some("Failed to parse search response as JSON".to_string());
                             }
                         }
                         Err(e) => {
@@ -677,18 +699,21 @@ impl DrasticSmurfApp {
                 }
                 RefreshMsg::FetchedRepos(name, repos) => {
                     self.clusters_state.fetched_repos = repos;
-                    self.clusters_state.test_result = Some(format!("Fetched repositories for '{}'", name));
+                    self.clusters_state.test_result =
+                        Some(format!("Fetched repositories for '{}'", name));
                 }
                 RefreshMsg::FetchedSlmPolicies(name, policies) => {
                     self.clusters_state.fetched_slm_policies = policies;
-                    self.clusters_state.test_result = Some(format!("Fetched SLM policies for '{}'", name));
+                    self.clusters_state.test_result =
+                        Some(format!("Fetched SLM policies for '{}'", name));
                 }
                 RefreshMsg::HistoryResult(name, history) => {
                     self.cluster_histories_fetched.insert(name, history);
                     self.history_loading = false;
                 }
                 RefreshMsg::HistoryError(name, err) => {
-                    self.toasts.error(format!("Failed to fetch history for '{}': {}", name, err));
+                    self.toasts
+                        .error(format!("Failed to fetch history for '{}': {}", name, err));
                     self.history_loading = false;
                 }
                 RefreshMsg::EsVersionResult(name, version) => {
@@ -712,7 +737,8 @@ impl DrasticSmurfApp {
                                     self.hot_threads_text = Some(text);
                                 }
                                 Err(err) => {
-                                    self.hot_threads_text = Some(format!("Error loading Hot Threads: {}", err));
+                                    self.hot_threads_text =
+                                        Some(format!("Error loading Hot Threads: {}", err));
                                 }
                             }
                         }
@@ -725,7 +751,8 @@ impl DrasticSmurfApp {
                             self.indices_state.selected_detail = Some(detail);
                         }
                         Err(e) => {
-                            self.toasts.error(format!("Failed to fetch index details: {}", e));
+                            self.toasts
+                                .error(format!("Failed to fetch index details: {}", e));
                         }
                     }
                 }
@@ -848,13 +875,10 @@ impl DrasticSmurfApp {
         };
 
         ui.add_space(16.0);
-        
+
         // Render logo image
-        ui.add(
-            egui::Image::new(egui::include_image!("../drastic.png"))
-                .max_width(120.0)
-        );
-        
+        ui.add(egui::Image::new(egui::include_image!("../drastic.png")).max_width(120.0));
+
         ui.add_space(8.0);
         let title_response = ui.heading(
             egui::RichText::new("DRASTIC SMURF")
@@ -911,7 +935,8 @@ impl DrasticSmurfApp {
                             .desired_width(f32::INFINITY),
                     );
                     if filter_res.changed() {
-                        self.cluster_manager.set_cluster_filter(self.cluster_filter.clone());
+                        self.cluster_manager
+                            .set_cluster_filter(self.cluster_filter.clone());
                     }
                     ui.add_space(4.0);
 
@@ -926,7 +951,7 @@ impl DrasticSmurfApp {
                                 .iter()
                                 .find(|(n, _)| n == &cluster.name)
                                 .and_then(|(_, h)| h.as_ref());
-                            
+
                             let dot_color = match health_opt {
                                 Some(health) => match health.status.as_str() {
                                     "green" => Theme::success(),
@@ -937,7 +962,11 @@ impl DrasticSmurfApp {
                                 None => egui::Color32::from_rgb(60, 60, 60), // Offline
                             };
 
-                            ui.add(crate::ui::widgets::ConnectionDot::new(health_opt.is_some()).color(dot_color).size(8.0));
+                            ui.add(
+                                crate::ui::widgets::ConnectionDot::new(health_opt.is_some())
+                                    .color(dot_color)
+                                    .size(8.0),
+                            );
                             ui.label(
                                 egui::RichText::new(&cluster.name)
                                     .color(Theme::text_primary())
@@ -1037,47 +1066,53 @@ impl DrasticSmurfApp {
         ui.horizontal(|ui| {
             // Add the warning light widget
             ui.add(crate::ui::widgets::WarningLight::new(overall_status));
-            
+
             // Status panel description next to the light
             ui.vertical(|ui| {
                 ui.add_space(2.0);
                 let (title, color, desc) = match overall_status {
                     "green" => (
-                        "SYSTEM ONLINE", 
-                        Theme::success(), 
-                        "All connected clusters healthy.\nStandby mode active."
+                        "SYSTEM ONLINE",
+                        Theme::success(),
+                        "All connected clusters healthy.\nStandby mode active.",
                     ),
                     "yellow" => (
-                        "MINOR WARNING", 
-                        egui::Color32::from_rgb(235, 179, 41), 
-                        "One or more clusters yellow.\nCheck shard allocation."
+                        "MINOR WARNING",
+                        egui::Color32::from_rgb(235, 179, 41),
+                        "One or more clusters yellow.\nCheck shard allocation.",
                     ),
                     "red" => (
-                        "CRITICAL FAILURE", 
-                        Theme::danger(), 
-                        "Immediate attention required!\nRed health detected."
+                        "CRITICAL FAILURE",
+                        Theme::danger(),
+                        "Immediate attention required!\nRed health detected.",
                     ),
                     _ => (
-                        "SYSTEM OFFLINE", 
-                        egui::Color32::from_rgb(120, 120, 125), 
-                        "No active cluster contact.\nFilament disconnected."
+                        "SYSTEM OFFLINE",
+                        egui::Color32::from_rgb(120, 120, 125),
+                        "No active cluster contact.\nFilament disconnected.",
                     ),
                 };
-                
+
                 ui.colored_label(color, egui::RichText::new(title).strong().size(11.0));
-                ui.label(egui::RichText::new(desc).size(8.5).color(Theme::text_muted()));
+                ui.label(
+                    egui::RichText::new(desc)
+                        .size(8.5)
+                        .color(Theme::text_muted()),
+                );
             });
         });
         ui.add_space(12.0); // bottom padding
     }
 
     fn render_timezone_clocks(&self, ui: &mut egui::Ui) {
-        use chrono::{Datelike, Timelike, Utc, Weekday, NaiveDate, FixedOffset, TimeZone};
+        use chrono::{Datelike, FixedOffset, NaiveDate, TimeZone, Timelike, Utc, Weekday};
 
         let now_utc = Utc::now();
         let local_now = chrono::Local::now();
 
-        let get_timezone_time = |utc_now: &chrono::DateTime<Utc>, zone: &str| -> Option<chrono::DateTime<FixedOffset>> {
+        let get_timezone_time = |utc_now: &chrono::DateTime<Utc>,
+                                 zone: &str|
+         -> Option<chrono::DateTime<FixedOffset>> {
             let find_nth_sunday = |year: i32, month: u32, n: u32| -> u32 {
                 let mut count = 0;
                 for day in 1..=31 {
@@ -1175,61 +1210,77 @@ impl DrasticSmurfApp {
         };
 
         ui.add_space(8.0);
-        
-        egui::CollapsingHeader::new(egui::RichText::new("🕒 World Clocks").strong().size(12.0).color(Theme::text_secondary()))
-            .default_open(true)
-            .show(ui, |ui| {
-                ui.add_space(4.0);
 
-                let mut rendered_any = false;
-                for clock in &self.timezone_clocks {
-                    if !clock.enabled {
-                        continue;
-                    }
-                    rendered_any = true;
+        egui::CollapsingHeader::new(
+            egui::RichText::new("🕒 World Clocks")
+                .strong()
+                .size(12.0)
+                .color(Theme::text_secondary()),
+        )
+        .default_open(true)
+        .show(ui, |ui| {
+            ui.add_space(4.0);
 
-                    let time_str = match clock.zone.as_str() {
-                        "Local" => local_now.format("%Y-%m-%dT%H:%M:%S%:z").to_string(),
-                        "UTC" => now_utc.format("%Y-%m-%dT%H:%M:%SZ").to_string(),
-                        other_zone => {
-                            if let Some(t) = get_timezone_time(&now_utc, other_zone) {
-                                t.format("%Y-%m-%dT%H:%M:%S%:z").to_string()
-                            } else {
-                                now_utc.format("%Y-%m-%dT%H:%M:%SZ").to_string()
-                            }
+            let mut rendered_any = false;
+            for clock in &self.timezone_clocks {
+                if !clock.enabled {
+                    continue;
+                }
+                rendered_any = true;
+
+                let time_str = match clock.zone.as_str() {
+                    "Local" => local_now.format("%Y-%m-%dT%H:%M:%S%:z").to_string(),
+                    "UTC" => now_utc.format("%Y-%m-%dT%H:%M:%SZ").to_string(),
+                    other_zone => {
+                        if let Some(t) = get_timezone_time(&now_utc, other_zone) {
+                            t.format("%Y-%m-%dT%H:%M:%S%:z").to_string()
+                        } else {
+                            now_utc.format("%Y-%m-%dT%H:%M:%SZ").to_string()
                         }
-                    };
+                    }
+                };
 
-                    ui.vertical(|ui| {
-                        ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new(&clock.label).strong().size(10.5).color(Theme::text_primary()));
-                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                if ui.button("📋")
-                                    .on_hover_text(format!("Copy {} ISO 8601 to clipboard", clock.label))
-                                    .clicked()
-                                {
-                                    ui.ctx().copy_text(time_str.clone());
-                                }
-                            });
+                ui.vertical(|ui| {
+                    ui.horizontal(|ui| {
+                        ui.label(
+                            egui::RichText::new(&clock.label)
+                                .strong()
+                                .size(10.5)
+                                .color(Theme::text_primary()),
+                        );
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if ui
+                                .button("📋")
+                                .on_hover_text(format!(
+                                    "Copy {} ISO 8601 to clipboard",
+                                    clock.label
+                                ))
+                                .clicked()
+                            {
+                                ui.ctx().copy_text(time_str.clone());
+                            }
                         });
-                        
-                        ui.add(
-                            egui::Label::new(
-                                egui::RichText::new(&time_str)
-                                    .code()
-                                    .size(10.0)
-                                    .color(Theme::accent())
-                            )
-                        ).on_hover_text(format!("Click copy button to copy this timezone's exact ISO 8601 string: {}", time_str));
-
-                        ui.add_space(4.0);
                     });
-                }
 
-                if !rendered_any {
-                    ui.colored_label(Theme::text_muted(), "All clocks disabled in Settings.");
-                }
-            });
+                    ui.add(egui::Label::new(
+                        egui::RichText::new(&time_str)
+                            .code()
+                            .size(10.0)
+                            .color(Theme::accent()),
+                    ))
+                    .on_hover_text(format!(
+                        "Click copy button to copy this timezone's exact ISO 8601 string: {}",
+                        time_str
+                    ));
+
+                    ui.add_space(4.0);
+                });
+            }
+
+            if !rendered_any {
+                ui.colored_label(Theme::text_muted(), "All clocks disabled in Settings.");
+            }
+        });
     }
 
     fn render_tabs(&mut self, ui: &mut egui::Ui) {
@@ -1317,15 +1368,14 @@ impl DrasticSmurfApp {
                     }
                     if let Some(old) = old_name {
                         if let Err(e) =
-                            self.cluster_manager.update_cluster(&old, config, Some(&password))
+                            self.cluster_manager
+                                .update_cluster(&old, config, Some(&password))
                         {
                             self.toasts
                                 .error(format!("Failed to update cluster: {}", e));
                         }
                     } else {
-                        if let Err(e) =
-                            self.cluster_manager.add_cluster(config, Some(&password))
-                        {
+                        if let Err(e) = self.cluster_manager.add_cluster(config, Some(&password)) {
                             self.toasts.error(format!("Failed to add cluster: {}", e));
                         }
                     }
@@ -1375,14 +1425,16 @@ impl DrasticSmurfApp {
                         // Store the working client so auto-refresh uses it
                         if !password.is_empty() {
                             self.cluster_manager.set_client(&name, client_clone);
-                            if let Err(e) =
-                                crate::core::auth::set_password(&name, &password)
-                            {
-                                tracing::warn!("Failed to save password after successful test: {}", e);
+                            if let Err(e) = crate::core::auth::set_password(&name, &password) {
+                                tracing::warn!(
+                                    "Failed to save password after successful test: {}",
+                                    e
+                                );
                             }
                         }
                     } else {
-                        self.clusters_state.test_result = Some("Failed to create client".to_string());
+                        self.clusters_state.test_result =
+                            Some("Failed to create client".to_string());
                     }
                 }
                 if let Some(imported) = on_import {
@@ -1405,15 +1457,10 @@ impl DrasticSmurfApp {
                                         }
                                         _ => vec![],
                                     };
-                                    let _ = tx
-                                        .send(RefreshMsg::FetchedRepos(name.clone(), repos));
+                                    let _ = tx.send(RefreshMsg::FetchedRepos(name.clone(), repos));
                                 }
                                 Err(e) => {
-                                    tracing::warn!(
-                                        "Failed to fetch repos for '{}': {}",
-                                        name,
-                                        e
-                                    );
+                                    tracing::warn!("Failed to fetch repos for '{}': {}", name, e);
                                 }
                             }
                             ctx.request_repaint();
@@ -1421,9 +1468,8 @@ impl DrasticSmurfApp {
                         self.clusters_state.test_result =
                             Some("Fetching snapshot repositories...".to_string());
                     } else {
-                        self.clusters_state.test_result = Some(
-                            "No client for this cluster. Test connection first.".to_string(),
-                        );
+                        self.clusters_state.test_result =
+                            Some("No client for this cluster. Test connection first.".to_string());
                     }
                 }
                 if let Some(cluster_name) = on_fetch_slm {
@@ -1436,8 +1482,10 @@ impl DrasticSmurfApp {
                                 Ok(resp) => {
                                     let policies: Vec<String> =
                                         resp.policies.keys().cloned().collect();
-                                    let _ = tx
-                                        .send(RefreshMsg::FetchedSlmPolicies(name.clone(), policies));
+                                    let _ = tx.send(RefreshMsg::FetchedSlmPolicies(
+                                        name.clone(),
+                                        policies,
+                                    ));
                                 }
                                 Err(e) => {
                                     tracing::warn!(
@@ -1452,9 +1500,8 @@ impl DrasticSmurfApp {
                         self.clusters_state.test_result =
                             Some("Fetching SLM policies...".to_string());
                     } else {
-                        self.clusters_state.test_result = Some(
-                            "No client for this cluster. Test connection first.".to_string(),
-                        );
+                        self.clusters_state.test_result =
+                            Some("No client for this cluster. Test connection first.".to_string());
                     }
                 }
             }
@@ -1491,24 +1538,39 @@ impl DrasticSmurfApp {
                     let ctx = ctx.clone();
                     tokio::spawn(async move {
                         if let Some(client) = manager.get_client(&name_clone) {
-                            let repo = manager.clusters().into_iter()
+                            let repo = manager
+                                .clusters()
+                                .into_iter()
                                 .find(|c| c.name == name_clone)
                                 .map(|c| c.snapshot_repo.clone())
                                 .unwrap_or_default();
                             if !repo.is_empty() {
                                 match client.snapshot_all(&repo).await {
                                     Ok(resp) => {
-                                        let _ = tx.send(RefreshMsg::HistoryResult(name_clone, resp.snapshots));
+                                        let _ = tx.send(RefreshMsg::HistoryResult(
+                                            name_clone,
+                                            resp.snapshots,
+                                        ));
                                     }
                                     Err(e) => {
-                                        let _ = tx.send(RefreshMsg::HistoryError(name_clone, e.to_string()));
+                                        let _ = tx.send(RefreshMsg::HistoryError(
+                                            name_clone,
+                                            e.to_string(),
+                                        ));
                                     }
                                 }
                             } else {
-                                let _ = tx.send(RefreshMsg::HistoryError(name_clone, "No snapshot repository configured for this cluster.".to_string()));
+                                let _ = tx.send(RefreshMsg::HistoryError(
+                                    name_clone,
+                                    "No snapshot repository configured for this cluster."
+                                        .to_string(),
+                                ));
                             }
                         } else {
-                            let _ = tx.send(RefreshMsg::HistoryError(name_clone, "Failed to get cluster client.".to_string()));
+                            let _ = tx.send(RefreshMsg::HistoryError(
+                                name_clone,
+                                "Failed to get cluster client.".to_string(),
+                            ));
                         }
                         ctx.request_repaint();
                     });
@@ -1621,14 +1683,26 @@ impl DrasticSmurfApp {
                         if let Some(client) = manager.get_client(&cluster_name) {
                             match client.get_node_hot_threads(&node_name).await {
                                 Ok(text) => {
-                                    let _ = tx.send(RefreshMsg::HotThreadsResult(cluster_name, node_name, Ok(text)));
+                                    let _ = tx.send(RefreshMsg::HotThreadsResult(
+                                        cluster_name,
+                                        node_name,
+                                        Ok(text),
+                                    ));
                                 }
                                 Err(e) => {
-                                    let _ = tx.send(RefreshMsg::HotThreadsResult(cluster_name, node_name, Err(e.to_string())));
+                                    let _ = tx.send(RefreshMsg::HotThreadsResult(
+                                        cluster_name,
+                                        node_name,
+                                        Err(e.to_string()),
+                                    ));
                                 }
                             }
                         } else {
-                            let _ = tx.send(RefreshMsg::HotThreadsResult(cluster_name, node_name, Err("Failed to obtain client".to_string())));
+                            let _ = tx.send(RefreshMsg::HotThreadsResult(
+                                cluster_name,
+                                node_name,
+                                Err("Failed to obtain client".to_string()),
+                            ));
                         }
                         ctx.request_repaint();
                     });
@@ -1765,7 +1839,8 @@ impl DrasticSmurfApp {
                     &mut search_triggered,
                 );
                 if let Some((path, body)) = search_triggered {
-                    self.discover_send = Some((self.discover_state.selected_cluster.clone(), path, body));
+                    self.discover_send =
+                        Some((self.discover_state.selected_cluster.clone(), path, body));
                 }
             }
             Tab::Indices => {
@@ -1807,12 +1882,18 @@ impl DrasticSmurfApp {
 
                             // 1. Fetch settings
                             let settings_path = format!("/{}/_settings", target_name);
-                            if let Ok(settings_val) = client.execute(reqwest::Method::GET, &settings_path, None).await {
+                            if let Ok(settings_val) = client
+                                .execute(reqwest::Method::GET, &settings_path, None)
+                                .await
+                            {
                                 detail.settings = Some(settings_val.clone());
                                 if let Some(obj) = settings_val.get(&target_name).or_else(|| {
                                     settings_val.as_object().and_then(|o| o.values().next())
                                 }) {
-                                    if let Some(ilm_name) = obj.pointer("/settings/index/lifecycle/name").and_then(|v| v.as_str()) {
+                                    if let Some(ilm_name) = obj
+                                        .pointer("/settings/index/lifecycle/name")
+                                        .and_then(|v| v.as_str())
+                                    {
                                         detail.ilm_policy = Some(ilm_name.to_string());
                                     }
                                 }
@@ -1820,14 +1901,19 @@ impl DrasticSmurfApp {
 
                             // 2. Fetch ILM explain
                             let ilm_path = format!("/{}/_ilm/explain", target_name);
-                            if let Ok(ilm_val) = client.execute(reqwest::Method::GET, &ilm_path, None).await {
+                            if let Ok(ilm_val) =
+                                client.execute(reqwest::Method::GET, &ilm_path, None).await
+                            {
                                 detail.ilm_explain = Some(ilm_val.clone());
                                 if detail.ilm_policy.is_none() {
-                                    if let Some(policy_name) = ilm_val.pointer("/indices").and_then(|ind| ind.as_object())
+                                    if let Some(policy_name) = ilm_val
+                                        .pointer("/indices")
+                                        .and_then(|ind| ind.as_object())
                                         .and_then(|obj| obj.values().next())
                                         .and_then(|val| val.get("policy"))
-                                        .and_then(|p| p.as_str()) {
-                                            detail.ilm_policy = Some(policy_name.to_string());
+                                        .and_then(|p| p.as_str())
+                                    {
+                                        detail.ilm_policy = Some(policy_name.to_string());
                                     }
                                 }
                             }
@@ -1835,27 +1921,47 @@ impl DrasticSmurfApp {
                             // 3. Match template
                             if is_datastream {
                                 let ds_path = format!("/_data_stream/{}", target_name);
-                                if let Ok(ds_val) = client.execute(reqwest::Method::GET, &ds_path, None).await {
-                                    if let Some(template_name) = ds_val.pointer("/data_streams/0/template").and_then(|v| v.as_str()) {
+                                if let Ok(ds_val) =
+                                    client.execute(reqwest::Method::GET, &ds_path, None).await
+                                {
+                                    if let Some(template_name) = ds_val
+                                        .pointer("/data_streams/0/template")
+                                        .and_then(|v| v.as_str())
+                                    {
                                         detail.index_template = Some(template_name.to_string());
                                     }
                                     if detail.ilm_policy.is_none() {
-                                        if let Some(ilm_name) = ds_val.pointer("/data_streams/0/ilm_policy").and_then(|v| v.as_str()) {
+                                        if let Some(ilm_name) = ds_val
+                                            .pointer("/data_streams/0/ilm_policy")
+                                            .and_then(|v| v.as_str())
+                                        {
                                             detail.ilm_policy = Some(ilm_name.to_string());
                                         }
                                     }
                                 }
                             } else {
-                                if let Ok(templates_val) = client.execute(reqwest::Method::GET, "/_index_template", None).await {
-                                    if let Some(templates_arr) = templates_val.get("index_templates").and_then(|a| a.as_array()) {
+                                if let Ok(templates_val) = client
+                                    .execute(reqwest::Method::GET, "/_index_template", None)
+                                    .await
+                                {
+                                    if let Some(templates_arr) = templates_val
+                                        .get("index_templates")
+                                        .and_then(|a| a.as_array())
+                                    {
                                         for t in templates_arr {
-                                            if let Some(name) = t.get("name").and_then(|n| n.as_str()) {
-                                                if let Some(patterns) = t.pointer("/index_template/index_patterns").and_then(|p| p.as_array()) {
+                                            if let Some(name) =
+                                                t.get("name").and_then(|n| n.as_str())
+                                            {
+                                                if let Some(patterns) = t
+                                                    .pointer("/index_template/index_patterns")
+                                                    .and_then(|p| p.as_array())
+                                                {
                                                     let matches = patterns.iter()
                                                         .filter_map(|p| p.as_str())
                                                         .any(|p| crate::modules::indices::index_pattern_matches(p, &target_name));
                                                     if matches {
-                                                        detail.index_template = Some(name.to_string());
+                                                        detail.index_template =
+                                                            Some(name.to_string());
                                                         break;
                                                     }
                                                 }
@@ -1867,7 +1973,10 @@ impl DrasticSmurfApp {
 
                             let _ = tx.send(RefreshMsg::IndexDetailResult(target_name, Ok(detail)));
                         } else {
-                            let _ = tx.send(RefreshMsg::IndexDetailResult(target_name, Err("Failed to build client".to_string())));
+                            let _ = tx.send(RefreshMsg::IndexDetailResult(
+                                target_name,
+                                Err("Failed to build client".to_string()),
+                            ));
                         }
                         ctx.request_repaint();
                     });
@@ -1892,7 +2001,7 @@ impl DrasticSmurfApp {
                 let mut theme_changed = false;
                 let mut vfx_changed = false;
                 let mut tour_triggered = false;
-                
+
                 egui::ScrollArea::vertical()
                     .id_salt("settings_scroll")
                     .show(ui, |ui| {
@@ -2121,9 +2230,7 @@ impl DrasticSmurfApp {
                     } else {
                         let name = self.new_cluster.name.trim().to_string();
                         self.new_cluster.name = name.clone();
-                        if let Err(e) =
-                            crate::core::auth::set_password(&name, &self.new_password)
-                        {
+                        if let Err(e) = crate::core::auth::set_password(&name, &self.new_password) {
                             self.toasts.error(format!("Failed to save password: {}", e));
                         }
 
@@ -2137,10 +2244,7 @@ impl DrasticSmurfApp {
                                 .is_ok()
                         } else {
                             self.cluster_manager
-                                .add_cluster(
-                                    self.new_cluster.clone(),
-                                    Some(&self.new_password),
-                                )
+                                .add_cluster(self.new_cluster.clone(), Some(&self.new_password))
                                 .is_ok()
                         };
 
@@ -2306,7 +2410,11 @@ impl eframe::App for DrasticSmurfApp {
                     let datastreams_res = client.get_data_streams().await;
                     match (indices_res, datastreams_res) {
                         (Ok(indices), Ok(ds_resp)) => {
-                            let _ = tx.send(RefreshMsg::IndicesResult(name, indices, ds_resp.data_streams));
+                            let _ = tx.send(RefreshMsg::IndicesResult(
+                                name,
+                                indices,
+                                ds_resp.data_streams,
+                            ));
                         }
                         (Ok(indices), Err(_)) => {
                             let _ = tx.send(RefreshMsg::IndicesResult(name, indices, Vec::new()));
@@ -2354,18 +2462,41 @@ impl eframe::App for DrasticSmurfApp {
                                 format!("http://{}", h)
                             }
                         };
-                        match client.get_kibana_synthetics_monitors(&kibana_host, Some(&space)).await {
+                        match client
+                            .get_kibana_synthetics_monitors(&kibana_host, Some(&space))
+                            .await
+                        {
                             Ok(val) => {
                                 let mut monitors = Vec::new();
-                                if let Some(monitors_arr) = val.get("monitors").and_then(|m| m.as_array()) {
+                                if let Some(monitors_arr) =
+                                    val.get("monitors").and_then(|m| m.as_array())
+                                {
                                     for m in monitors_arr {
-                                        if let (Some(id), Some(monitor_name)) = (m.get("id").and_then(|id| id.as_str()), m.get("name").and_then(|n| n.as_str())) {
-                                            let monitor_type = m.get("type").and_then(|t| t.as_str()).unwrap_or("http").to_string();
-                                            let status = m.get("status").and_then(|s| s.get("status")).and_then(|s| s.as_str()).unwrap_or("up").to_string();
-                                            let url = m.get("url").and_then(|u| u.as_str()).unwrap_or("").to_string();
-                                            
+                                        if let (Some(id), Some(monitor_name)) = (
+                                            m.get("id").and_then(|id| id.as_str()),
+                                            m.get("name").and_then(|n| n.as_str()),
+                                        ) {
+                                            let monitor_type = m
+                                                .get("type")
+                                                .and_then(|t| t.as_str())
+                                                .unwrap_or("http")
+                                                .to_string();
+                                            let status = m
+                                                .get("status")
+                                                .and_then(|s| s.get("status"))
+                                                .and_then(|s| s.as_str())
+                                                .unwrap_or("up")
+                                                .to_string();
+                                            let url = m
+                                                .get("url")
+                                                .and_then(|u| u.as_str())
+                                                .unwrap_or("")
+                                                .to_string();
+
                                             let mut locations = Vec::new();
-                                            if let Some(locs) = m.get("locations").and_then(|l| l.as_array()) {
+                                            if let Some(locs) =
+                                                m.get("locations").and_then(|l| l.as_array())
+                                            {
                                                 for l in locs {
                                                     if let Some(l_str) = l.as_str() {
                                                         locations.push(l_str.to_string());
@@ -2373,35 +2504,54 @@ impl eframe::App for DrasticSmurfApp {
                                                 }
                                             }
 
-                                            let latency_ms = m.get("metrics").and_then(|m| m.get("latency")).and_then(|l| l.as_u64()).unwrap_or(50) as u32;
-                                            
-                                            monitors.push(crate::modules::observability::SyntheticMonitor {
-                                                id: id.to_string(),
-                                                name: monitor_name.to_string(),
-                                                monitor_type,
-                                                status,
-                                                url,
-                                                locations,
-                                                latency_ms,
-                                                latency_history: vec![latency_ms as f32, (latency_ms + 5) as f32, (latency_ms - 2) as f32],
-                                                last_checked: "Just now".to_string(),
-                                            });
+                                            let latency_ms = m
+                                                .get("metrics")
+                                                .and_then(|m| m.get("latency"))
+                                                .and_then(|l| l.as_u64())
+                                                .unwrap_or(50)
+                                                as u32;
+
+                                            monitors.push(
+                                                crate::modules::observability::SyntheticMonitor {
+                                                    id: id.to_string(),
+                                                    name: monitor_name.to_string(),
+                                                    monitor_type,
+                                                    status,
+                                                    url,
+                                                    locations,
+                                                    latency_ms,
+                                                    latency_history: vec![
+                                                        latency_ms as f32,
+                                                        (latency_ms + 5) as f32,
+                                                        (latency_ms - 2) as f32,
+                                                    ],
+                                                    last_checked: "Just now".to_string(),
+                                                },
+                                            );
                                         }
                                     }
                                 }
-                                
+
                                 if monitors.is_empty() {
-                                    let _ = tx.send(RefreshMsg::ObservabilityError(name.clone(), "No monitors configured in this Kibana space.".to_string()));
+                                    let _ = tx.send(RefreshMsg::ObservabilityError(
+                                        name.clone(),
+                                        "No monitors configured in this Kibana space.".to_string(),
+                                    ));
                                 } else {
-                                    let _ = tx.send(RefreshMsg::ObservabilityResult(name, monitors));
+                                    let _ =
+                                        tx.send(RefreshMsg::ObservabilityResult(name, monitors));
                                 }
                             }
                             Err(e) => {
-                                let _ = tx.send(RefreshMsg::ObservabilityError(name, e.to_string()));
+                                let _ =
+                                    tx.send(RefreshMsg::ObservabilityError(name, e.to_string()));
                             }
                         }
                     } else {
-                        let _ = tx.send(RefreshMsg::ObservabilityError(name, "No cluster configuration found".to_string()));
+                        let _ = tx.send(RefreshMsg::ObservabilityError(
+                            name,
+                            "No cluster configuration found".to_string(),
+                        ));
                     }
                     ctx.request_repaint();
                 });
@@ -2416,18 +2566,18 @@ impl eframe::App for DrasticSmurfApp {
 
         // Auto refresh
         if self.auto_refresh {
-if self.snapshot_manual_refresh {
-            self.snapshot_manual_refresh = false;
-            if !self.snapshot_statuses.is_empty() {
+            if self.snapshot_manual_refresh {
+                self.snapshot_manual_refresh = false;
+                if !self.snapshot_statuses.is_empty() {
+                    self.trigger_refresh(ctx);
+                }
+            }
+            let should_refresh = self.last_refresh.map_or(true, |last| {
+                last.elapsed().as_secs() >= self.refresh_interval_secs
+            });
+            if should_refresh {
                 self.trigger_refresh(ctx);
             }
-        }
-        let should_refresh = self.last_refresh.map_or(true, |last| {
-            last.elapsed().as_secs() >= self.refresh_interval_secs
-        });
-        if should_refresh {
-            self.trigger_refresh(ctx);
-        }
         }
 
         // Background VFX
@@ -2436,7 +2586,8 @@ if self.snapshot_manual_refresh {
         vfx::paint_cursor_glow(ctx, &self.vfx, screen_rect);
 
         // Glassmorphism translucent fills if VFX is active
-        let has_vfx = self.vfx.background_effect != crate::core::config::BackgroundEffect::None && self.vfx.background_intensity > 0.0;
+        let has_vfx = self.vfx.background_effect != crate::core::config::BackgroundEffect::None
+            && self.vfx.background_intensity > 0.0;
         let sidebar_fill = if has_vfx {
             Theme::bg_darkest().linear_multiply(0.85)
         } else {
@@ -2539,7 +2690,7 @@ if self.snapshot_manual_refresh {
         if let Some(ref cluster_name) = self.show_history_cluster {
             let mut is_open = true;
             let history_list = self.cluster_histories_fetched.get(cluster_name).cloned();
-            
+
             egui::Window::new(format!("📜 Snapshot History - {}", cluster_name))
                 .open(&mut is_open)
                 .collapsible(false)
@@ -2573,7 +2724,7 @@ if self.snapshot_manual_refresh {
                                 .id_salt("snapshot_history_scroll")
                                 .show(ui, |ui| {
                                     use egui_extras::{Column, TableBuilder};
-                                    
+
                                     TableBuilder::new(ui)
                                         .striped(true)
                                         .resizable(true)
@@ -2692,21 +2843,24 @@ if self.snapshot_manual_refresh {
         // Render Hot Threads Popup Window
         if let Some((ref cluster_name, ref node_name)) = self.hot_threads_node {
             let mut is_open = true;
-            egui::Window::new(format!("🔥 Node Hot Threads - {} ({})", node_name, cluster_name))
-                .open(&mut is_open)
-                .collapsible(false)
-                .resizable(true)
-                .default_size([750.0, 520.0])
-                .show(ctx, |ui| {
-                    if self.hot_threads_loading {
-                        ui.horizontal(|ui| {
-                            ui.spinner();
-                            ui.label(format!("Sampling hot threads on node {}...", node_name));
-                        });
-                    } else if let Some(ref text) = self.hot_threads_text {
-                        egui::ScrollArea::both()
-                            .id_salt("hot_threads_scroll")
-                            .show(ui, |ui| {
+            egui::Window::new(format!(
+                "🔥 Node Hot Threads - {} ({})",
+                node_name, cluster_name
+            ))
+            .open(&mut is_open)
+            .collapsible(false)
+            .resizable(true)
+            .default_size([750.0, 520.0])
+            .show(ctx, |ui| {
+                if self.hot_threads_loading {
+                    ui.horizontal(|ui| {
+                        ui.spinner();
+                        ui.label(format!("Sampling hot threads on node {}...", node_name));
+                    });
+                } else if let Some(ref text) = self.hot_threads_text {
+                    egui::ScrollArea::both()
+                        .id_salt("hot_threads_scroll")
+                        .show(ui, |ui| {
                             ui.add(
                                 egui::TextEdit::multiline(&mut text.as_str())
                                     .font(egui::TextStyle::Monospace)
@@ -2714,19 +2868,23 @@ if self.snapshot_manual_refresh {
                                     .frame(false)
                                     .layouter(&mut |ui, string, _wrap_width| {
                                         let mut layout_job = egui::text::LayoutJob::default();
-                                        layout_job.append(string, 0.0, egui::TextFormat {
-                                            font_id: egui::FontId::monospace(10.5),
-                                            color: Theme::text_primary(),
-                                            ..Default::default()
-                                        });
+                                        layout_job.append(
+                                            string,
+                                            0.0,
+                                            egui::TextFormat {
+                                                font_id: egui::FontId::monospace(10.5),
+                                                color: Theme::text_primary(),
+                                                ..Default::default()
+                                            },
+                                        );
                                         ui.fonts(|f| f.layout_job(layout_job))
-                                    })
+                                    }),
                             );
                         });
-                    } else {
-                        ui.label("No thread dump available.");
-                    }
-                });
+                } else {
+                    ui.label("No thread dump available.");
+                }
+            });
             if !is_open {
                 self.hot_threads_node = None;
                 self.hot_threads_text = None;
@@ -2748,71 +2906,108 @@ if self.snapshot_manual_refresh {
                     if let Some(tasks) = pending_list {
                         if tasks.is_empty() {
                             ui.label(
-                                egui::RichText::new("No pending metadata tasks currently in queue.")
-                                    .color(Theme::text_muted())
-                                    .size(13.0),
+                                egui::RichText::new(
+                                    "No pending metadata tasks currently in queue.",
+                                )
+                                .color(Theme::text_muted())
+                                .size(13.0),
                             );
                         } else {
                             ui.label(
-                                egui::RichText::new(format!("{} tasks waiting for master node execution:", tasks.len()))
-                                    .strong()
-                                    .color(Theme::accent())
-                                    .size(12.0),
+                                egui::RichText::new(format!(
+                                    "{} tasks waiting for master node execution:",
+                                    tasks.len()
+                                ))
+                                .strong()
+                                .color(Theme::accent())
+                                .size(12.0),
                             );
                             ui.add_space(8.0);
 
                             egui::ScrollArea::vertical()
                                 .id_salt("pending_tasks_scroll")
                                 .show(ui, |ui| {
-                                for task in &tasks {
-                                    let priority = task.get("priority").and_then(|p| p.as_str()).unwrap_or("NORMAL");
-                                    let insert_order = task.get("insert_order").and_then(|o| o.as_i64()).unwrap_or(0);
-                                    let source = task.get("source").and_then(|s| s.as_str()).unwrap_or("Unknown source");
-                                    let time_in_queue = task.get("time_in_queue").and_then(|t| t.as_str()).unwrap_or("0s");
+                                    for task in &tasks {
+                                        let priority = task
+                                            .get("priority")
+                                            .and_then(|p| p.as_str())
+                                            .unwrap_or("NORMAL");
+                                        let insert_order = task
+                                            .get("insert_order")
+                                            .and_then(|o| o.as_i64())
+                                            .unwrap_or(0);
+                                        let source = task
+                                            .get("source")
+                                            .and_then(|s| s.as_str())
+                                            .unwrap_or("Unknown source");
+                                        let time_in_queue = task
+                                            .get("time_in_queue")
+                                            .and_then(|t| t.as_str())
+                                            .unwrap_or("0s");
 
-                                    let bg_color = match priority {
-                                        "HIGH" | "URGENT" => Theme::danger().to_opaque().linear_multiply(0.15),
-                                        _ => Theme::bg_input(),
-                                    };
+                                        let bg_color = match priority {
+                                            "HIGH" | "URGENT" => {
+                                                Theme::danger().to_opaque().linear_multiply(0.15)
+                                            }
+                                            _ => Theme::bg_input(),
+                                        };
 
-                                    egui::Frame::new()
-                                        .fill(bg_color)
-                                        .corner_radius(Theme::CARD_ROUNDING)
-                                        .inner_margin(8.0)
-                                        .stroke(egui::Stroke::new(1.0, Theme::bg_input()))
-                                        .show(ui, |ui| {
-                                            ui.horizontal(|ui| {
-                                                ui.label(
-                                                    egui::RichText::new(format!("#{}", insert_order))
+                                        egui::Frame::new()
+                                            .fill(bg_color)
+                                            .corner_radius(Theme::CARD_ROUNDING)
+                                            .inner_margin(8.0)
+                                            .stroke(egui::Stroke::new(1.0, Theme::bg_input()))
+                                            .show(ui, |ui| {
+                                                ui.horizontal(|ui| {
+                                                    ui.label(
+                                                        egui::RichText::new(format!(
+                                                            "#{}",
+                                                            insert_order
+                                                        ))
                                                         .monospace()
                                                         .size(11.0)
                                                         .color(Theme::text_muted()),
-                                                );
-                                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                                    let badge_color = match priority {
-                                                        "HIGH" | "URGENT" => Theme::danger(),
-                                                        _ => Theme::accent(),
-                                                    };
-                                                    ui.add(crate::ui::widgets::StatePill::new(priority, badge_color));
+                                                    );
+                                                    ui.with_layout(
+                                                        egui::Layout::right_to_left(
+                                                            egui::Align::Center,
+                                                        ),
+                                                        |ui| {
+                                                            let badge_color = match priority {
+                                                                "HIGH" | "URGENT" => {
+                                                                    Theme::danger()
+                                                                }
+                                                                _ => Theme::accent(),
+                                                            };
+                                                            ui.add(
+                                                                crate::ui::widgets::StatePill::new(
+                                                                    priority,
+                                                                    badge_color,
+                                                                ),
+                                                            );
+                                                        },
+                                                    );
                                                 });
-                                            });
-                                            ui.add_space(4.0);
-                                            ui.label(
-                                                egui::RichText::new(source)
-                                                    .strong()
-                                                    .size(11.5)
-                                                    .color(Theme::text_primary()),
-                                            );
-                                            ui.add_space(2.0);
-                                            ui.label(
-                                                egui::RichText::new(format!("Time in queue: {}", time_in_queue))
+                                                ui.add_space(4.0);
+                                                ui.label(
+                                                    egui::RichText::new(source)
+                                                        .strong()
+                                                        .size(11.5)
+                                                        .color(Theme::text_primary()),
+                                                );
+                                                ui.add_space(2.0);
+                                                ui.label(
+                                                    egui::RichText::new(format!(
+                                                        "Time in queue: {}",
+                                                        time_in_queue
+                                                    ))
                                                     .size(10.5)
                                                     .color(Theme::text_muted()),
-                                            );
-                                        });
-                                    ui.add_space(8.0);
-                                }
-                            });
+                                                );
+                                            });
+                                        ui.add_space(8.0);
+                                    }
+                                });
                         }
                     } else {
                         ui.label("Loading pending tasks or cluster is unreachable...");
@@ -2835,7 +3030,9 @@ if self.snapshot_manual_refresh {
                 .show(ctx, |ui| {
                     ui.horizontal(|ui| {
                         ui.spinner();
-                        ui.label("Fetching settings, lifecycle configurations, and index templates...");
+                        ui.label(
+                            "Fetching settings, lifecycle configurations, and index templates...",
+                        );
                     });
                 });
             if !is_open {
@@ -2864,7 +3061,7 @@ if self.snapshot_manual_refresh {
                             ui.horizontal(|ui| {
                                 ui.label(egui::RichText::new("Target Name:").strong().size(13.0).color(Theme::text_muted()));
                                 ui.label(egui::RichText::new(&detail.name).strong().size(13.0).color(Theme::accent()));
-                                
+
                                 ui.add_space(20.0);
                                 ui.label(egui::RichText::new("Type:").strong().size(13.0).color(Theme::text_muted()));
                                 let type_str = if detail.is_datastream { "Data Stream" } else { "Regular Index" };
@@ -2914,7 +3111,7 @@ if self.snapshot_manual_refresh {
                                                 let action = val.get("action").and_then(|v| v.as_str()).unwrap_or("—");
                                                 let step = val.get("step").and_then(|v| v.as_str()).unwrap_or("—");
                                                 let age = val.get("age").and_then(|v| v.as_str()).unwrap_or("");
-                                                
+
                                                 ui.horizontal(|ui| {
                                                     ui.label(egui::RichText::new("ILM Explain status:").size(11.0).color(Theme::text_muted()));
                                                     ui.add(crate::ui::widgets::StatePill::new(format!("Phase: {}", phase), Theme::accent()));

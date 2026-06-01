@@ -96,7 +96,7 @@ pub fn render_pipeline_module(ui: &mut Ui, state: &mut PipelineState) {
 
     let available_width = ui.available_width();
     let remaining_height = ui.available_height();
-    
+
     // Divide cleanly into 3 columns
     let col1_width = available_width * 0.36;
     let col2_width = available_width * 0.32;
@@ -114,9 +114,9 @@ pub fn render_pipeline_module(ui: &mut Ui, state: &mut PipelineState) {
                     render_pipeline_builder(ui, state);
                 },
             );
-            
+
             ui.add_space(8.0);
-            
+
             // Column 2: Input Document & controls
             ui.allocate_ui_with_layout(
                 egui::Vec2::new(col2_width, remaining_height),
@@ -175,16 +175,20 @@ fn render_input_document(ui: &mut Ui, state: &mut PipelineState) {
             }
 
             ui.add_space(12.0);
-            
+
             // Run Simulation Button
             let success_color = Theme::success();
             let run_btn = egui::Button::new(
                 egui::RichText::new("🔄 Run Simulation")
                     .color(Theme::contrast_text_color(success_color))
-                    .strong()
-            ).fill(success_color);
-            
-            if ui.add_sized([ui.available_width(), 32.0], run_btn).clicked() {
+                    .strong(),
+            )
+            .fill(success_color);
+
+            if ui
+                .add_sized([ui.available_width(), 32.0], run_btn)
+                .clicked()
+            {
                 run_simulation(state);
             }
         });
@@ -243,12 +247,18 @@ fn render_pipeline_builder(ui: &mut Ui, state: &mut PipelineState) {
                     .selected_text(state.new_processor_type.as_str())
                     .show_ui(ui, |ui| {
                         for ptype in ProcessorType::ALL {
-                            ui.selectable_value(&mut state.new_processor_type, *ptype, ptype.as_str());
+                            ui.selectable_value(
+                                &mut state.new_processor_type,
+                                *ptype,
+                                ptype.as_str(),
+                            );
                         }
                     });
 
                 if ui.button("Add processor").clicked() {
-                    state.processors.push(default_processor(state.new_processor_type));
+                    state
+                        .processors
+                        .push(default_processor(state.new_processor_type));
                 }
             });
 
@@ -290,7 +300,8 @@ fn render_pipeline_builder(ui: &mut Ui, state: &mut PipelineState) {
                                 }
                             }
                         });
-                });
+                },
+            );
         });
 }
 
@@ -493,12 +504,19 @@ fn render_processor_card(
 
                 ui.add_space(8.0);
                 ui.label("If:");
-                let mut cond = processor.if_condition().map(String::from).unwrap_or_default();
-                if ui.add(
-                    egui::TextEdit::singleline(&mut cond)
-                        .hint_text("e.g. ctx.status == 200")
-                ).changed() {
-                    processor.set_if_condition(if cond.trim().is_empty() { None } else { Some(cond) });
+                let mut cond = processor
+                    .if_condition()
+                    .map(String::from)
+                    .unwrap_or_default();
+                if ui
+                    .add(egui::TextEdit::singleline(&mut cond).hint_text("e.g. ctx.status == 200"))
+                    .changed()
+                {
+                    processor.set_if_condition(if cond.trim().is_empty() {
+                        None
+                    } else {
+                        Some(cond)
+                    });
                 }
             });
         });
@@ -526,7 +544,7 @@ fn run_simulation(state: &mut PipelineState) {
     let result = execute_pipeline(&parsed, &state.processors);
 
     let mut output = String::new();
-    
+
     // Print step by step trace simulation!
     output.push_str("=== STEP BY STEP EXECUTION TRACE ===\n\n");
     for (i, step) in result.steps.iter().enumerate() {
@@ -537,26 +555,26 @@ fn run_simulation(state: &mut PipelineState) {
         } else {
             "✅ SUCCESS"
         };
-        
+
         output.push_str(&format!(
             "Step {}: {} [{}]\n",
             i + 1,
             step.processor_type.as_str(),
             status
         ));
-        
+
         if let Some(ref err) = step.error {
             output.push_str(&format!("  Error message: {}\n", err));
         }
-        
+
         if !step.changed_paths.is_empty() {
             output.push_str(&format!("  Changes: {}\n", step.changed_paths.join(", ")));
         }
         output.push_str("\n");
     }
-    
+
     output.push_str("===================================\n\n");
-    
+
     match &result.error {
         Some(err) => {
             output.push_str(&format!(
@@ -567,7 +585,9 @@ fn run_simulation(state: &mut PipelineState) {
         }
         None => {
             output.push_str("Pipeline completed successfully!\n\nFinal Document:\n");
-            output.push_str(&serde_json::to_string_pretty(&result.final_document).unwrap_or_default());
+            output.push_str(
+                &serde_json::to_string_pretty(&result.final_document).unwrap_or_default(),
+            );
         }
     }
 

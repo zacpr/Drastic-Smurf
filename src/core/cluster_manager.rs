@@ -119,7 +119,7 @@ impl ClusterManager {
         let vfx = self.vfx.lock().unwrap().clone();
         let timezone_clocks = self.timezone_clocks.lock().unwrap().clone();
         let cluster_filter = self.cluster_filter.lock().unwrap().clone();
-        
+
         let mut config = crate::core::config::AppConfig::load().unwrap_or_default();
         config.clusters = clusters.clone();
         config.cluster_data = data.clone();
@@ -129,7 +129,7 @@ impl ClusterManager {
         config.vfx = vfx;
         config.timezone_clocks = timezone_clocks;
         config.cluster_filter = cluster_filter;
-        
+
         config.save()?;
         Ok(())
     }
@@ -182,7 +182,10 @@ impl ClusterManager {
         self.timezone_clocks.lock().unwrap().clone()
     }
 
-    pub fn save_timezone_clocks(&self, clocks: Vec<crate::core::config::TimezoneClockConfig>) -> anyhow::Result<()> {
+    pub fn save_timezone_clocks(
+        &self,
+        clocks: Vec<crate::core::config::TimezoneClockConfig>,
+    ) -> anyhow::Result<()> {
         {
             let mut tc = self.timezone_clocks.lock().unwrap();
             *tc = clocks;
@@ -223,7 +226,12 @@ impl ClusterManager {
         Ok(())
     }
 
-    pub fn update_cluster(&self, old_name: &str, config: ClusterConfig, password: Option<&str>) -> anyhow::Result<()> {
+    pub fn update_cluster(
+        &self,
+        old_name: &str,
+        config: ClusterConfig,
+        password: Option<&str>,
+    ) -> anyhow::Result<()> {
         {
             let mut clusters = self.clusters.lock().unwrap();
             if let Some(idx) = clusters.iter().position(|c| c.name == old_name) {
@@ -288,7 +296,10 @@ impl ClusterManager {
     }
 
     pub fn set_client(&self, name: &str, client: EsClient) {
-        self.clients.lock().unwrap().insert(name.to_string(), client);
+        self.clients
+            .lock()
+            .unwrap()
+            .insert(name.to_string(), client);
     }
 
     pub fn rebuild_client(&self, name: &str) {
@@ -318,7 +329,7 @@ impl ClusterManager {
                         name
                     );
                     EsClient::new(&config)
-                },
+                }
             };
 
             match result {
@@ -424,13 +435,19 @@ impl ClusterManager {
                     Some(pw) => {
                         if let Ok(client) = EsClient::with_password(&cluster, &pw) {
                             let client = client.with_tunnel(&url);
-                            self.clients.lock().unwrap().insert(name.to_string(), client);
+                            self.clients
+                                .lock()
+                                .unwrap()
+                                .insert(name.to_string(), client);
                         }
                     }
                     None => {
                         if let Ok(client) = EsClient::new(&cluster) {
                             let client = client.with_tunnel(&url);
-                            self.clients.lock().unwrap().insert(name.to_string(), client);
+                            self.clients
+                                .lock()
+                                .unwrap()
+                                .insert(name.to_string(), client);
                         }
                     }
                 }

@@ -131,7 +131,7 @@ pub fn render_wizard_overlay(
                         .color(Theme::accent()),
                 );
                 ui.add_space(4.0);
-                
+
                 // Progress indicators (circles)
                 ui.horizontal(|ui| {
                     let total_steps = 8;
@@ -247,7 +247,7 @@ pub fn render_wizard_overlay(
                                             .strong()
                                     );
                                 }
-                                
+
                                 let add_btn = egui::Button::new(egui::RichText::new("➕ Add & Save Cluster").color(Color32::WHITE)).fill(Theme::accent());
                                 if ui.add(add_btn).clicked() {
                                     let cfg = ClusterConfig {

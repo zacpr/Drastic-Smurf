@@ -153,7 +153,8 @@ const PRESETS: &[ConsolePreset] = &[
         name: "Create Index Template",
         method: "PUT",
         path: "/{{index}}",
-        body: Some(r#"{
+        body: Some(
+            r#"{
   "settings": {
     "index": {
       "number_of_shards": 2,
@@ -167,7 +168,8 @@ const PRESETS: &[ConsolePreset] = &[
       "status": { "type": "keyword" }
     }
   }
-}"#),
+}"#,
+        ),
         description: "Create or replace an index with custom shards, replicas, and mappings configuration.",
         use_kibana: false,
     },
@@ -194,12 +196,14 @@ const PRESETS: &[ConsolePreset] = &[
         name: "Search Template",
         method: "POST",
         path: "/{{index}}/_search",
-        body: Some(r#"{
+        body: Some(
+            r#"{
   "query": {
     "match_all": {}
   },
   "size": 10
-}"#),
+}"#,
+        ),
         description: "A standard match_all search query template.",
         use_kibana: false,
     },
@@ -218,7 +222,8 @@ const PRESETS: &[ConsolePreset] = &[
         name: "Terms Aggregation Query",
         method: "POST",
         path: "/{{index}}/_search",
-        body: Some(r#"{
+        body: Some(
+            r#"{
   "size": 0,
   "aggs": {
     "by_status": {
@@ -228,7 +233,8 @@ const PRESETS: &[ConsolePreset] = &[
       }
     }
   }
-}"#),
+}"#,
+        ),
         description: "Perform a terms aggregation to count occurrence frequencies of keyword fields.",
         use_kibana: false,
     },
@@ -237,7 +243,8 @@ const PRESETS: &[ConsolePreset] = &[
         name: "Date Histogram Query",
         method: "POST",
         path: "/{{index}}/_search",
-        body: Some(r#"{
+        body: Some(
+            r#"{
   "size": 0,
   "aggs": {
     "events_over_time": {
@@ -247,7 +254,8 @@ const PRESETS: &[ConsolePreset] = &[
       }
     }
   }
-}"#),
+}"#,
+        ),
         description: "Group documents by calendar days to view activity trends over time.",
         use_kibana: false,
     },
@@ -256,7 +264,8 @@ const PRESETS: &[ConsolePreset] = &[
         name: "Boolean Filter Query",
         method: "POST",
         path: "/{{index}}/_search",
-        body: Some(r#"{
+        body: Some(
+            r#"{
   "query": {
     "bool": {
       "must": [
@@ -268,7 +277,8 @@ const PRESETS: &[ConsolePreset] = &[
       ]
     }
   }
-}"#),
+}"#,
+        ),
         description: "Combine text match search terms with structured filter constraints.",
         use_kibana: false,
     },
@@ -278,7 +288,8 @@ const PRESETS: &[ConsolePreset] = &[
         name: "Create Ingest Pipeline",
         method: "PUT",
         path: "/_ingest/pipeline/{{pipeline_id}}",
-        body: Some(r#"{
+        body: Some(
+            r#"{
   "description": "Custom parser pipeline",
   "processors": [
     {
@@ -293,7 +304,8 @@ const PRESETS: &[ConsolePreset] = &[
       }
     }
   ]
-}"#),
+}"#,
+        ),
         description: "Define an ingest pipeline with pre-processors that manipulate document values before indexing.",
         use_kibana: false,
     },
@@ -302,7 +314,8 @@ const PRESETS: &[ConsolePreset] = &[
         name: "Simulate Ingest Pipeline",
         method: "POST",
         path: "/_ingest/pipeline/{{pipeline_id}}/_simulate",
-        body: Some(r#"{
+        body: Some(
+            r#"{
   "docs": [
     {
       "_source": {
@@ -311,7 +324,8 @@ const PRESETS: &[ConsolePreset] = &[
       }
     }
   ]
-}"#),
+}"#,
+        ),
         description: "Test an ingest pipeline against sample input documents to view structural changes.",
         use_kibana: false,
     },
@@ -339,13 +353,15 @@ const PRESETS: &[ConsolePreset] = &[
         name: "Register Shared FS Repo",
         method: "PUT",
         path: "/_snapshot/{{repo_name}}",
-        body: Some(r#"{
+        body: Some(
+            r#"{
   "type": "fs",
   "settings": {
     "location": "/mount/backups/elasticsearch",
     "compress": true
   }
-}"#),
+}"#,
+        ),
         description: "Register a shared file system repository for taking cluster snapshots.",
         use_kibana: false,
     },
@@ -354,14 +370,16 @@ const PRESETS: &[ConsolePreset] = &[
         name: "Take Dynamic Snapshot",
         method: "PUT",
         path: "/_snapshot/{{repo_name}}/{{snapshot_name}}?wait_for_completion=true",
-        body: Some(r#"{
+        body: Some(
+            r#"{
   "indices": "logs-*,metrics-*",
   "ignore_unavailable": true,
   "include_global_state": false,
   "metadata": {
     "taken_by": "Drastic Smurf Admin Console"
   }
-}"#),
+}"#,
+        ),
         description: "Initiate and wait for a snapshot copy of specific matching indices to complete.",
         use_kibana: false,
     },
@@ -370,13 +388,15 @@ const PRESETS: &[ConsolePreset] = &[
         name: "Restore Snapshot Index",
         method: "POST",
         path: "/_snapshot/{{repo_name}}/{{snapshot_name}}/_restore",
-        body: Some(r#"{
+        body: Some(
+            r#"{
   "indices": "logs-*",
   "ignore_unavailable": true,
   "include_global_state": false,
   "rename_pattern": "logs-(.+)",
   "rename_replacement": "restored-logs-$1"
-}"#),
+}"#,
+        ),
         description: "Restore an index pattern from a snapshot and rename the indices on import.",
         use_kibana: false,
     },
@@ -386,7 +406,8 @@ const PRESETS: &[ConsolePreset] = &[
         name: "Create API Key",
         method: "POST",
         path: "/_security/api_key",
-        body: Some(r#"{
+        body: Some(
+            r#"{
   "name": "my-service-key",
   "expiration": "30d",
   "role_descriptors": {
@@ -400,7 +421,8 @@ const PRESETS: &[ConsolePreset] = &[
       ]
     }
   }
-}"#),
+}"#,
+        ),
         description: "Generate a secure, expiring programmatic access token (API Key) with custom roles.",
         use_kibana: false,
     },
@@ -418,12 +440,14 @@ const PRESETS: &[ConsolePreset] = &[
         name: "Create User",
         method: "POST",
         path: "/_security/user/{{username}}",
-        body: Some(r#"{
+        body: Some(
+            r#"{
   "password" : "new-secure-password",
   "roles" : [ "kibana_admin", "read_all" ],
   "full_name" : "Operational User",
   "email" : "ops@example.com"
-}"#),
+}"#,
+        ),
         description: "Register a standard local user account with credentials and administrative role mappings.",
         use_kibana: false,
     },
@@ -487,14 +511,16 @@ const PRESETS: &[ConsolePreset] = &[
         name: "Update Cluster Settings",
         method: "PUT",
         path: "/_cluster/settings",
-        body: Some(r#"{
+        body: Some(
+            r#"{
   "persistent": {
     "cluster.routing.allocation.enable": "all"
   },
   "transient": {
     "indices.recovery.max_bytes_per_sec": "40mb"
   }
-}"#),
+}"#,
+        ),
         description: "Template to dynamically update cluster-wide transient or persistent configurations.",
         use_kibana: false,
     },
@@ -512,14 +538,16 @@ const PRESETS: &[ConsolePreset] = &[
         name: "Reindex Template",
         method: "POST",
         path: "/_reindex?wait_for_completion=false",
-        body: Some(r#"{
+        body: Some(
+            r#"{
   "source": {
     "index": "source-index"
   },
   "dest": {
     "index": "dest-index"
   }
-}"#),
+}"#,
+        ),
         description: "Asynchronously copy documents from one index to another.",
         use_kibana: false,
     },
@@ -528,12 +556,14 @@ const PRESETS: &[ConsolePreset] = &[
         name: "Shrink Index Template",
         method: "POST",
         path: "/{{index}}/_shrink/{{shrunk_index}}",
-        body: Some(r#"{
+        body: Some(
+            r#"{
   "settings": {
     "index.number_of_shards": 1,
     "index.codec": "best_compression"
   }
-}"#),
+}"#,
+        ),
         description: "Consolidate existing indices into a new, smaller index with fewer primary shards.",
         use_kibana: false,
     },
@@ -561,12 +591,14 @@ const PRESETS: &[ConsolePreset] = &[
         name: "Create Space",
         method: "POST",
         path: "/api/spaces/space",
-        body: Some(r##"{
+        body: Some(
+            r##"{
   "id": "engineering",
   "name": "Engineering",
   "description": "Workspace for engineering dashboards",
   "color": "#aabbcc"
-}"##),
+}"##,
+        ),
         description: "Generate a custom workspace (Space) inside Kibana with dedicated privileges.",
         use_kibana: true,
     },
@@ -603,10 +635,12 @@ const PRESETS: &[ConsolePreset] = &[
         name: "Export Saved Objects",
         method: "POST",
         path: "/api/saved_objects/_export",
-        body: Some(r#"{
+        body: Some(
+            r#"{
   "type": "dashboard",
   "limit": 100
-}"#),
+}"#,
+        ),
         description: "Export configured dashboards, maps, or saved searches in NDJSON format.",
         use_kibana: true,
     },
@@ -615,7 +649,8 @@ const PRESETS: &[ConsolePreset] = &[
         name: "Create Saved Dashboard",
         method: "POST",
         path: "/api/saved_objects/dashboard/my-dashboard-id",
-        body: Some(r#"{
+        body: Some(
+            r#"{
   "attributes": {
     "title": "My Production Dashboard",
     "description": "Dashboard created programmatically",
@@ -623,7 +658,8 @@ const PRESETS: &[ConsolePreset] = &[
     "optionsJSON": "{\"darkTheme\":true}",
     "timeRestore": false
   }
-}"#),
+}"#,
+        ),
         description: "Create or overwrite a dashboard saved object directly in Kibana's active Space.",
         use_kibana: true,
     },
@@ -996,7 +1032,7 @@ pub fn render_console_module(
                     // Path / Address Row with Actions
                     ui.horizontal(|ui| {
                         ui.label("Path:");
-                        
+
                         // Right-to-Left block for buttons to float right!
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             // Send
@@ -1157,7 +1193,7 @@ pub fn render_console_module(
                             }
                         });
                     });
-                    
+
                     let mut body_h = state.body_height.unwrap_or(220.0);
                     // Constrain body height to leave at least 150px for the response box
                     let max_body_h = (ui.available_height() - 150.0).max(80.0);
@@ -1182,7 +1218,7 @@ pub fn render_console_module(
                         egui::vec2(ui.available_width(), 8.0),
                         egui::Sense::drag(),
                     );
-                    
+
                     let painter = ui.painter();
                     let rect = separator_response.rect;
                     let divider_color = if separator_response.dragged() {
@@ -1192,17 +1228,17 @@ pub fn render_console_module(
                     } else {
                         crate::ui::theme::Theme::border()
                     };
-                    
+
                     let y = rect.center().y;
                     painter.line_segment(
                         [egui::pos2(rect.min.x, y), egui::pos2(rect.max.x, y)],
                         egui::Stroke::new(2.0, divider_color),
                     );
-                    
+
                     if separator_response.hovered() || separator_response.dragged() {
                         ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
                     }
-                    
+
                     if separator_response.dragged() {
                         body_h += separator_response.drag_delta().y;
                         state.body_height = Some(body_h);
@@ -1219,7 +1255,7 @@ pub fn render_console_module(
                             state.response.clear();
                         }
                     });
-                    
+
                     let response_height = (ui.available_height() - 16.0).max(80.0);
                     egui::ScrollArea::vertical()
                         .id_salt("console_response_scroll")
@@ -1250,13 +1286,13 @@ pub fn prettify_json_body(body: &str) -> Result<String, String> {
     let mut temp_body = body.to_string();
     let mut placeholders = Vec::new();
     let mut start_idx = 0;
-    
+
     while let Some(open_pos) = temp_body[start_idx..].find("{{") {
         let abs_open = start_idx + open_pos;
         if let Some(close_pos) = temp_body[abs_open..].find("}}") {
             let abs_close = abs_open + close_pos + 2;
             let placeholder_content = &temp_body[abs_open..abs_close];
-            
+
             // Check if it's already inside quotes
             let is_quoted = if abs_open > 0 && abs_close < temp_body.len() {
                 let prev_char = temp_body.as_bytes()[abs_open - 1] as char;
@@ -1295,7 +1331,7 @@ pub fn prettify_json_body(body: &str) -> Result<String, String> {
         clean_lines.push(actual_content.to_string());
     }
     let joined = clean_lines.join("\n");
-    
+
     // Strip trailing commas
     let mut parsed_ready = String::new();
     let mut chars = joined.chars().peekable();
@@ -1321,11 +1357,10 @@ pub fn prettify_json_body(body: &str) -> Result<String, String> {
     }
 
     // 3. Parse and prettify using serde_json
-    let parsed = serde_json::from_str::<serde_json::Value>(&parsed_ready)
-        .map_err(|e| e.to_string())?;
-    
-    let mut formatted = serde_json::to_string_pretty(&parsed)
-        .map_err(|e| e.to_string())?;
+    let parsed =
+        serde_json::from_str::<serde_json::Value>(&parsed_ready).map_err(|e| e.to_string())?;
+
+    let mut formatted = serde_json::to_string_pretty(&parsed).map_err(|e| e.to_string())?;
 
     // 4. Restore the unquoted placeholders!
     for (dummy_id, original) in placeholders.iter().rev() {

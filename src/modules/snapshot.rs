@@ -278,7 +278,9 @@ pub async fn fetch_cluster_snapshot(
             Ok(mut resp) if !resp.snapshots.is_empty() => {
                 // Ensure sorting descending by start_time_in_millis as a robust client-side fallback
                 resp.snapshots.sort_by(|a, b| {
-                    b.start_time_in_millis.unwrap_or(0).cmp(&a.start_time_in_millis.unwrap_or(0))
+                    b.start_time_in_millis
+                        .unwrap_or(0)
+                        .cmp(&a.start_time_in_millis.unwrap_or(0))
                 });
                 snapshot_info = Some(resp.snapshots.into_iter().next().unwrap());
             }
@@ -384,14 +386,17 @@ pub async fn fetch_cluster_snapshot(
     match client.slm_policies_all().await {
         Ok(resp) => {
             let mut policies: Vec<_> = resp.policies.into_iter().collect();
-            policies.sort_by(|a, b| {
-                a.1.next_execution_millis.cmp(&b.1.next_execution_millis)
-            });
+            policies.sort_by(|a, b| a.1.next_execution_millis.cmp(&b.1.next_execution_millis));
             status.slm_policies = policies;
 
             // Set main slm status for backward compatibility
             if !config.slm_policy.is_empty() {
-                if let Some(detail) = status.slm_policies.iter().find(|(name, _)| name == &config.slm_policy).map(|(_, d)| d) {
+                if let Some(detail) = status
+                    .slm_policies
+                    .iter()
+                    .find(|(name, _)| name == &config.slm_policy)
+                    .map(|(_, d)| d)
+                {
                     status.slm_last_run = detail.last_success.as_ref().and_then(|s| s.time.clone());
                     status.slm_next_run = detail.next_execution.clone();
                     status.slm_in_progress = detail
@@ -451,39 +456,48 @@ pub fn render_snapshot_module(
     egui::ScrollArea::vertical()
         .id_salt("snapshot")
         .show(ui, |ui| {
-        if statuses.is_empty() {
-            ui.label(
-                egui::RichText::new("No clusters configured. Add a cluster to begin monitoring.")
+            if statuses.is_empty() {
+                ui.label(
+                    egui::RichText::new(
+                        "No clusters configured. Add a cluster to begin monitoring.",
+                    )
                     .color(Theme::text_muted())
                     .size(14.0),
-            );
-            return;
-        }
-
-        // Responsive columns: cards fill vertically within each column
-        ui.horizontal(|ui| {
-            for col in 0..cols {
-                let col_idx = col;
-                ui.allocate_ui_with_layout(
-                    egui::Vec2::new(col_width, ui.available_height()),
-                    egui::Layout::top_down(egui::Align::Min),
-                    |ui| {
-                        for (i, status) in statuses.iter().enumerate() {
-                            if i % cols == col_idx {
-                                render_cluster_card(
-                                    ui, status, histories, on_edit, on_delete, on_show_history, col_width, shimmer,
-                                );
-                                ui.add_space(card_spacing);
-                            }
-                        }
-                    },
                 );
-                if col + 1 < cols {
-                    ui.add_space(card_spacing);
-                }
+                return;
             }
+
+            // Responsive columns: cards fill vertically within each column
+            ui.horizontal(|ui| {
+                for col in 0..cols {
+                    let col_idx = col;
+                    ui.allocate_ui_with_layout(
+                        egui::Vec2::new(col_width, ui.available_height()),
+                        egui::Layout::top_down(egui::Align::Min),
+                        |ui| {
+                            for (i, status) in statuses.iter().enumerate() {
+                                if i % cols == col_idx {
+                                    render_cluster_card(
+                                        ui,
+                                        status,
+                                        histories,
+                                        on_edit,
+                                        on_delete,
+                                        on_show_history,
+                                        col_width,
+                                        shimmer,
+                                    );
+                                    ui.add_space(card_spacing);
+                                }
+                            }
+                        },
+                    );
+                    if col + 1 < cols {
+                        ui.add_space(card_spacing);
+                    }
+                }
+            });
         });
-    });
 }
 
 fn render_cluster_card(

@@ -1,5 +1,5 @@
-use egui::{Ui, RichText};
 use crate::ui::theme::Theme;
+use egui::{RichText, Ui};
 
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq)]
 pub struct SyntheticMonitor {
@@ -26,7 +26,8 @@ pub struct ObservabilityState {
     pub active_tab: ObsTab,
     pub monitors: Vec<SyntheticMonitor>,
     pub pinned_monitor_ids: Vec<String>,
-    pub pinned_monitor_layouts: std::collections::HashMap<String, crate::core::config::PinnedMonitorLayout>,
+    pub pinned_monitor_layouts:
+        std::collections::HashMap<String, crate::core::config::PinnedMonitorLayout>,
     pub filter: String,
     pub is_loading: bool,
     pub error: Option<String>,
@@ -92,7 +93,11 @@ impl ObservabilityState {
                 monitor_type: "http".to_string(),
                 status: "up".to_string(),
                 url: "https://drastic-smurf.wtg.zone/index.html".to_string(),
-                locations: vec!["us-east-1".to_string(), "sa-east-1".to_string(), "eu-west-1".to_string()],
+                locations: vec![
+                    "us-east-1".to_string(),
+                    "sa-east-1".to_string(),
+                    "eu-west-1".to_string(),
+                ],
                 latency_ms: 45,
                 latency_history: vec![40.0, 48.0, 42.0, 43.0, 46.0, 45.0],
                 last_checked: "1m ago".to_string(),
@@ -176,11 +181,12 @@ pub fn render_observability_module(
         ui.label("Kibana Space:");
         let prev_space = state.space_id.clone();
         ui.add(egui::TextEdit::singleline(&mut state.space_id).desired_width(100.0));
-        
+
         if state.space_id != prev_space {
             if ui.button("Apply").clicked() {
                 state.is_loading = true;
-                *on_refresh_monitors = Some((state.selected_cluster.clone(), state.space_id.clone()));
+                *on_refresh_monitors =
+                    Some((state.selected_cluster.clone(), state.space_id.clone()));
             }
         }
 
@@ -219,7 +225,11 @@ pub fn render_observability_module(
 
     if let Some(err) = &state.error {
         ui.colored_label(Theme::danger(), format!("Kibana Link Error: {}", err));
-        ui.label(RichText::new("Showing locally simulated/mock monitor states instead.").color(Theme::text_muted()).size(11.0));
+        ui.label(
+            RichText::new("Showing locally simulated/mock monitor states instead.")
+                .color(Theme::text_muted())
+                .size(11.0),
+        );
         ui.add_space(8.0);
     }
 
@@ -255,8 +265,13 @@ fn render_browse_tab(ui: &mut Ui, state: &mut ObservabilityState) {
                 .max_height(height)
                 .auto_shrink([false, false])
                 .show(ui, |ui| {
-                    let filtered: Vec<&SyntheticMonitor> = state.monitors.iter()
-                        .filter(|m| state.filter.is_empty() || m.name.to_lowercase().contains(&state.filter.to_lowercase()))
+                    let filtered: Vec<&SyntheticMonitor> = state
+                        .monitors
+                        .iter()
+                        .filter(|m| {
+                            state.filter.is_empty()
+                                || m.name.to_lowercase().contains(&state.filter.to_lowercase())
+                        })
                         .collect();
 
                     if filtered.is_empty() {
@@ -269,21 +284,37 @@ fn render_browse_tab(ui: &mut Ui, state: &mut ObservabilityState) {
                         ui.set_min_height(24.0);
                         ui.label(RichText::new("Pin").strong().color(Theme::text_secondary()));
                         ui.add_space(20.0);
-                        ui.label(RichText::new("Monitor Name").strong().color(Theme::text_secondary()));
+                        ui.label(
+                            RichText::new("Monitor Name")
+                                .strong()
+                                .color(Theme::text_secondary()),
+                        );
                         let avail = ui.available_width() - 80.0;
                         ui.add_space(avail * 0.4);
-                        ui.label(RichText::new("Status").strong().color(Theme::text_secondary()));
+                        ui.label(
+                            RichText::new("Status")
+                                .strong()
+                                .color(Theme::text_secondary()),
+                        );
                         ui.add_space(40.0);
-                        ui.label(RichText::new("Type").strong().color(Theme::text_secondary()));
+                        ui.label(
+                            RichText::new("Type")
+                                .strong()
+                                .color(Theme::text_secondary()),
+                        );
                         ui.add_space(40.0);
-                        ui.label(RichText::new("Latency").strong().color(Theme::text_secondary()));
+                        ui.label(
+                            RichText::new("Latency")
+                                .strong()
+                                .color(Theme::text_secondary()),
+                        );
                     });
                     ui.separator();
 
                     for m in filtered {
                         ui.horizontal(|ui| {
                             ui.set_min_height(28.0);
-                            
+
                             // Pin Checkbox
                             let mut is_pinned = state.pinned_monitor_ids.contains(&m.id);
                             if ui.checkbox(&mut is_pinned, "").changed() {
@@ -300,8 +331,12 @@ fn render_browse_tab(ui: &mut Ui, state: &mut ObservabilityState) {
 
                             // Monitor Name & URL
                             ui.vertical(|ui| {
-                                ui.label(RichText::new(&m.name).strong().color(Theme::text_primary()));
-                                ui.label(RichText::new(&m.url).color(Theme::text_muted()).size(10.0));
+                                ui.label(
+                                    RichText::new(&m.name).strong().color(Theme::text_primary()),
+                                );
+                                ui.label(
+                                    RichText::new(&m.url).color(Theme::text_muted()).size(10.0),
+                                );
                             });
 
                             let avail = ui.available_width() - 80.0;
@@ -318,7 +353,11 @@ fn render_browse_tab(ui: &mut Ui, state: &mut ObservabilityState) {
                             ui.add_space(35.0);
 
                             // Type
-                            ui.label(RichText::new(m.monitor_type.to_uppercase()).color(Theme::text_muted()).size(11.0));
+                            ui.label(
+                                RichText::new(m.monitor_type.to_uppercase())
+                                    .color(Theme::text_muted())
+                                    .size(11.0),
+                            );
 
                             ui.add_space(35.0);
 
@@ -337,15 +376,24 @@ fn render_browse_tab(ui: &mut Ui, state: &mut ObservabilityState) {
 }
 
 fn render_dashboard_tab(ui: &mut Ui, state: &mut ObservabilityState) {
-    let pinned_monitors: Vec<&SyntheticMonitor> = state.monitors.iter()
+    let pinned_monitors: Vec<&SyntheticMonitor> = state
+        .monitors
+        .iter()
         .filter(|m| state.pinned_monitor_ids.contains(&m.id))
-        .filter(|m| state.filter.is_empty() || m.name.to_lowercase().contains(&state.filter.to_lowercase()))
+        .filter(|m| {
+            state.filter.is_empty() || m.name.to_lowercase().contains(&state.filter.to_lowercase())
+        })
         .collect();
 
     if pinned_monitors.is_empty() {
         ui.horizontal(|ui| {
-            ui.label(RichText::new("No pinned monitors in this dashboard.").color(Theme::text_muted()));
-            ui.label(RichText::new("Go to 'Browse Monitors' tab to pin some monitors!").color(Theme::accent()));
+            ui.label(
+                RichText::new("No pinned monitors in this dashboard.").color(Theme::text_muted()),
+            );
+            ui.label(
+                RichText::new("Go to 'Browse Monitors' tab to pin some monitors!")
+                    .color(Theme::accent()),
+            );
         });
         return;
     }
@@ -401,72 +449,91 @@ fn render_dashboard_tab(ui: &mut Ui, state: &mut ObservabilityState) {
                         } else {
                             Theme::danger()
                         };
-                        ui.add(crate::ui::widgets::ConnectionDot::new(true).color(dot_color).size(8.0));
+                        ui.add(
+                            crate::ui::widgets::ConnectionDot::new(true)
+                                .color(dot_color)
+                                .size(8.0),
+                        );
                         ui.label(
                             egui::RichText::new(m.status.to_uppercase())
                                 .strong()
                                 .color(dot_color)
-                                .size(12.5)
+                                .size(12.5),
                         );
-                        
+
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             ui.label(
                                 egui::RichText::new(&m.last_checked)
                                     .size(10.0)
-                                    .color(Theme::text_muted())
+                                    .color(Theme::text_muted()),
                             );
                         });
                     });
-                    
+
                     ui.add_space(3.0);
                     ui.label(
                         egui::RichText::new(&m.url)
                             .color(Theme::text_muted())
-                            .size(10.0)
+                            .size(10.0),
                     );
                     ui.separator();
-                    
+
                     // Metrics Row
                     ui.horizontal(|ui| {
                         ui.vertical(|ui| {
-                            ui.label(egui::RichText::new("Latency").color(Theme::text_muted()).size(9.5));
+                            ui.label(
+                                egui::RichText::new("Latency")
+                                    .color(Theme::text_muted())
+                                    .size(9.5),
+                            );
                             let lat = if m.status == "up" {
                                 format!("{}ms", m.latency_ms)
                             } else {
                                 "Offline".to_string()
                             };
-                            let lat_color = if m.status == "up" { Theme::text_primary() } else { Theme::danger() };
+                            let lat_color = if m.status == "up" {
+                                Theme::text_primary()
+                            } else {
+                                Theme::danger()
+                            };
                             ui.label(
                                 egui::RichText::new(lat)
                                     .strong()
                                     .color(lat_color)
-                                    .size(13.5)
+                                    .size(13.5),
                             );
                         });
-                        
+
                         ui.add_space(24.0);
-                        
+
                         ui.vertical(|ui| {
-                            ui.label(egui::RichText::new("Locations").color(Theme::text_muted()).size(9.5));
+                            ui.label(
+                                egui::RichText::new("Locations")
+                                    .color(Theme::text_muted())
+                                    .size(9.5),
+                            );
                             let loc_text = m.locations.join(", ");
                             ui.label(
                                 egui::RichText::new(loc_text)
                                     .color(Theme::text_primary())
-                                    .size(10.0)
+                                    .size(10.0),
                             );
                         });
                     });
-                    
+
                     ui.add_space(6.0);
-                    
+
                     // Latency sparkline
                     if m.status == "up" && !m.latency_history.is_empty() {
-                        let history_f64: Vec<f64> = m.latency_history.iter().map(|&x| x as f64).collect();
+                        let history_f64: Vec<f64> =
+                            m.latency_history.iter().map(|&x| x as f64).collect();
                         let available_w = ui.available_width();
-                        ui.add(crate::ui::widgets::MiniSparkline::new(history_f64)
-                            .color(Theme::accent())
-                            .width(available_w.max(100.0))
-                            .height(22.0));
+                        ui.add(
+                            crate::ui::widgets::MiniSparkline::new(history_f64)
+                                .color(Theme::accent())
+                                .width(available_w.max(100.0))
+                                .height(22.0),
+                        );
                     }
                 });
             });

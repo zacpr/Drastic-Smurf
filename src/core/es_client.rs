@@ -120,7 +120,11 @@ impl EsClient {
         self
     }
 
-    fn request(&self, method: reqwest::Method, path: &str) -> (RequestBuilder, reqwest::Method, String) {
+    fn request(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+    ) -> (RequestBuilder, reqwest::Method, String) {
         let host = self
             .tunnel_url
             .as_deref()
@@ -136,7 +140,8 @@ impl EsClient {
         } else {
             format!("{}/{}", host_trimmed, path)
         };
-        let req = self.client
+        let req = self
+            .client
             .request(method.clone(), &url)
             .basic_auth(&self.config.username, Some(&self.password))
             .header("Content-Type", "application/json");
@@ -152,21 +157,18 @@ impl EsClient {
         tracing::info!("[{}] {} {}", self.config.name, method, url);
 
         let start = std::time::Instant::now();
-        let resp = req
-            .send()
-            .await
-            .map_err(|e| {
-                let elapsed = start.elapsed();
-                tracing::error!(
-                    "[{}] {} {} — FAILED after {}: {}",
-                    self.config.name,
-                    method,
-                    url,
-                    elapsed_millis(elapsed),
-                    e
-                );
-                EsError::Unreachable(e.to_string())
-            })?;
+        let resp = req.send().await.map_err(|e| {
+            let elapsed = start.elapsed();
+            tracing::error!(
+                "[{}] {} {} — FAILED after {}: {}",
+                self.config.name,
+                method,
+                url,
+                elapsed_millis(elapsed),
+                e
+            );
+            EsError::Unreachable(e.to_string())
+        })?;
 
         let status = resp.status();
         let elapsed = start.elapsed();
@@ -225,21 +227,18 @@ impl EsClient {
         tracing::info!("[{}] {} {}", self.config.name, method, url);
 
         let start = std::time::Instant::now();
-        let resp = req
-            .send()
-            .await
-            .map_err(|e| {
-                let elapsed = start.elapsed();
-                tracing::error!(
-                    "[{}] {} {} — FAILED after {}: {}",
-                    self.config.name,
-                    method,
-                    url,
-                    elapsed_millis(elapsed),
-                    e
-                );
-                EsError::Unreachable(e.to_string())
-            })?;
+        let resp = req.send().await.map_err(|e| {
+            let elapsed = start.elapsed();
+            tracing::error!(
+                "[{}] {} {} — FAILED after {}: {}",
+                self.config.name,
+                method,
+                url,
+                elapsed_millis(elapsed),
+                e
+            );
+            EsError::Unreachable(e.to_string())
+        })?;
 
         let status = resp.status();
         let elapsed = start.elapsed();
@@ -370,7 +369,11 @@ impl EsClient {
 
     pub async fn get_es_version(&self) -> Result<String, EsError> {
         let res: serde_json::Value = self.execute(reqwest::Method::GET, "/", None).await?;
-        if let Some(v) = res.get("version").and_then(|v| v.get("number")).and_then(|n| n.as_str()) {
+        if let Some(v) = res
+            .get("version")
+            .and_then(|v| v.get("number"))
+            .and_then(|n| n.as_str())
+        {
             Ok(v.to_string())
         } else {
             Err(EsError::Parse("Unable to parse ES version".to_string()))
@@ -378,8 +381,14 @@ impl EsClient {
     }
 
     pub async fn get_kibana_version(&self, kibana_host: &str) -> Result<String, EsError> {
-        let res = self.send_to_host(kibana_host, reqwest::Method::GET, "/api/status", None).await?;
-        if let Some(version) = res.get("version").and_then(|v| v.get("number")).and_then(|n| n.as_str()) {
+        let res = self
+            .send_to_host(kibana_host, reqwest::Method::GET, "/api/status", None)
+            .await?;
+        if let Some(version) = res
+            .get("version")
+            .and_then(|v| v.get("number"))
+            .and_then(|n| n.as_str())
+        {
             Ok(version.to_string())
         } else if let Some(version) = res.get("version").and_then(|v| v.as_str()) {
             Ok(version.to_string())
@@ -388,14 +397,19 @@ impl EsClient {
         }
     }
 
-    pub async fn get_kibana_synthetics_monitors(&self, kibana_host: &str, space_id: Option<&str>) -> Result<serde_json::Value, EsError> {
+    pub async fn get_kibana_synthetics_monitors(
+        &self,
+        kibana_host: &str,
+        space_id: Option<&str>,
+    ) -> Result<serde_json::Value, EsError> {
         let path = match space_id {
             Some(space) if space != "default" && !space.is_empty() => {
                 format!("/s/{}/api/synthetics/monitors", space)
             }
             _ => "/api/synthetics/monitors".to_string(),
         };
-        self.send_to_host(kibana_host, reqwest::Method::GET, &path, None).await
+        self.send_to_host(kibana_host, reqwest::Method::GET, &path, None)
+            .await
     }
 
     pub async fn get_node_hot_threads(&self, node_name: &str) -> Result<String, EsError> {
@@ -404,7 +418,8 @@ impl EsClient {
     }
 
     pub async fn get_pending_tasks(&self) -> Result<serde_json::Value, EsError> {
-        self.execute(reqwest::Method::GET, "/_cluster/pending_tasks", None).await
+        self.execute(reqwest::Method::GET, "/_cluster/pending_tasks", None)
+            .await
     }
 
     pub async fn cluster_stats(&self) -> Result<ClusterStats, EsError> {
@@ -881,12 +896,10 @@ impl EsClient {
                     "Connected successfully!\n\n• Cluster: {}\n• Status: {}\n• Nodes: {}\n• Active Shards: {}",
                     h.cluster_name, h.status, h.number_of_nodes, h.active_shards
                 )),
-                Err(e) => {
-                    Err(format!(
-                        "HTTP Request Failed!\n\nError: {}\n\nPossible causes:\n1. Elasticsearch is not running at {}\n2. Incorrect username or password\n3. Network/firewall blocking connection\n4. TLS/SSL verification failed (override available in cluster settings)",
-                        e, self.config.host
-                    ))
-                }
+                Err(e) => Err(format!(
+                    "HTTP Request Failed!\n\nError: {}\n\nPossible causes:\n1. Elasticsearch is not running at {}\n2. Incorrect username or password\n3. Network/firewall blocking connection\n4. TLS/SSL verification failed (override available in cluster settings)",
+                    e, self.config.host
+                )),
             }
         } else {
             // SSH tunnel connection
@@ -907,11 +920,16 @@ impl EsClient {
             let mut cmd = tokio::process::Command::new("ssh");
             cmd.arg("-N")
                 .arg("-v") // Verbose mode is essential for log output!
-                .arg("-o").arg("ServerAliveInterval=30")
-                .arg("-o").arg("ServerAliveCountMax=2")
-                .arg("-o").arg("ExitOnForwardFailure=yes")
-                .arg("-L").arg(format!("127.0.0.1:{}:{}:{}", local_port, es_host, es_port))
-                .arg("-p").arg(self.config.ssh_port.to_string())
+                .arg("-o")
+                .arg("ServerAliveInterval=30")
+                .arg("-o")
+                .arg("ServerAliveCountMax=2")
+                .arg("-o")
+                .arg("ExitOnForwardFailure=yes")
+                .arg("-L")
+                .arg(format!("127.0.0.1:{}:{}:{}", local_port, es_host, es_port))
+                .arg("-p")
+                .arg(self.config.ssh_port.to_string())
                 .arg(&ssh_target)
                 .stdin(Stdio::null())
                 .stdout(Stdio::null())
@@ -919,16 +937,21 @@ impl EsClient {
 
             let mut child = match cmd.spawn() {
                 Ok(c) => c,
-                Err(e) => return Err(format!("Failed to spawn SSH process: {}\nIs 'ssh' installed and in PATH?", e)),
+                Err(e) => {
+                    return Err(format!(
+                        "Failed to spawn SSH process: {}\nIs 'ssh' installed and in PATH?",
+                        e
+                    ));
+                }
             };
 
             let stderr = child.stderr.take().unwrap();
             let mut reader = tokio::io::BufReader::new(stderr).lines();
-            
+
             // Collect SSH logs in the background while waiting for connection or timeout
             let log_lines = std::sync::Arc::new(tokio::sync::Mutex::new(Vec::<String>::new()));
             let log_lines_clone = log_lines.clone();
-            
+
             let mut ssh_finished = false;
             let mut child_exit_status = None;
 
@@ -946,25 +969,26 @@ impl EsClient {
 
             // Wait for a few seconds to let SSH establish connection
             let mut tunnel_ready = false;
-            for _ in 0..15 { // Max 3 seconds (15 * 200ms)
+            for _ in 0..15 {
+                // Max 3 seconds (15 * 200ms)
                 tokio::time::sleep(Duration::from_millis(200)).await;
-                
+
                 // Check if child exited early
                 if let Ok(Some(status)) = child.try_wait() {
                     ssh_finished = true;
                     child_exit_status = Some(status);
                     break;
                 }
-                
+
                 // Read current logs to see if connection is established
                 let logs = log_lines.lock().await;
                 let established = logs.iter().any(|line| {
-                    line.contains("Entering interactive session") ||
-                    line.contains("Authentication succeeded") ||
-                    line.contains("Local connections to") ||
-                    line.contains("Local forwarding listening")
+                    line.contains("Entering interactive session")
+                        || line.contains("Authentication succeeded")
+                        || line.contains("Local connections to")
+                        || line.contains("Local forwarding listening")
                 });
-                
+
                 if established {
                     tunnel_ready = true;
                     break;
@@ -985,7 +1009,7 @@ impl EsClient {
                     "http"
                 };
                 test_config.host = format!("{}://127.0.0.1:{}", protocol, local_port);
-                
+
                 if let Ok(test_client) = Self::with_password(&test_config, &self.password) {
                     // Execute HTTP request
                     match test_client.cluster_health().await {
@@ -993,7 +1017,11 @@ impl EsClient {
                             let ssh_logs = log_lines.lock().await.join("\n");
                             Ok(format!(
                                 "Connected successfully through SSH tunnel!\n\n• Cluster: {}\n• Status: {}\n• Nodes: {}\n• Active Shards: {}\n\n=== SSH Connection Logs ===\n{}",
-                                h.cluster_name, h.status, h.number_of_nodes, h.active_shards, ssh_logs
+                                h.cluster_name,
+                                h.status,
+                                h.number_of_nodes,
+                                h.active_shards,
+                                ssh_logs
                             ))
                         }
                         Err(e) => {
@@ -1087,16 +1115,26 @@ pub fn parse_allocation_explain(raw: &serde_json::Value) -> AllocationExplain {
         index: raw["index"].as_str().unwrap_or("unknown").to_string(),
         shard: raw["shard"].as_u64().unwrap_or(0) as u32,
         primary: raw["primary"].as_bool().unwrap_or(false),
-        current_state: raw["current_state"].as_str().unwrap_or("unknown").to_string(),
+        current_state: raw["current_state"]
+            .as_str()
+            .unwrap_or("unknown")
+            .to_string(),
         ..Default::default()
     };
-    
+
     if let Some(ui) = raw.get("unassigned_info") {
-        explain.reason = ui.get("reason").and_then(|r| r.as_str()).map(|s| s.to_string());
-        explain.details = ui.get("details").and_then(|d| d.as_str()).map(|s| s.to_string());
+        explain.reason = ui
+            .get("reason")
+            .and_then(|r| r.as_str())
+            .map(|s| s.to_string());
+        explain.details = ui
+            .get("details")
+            .and_then(|d| d.as_str())
+            .map(|s| s.to_string());
     }
-    
-    explain.explanation = raw.get("allocate_explanation")
+
+    explain.explanation = raw
+        .get("allocate_explanation")
         .or_else(|| raw.get("explanation"))
         .and_then(|e| e.as_str())
         .map(|s| s.to_string());
@@ -1108,14 +1146,16 @@ pub fn parse_allocation_explain(raw: &serde_json::Value) -> AllocationExplain {
                 for dec in decs {
                     if dec["decision"].as_str() == Some("NO") {
                         if let Some(exp) = dec["explanation"].as_str() {
-                            explain.decider_reasons.push(format!("{}: {}", node_name, exp));
+                            explain
+                                .decider_reasons
+                                .push(format!("{}: {}", node_name, exp));
                         }
                     }
                 }
             }
         }
     }
-    
+
     explain
 }
 
@@ -1156,7 +1196,13 @@ mod tests {
         assert_eq!(parsed.current_state, "unassigned");
         assert_eq!(parsed.reason.as_deref(), Some("INDEX_CREATED"));
         assert_eq!(parsed.details.as_deref(), Some("Waiting for active shards"));
-        assert_eq!(parsed.explanation.as_deref(), Some("Elasticsearch cannot allocate this primary shard because the disk is full."));
-        assert_eq!(parsed.decider_reasons, vec!["node-us-east-1: high watermark reached on this node".to_string()]);
+        assert_eq!(
+            parsed.explanation.as_deref(),
+            Some("Elasticsearch cannot allocate this primary shard because the disk is full.")
+        );
+        assert_eq!(
+            parsed.decider_reasons,
+            vec!["node-us-east-1: high watermark reached on this node".to_string()]
+        );
     }
 }

@@ -83,130 +83,135 @@ pub fn render_clusters_module(
     egui::ScrollArea::vertical()
         .id_salt("clusters")
         .show(ui, |ui| {
-        for cluster in clusters {
-            let is_selected = state.selected_cluster.as_ref() == Some(&cluster.name);
-            let _is_editing = state.editing_cluster.as_ref() == Some(&cluster.name)
-                || (state.editing_cluster.is_none() && state.selected_cluster.is_none());
+            for cluster in clusters {
+                let is_selected = state.selected_cluster.as_ref() == Some(&cluster.name);
+                let _is_editing = state.editing_cluster.as_ref() == Some(&cluster.name)
+                    || (state.editing_cluster.is_none() && state.selected_cluster.is_none());
 
-            egui::Frame::new()
-                .fill(Theme::bg_card())
-                .corner_radius(Theme::CARD_ROUNDING)
-                .inner_margin(Theme::CARD_PADDING)
-                .stroke(if is_selected {
-                    egui::Stroke::new(1.5, Theme::accent())
-                } else {
-                    egui::Stroke::NONE
-                })
-                .show(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        ui.set_width(ui.available_width());
+                egui::Frame::new()
+                    .fill(Theme::bg_card())
+                    .corner_radius(Theme::CARD_ROUNDING)
+                    .inner_margin(Theme::CARD_PADDING)
+                    .stroke(if is_selected {
+                        egui::Stroke::new(1.5, Theme::accent())
+                    } else {
+                        egui::Stroke::NONE
+                    })
+                    .show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.set_width(ui.available_width());
 
-                        // Selection click area
-                        let is_connected = *connected.get(&cluster.name).unwrap_or(&false);
-                        let response = ui
-                            .horizontal(|ui| {
-                                ConnectionDot::new(is_connected).ui(ui);
-                                ui.label(
-                                    egui::RichText::new(&cluster.name)
-                                        .strong()
-                                        .size(14.0)
-                                        .color(Theme::text_primary()),
-                                );
-                                ui.label(
-                                    egui::RichText::new(format!("@ {}", cluster.host))
-                                        .size(12.0)
-                                        .color(Theme::text_muted()),
-                                );
-                            })
-                            .response;
+                            // Selection click area
+                            let is_connected = *connected.get(&cluster.name).unwrap_or(&false);
+                            let response = ui
+                                .horizontal(|ui| {
+                                    ConnectionDot::new(is_connected).ui(ui);
+                                    ui.label(
+                                        egui::RichText::new(&cluster.name)
+                                            .strong()
+                                            .size(14.0)
+                                            .color(Theme::text_primary()),
+                                    );
+                                    ui.label(
+                                        egui::RichText::new(format!("@ {}", cluster.host))
+                                            .size(12.0)
+                                            .color(Theme::text_muted()),
+                                    );
+                                })
+                                .response;
 
-                        if response.clicked() {
-                            state.selected_cluster = Some(cluster.name.clone());
-                            state.editing_cluster = None;
-                            state.test_result = None;
-                        }
-
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.small_button("🗑").clicked() {
-                                *on_delete = Some(cluster.name.clone());
-                            }
-                            if ui.small_button("✏️").clicked() {
+                            if response.clicked() {
                                 state.selected_cluster = Some(cluster.name.clone());
-                                state.editing_cluster = Some(cluster.name.clone());
-                                state.edit_form = cluster.clone();
-                                state.edit_password =
-                                    crate::core::auth::get_password(&cluster.name)
-                                        .ok()
-                                        .flatten()
-                                        .unwrap_or_default();
+                                state.editing_cluster = None;
                                 state.test_result = None;
                             }
-                            if ui.small_button("🔌 Test").clicked() {
-                                let pwd = crate::core::auth::get_password(&cluster.name)
-                                    .ok()
-                                    .flatten()
-                                    .unwrap_or_default();
-                                *on_test = Some((cluster.name.clone(), pwd));
-                            }
+
+                            ui.with_layout(
+                                egui::Layout::right_to_left(egui::Align::Center),
+                                |ui| {
+                                    if ui.small_button("🗑").clicked() {
+                                        *on_delete = Some(cluster.name.clone());
+                                    }
+                                    if ui.small_button("✏️").clicked() {
+                                        state.selected_cluster = Some(cluster.name.clone());
+                                        state.editing_cluster = Some(cluster.name.clone());
+                                        state.edit_form = cluster.clone();
+                                        state.edit_password =
+                                            crate::core::auth::get_password(&cluster.name)
+                                                .ok()
+                                                .flatten()
+                                                .unwrap_or_default();
+                                        state.test_result = None;
+                                    }
+                                    if ui.small_button("🔌 Test").clicked() {
+                                        let pwd = crate::core::auth::get_password(&cluster.name)
+                                            .ok()
+                                            .flatten()
+                                            .unwrap_or_default();
+                                        *on_test = Some((cluster.name.clone(), pwd));
+                                    }
+                                },
+                            );
                         });
+
+                        // Data summary
+                        if let Some(data) = cluster_data.get(&cluster.name) {
+                            let mut summaries = Vec::new();
+                            if !data.saved_queries.is_empty() {
+                                summaries.push(format!("{} queries", data.saved_queries.len()));
+                            }
+                            if !data.status_history.is_empty() {
+                                summaries.push(format!(
+                                    "{} status snapshots",
+                                    data.status_history.len()
+                                ));
+                            }
+                            if !data.tasks_cache.is_empty() {
+                                summaries.push(format!("{} task caches", data.tasks_cache.len()));
+                            }
+                            if !data.snapshot_cache.is_empty() {
+                                summaries
+                                    .push(format!("{} snapshot caches", data.snapshot_cache.len()));
+                            }
+                            if !summaries.is_empty() {
+                                ui.label(
+                                    egui::RichText::new(summaries.join(" · "))
+                                        .size(11.0)
+                                        .color(Theme::text_muted()),
+                                );
+                            }
+                        }
+
+                        // Edit form inline
+                        if is_selected && state.editing_cluster.is_some() {
+                            ui.add_space(8.0);
+                            ui.separator();
+                            ui.add_space(8.0);
+                            render_edit_form(ui, state, on_save, on_fetch_repos, on_fetch_slm);
+                        }
                     });
 
-                    // Data summary
-                    if let Some(data) = cluster_data.get(&cluster.name) {
-                        let mut summaries = Vec::new();
-                        if !data.saved_queries.is_empty() {
-                            summaries.push(format!("{} queries", data.saved_queries.len()));
-                        }
-                        if !data.status_history.is_empty() {
-                            summaries
-                                .push(format!("{} status snapshots", data.status_history.len()));
-                        }
-                        if !data.tasks_cache.is_empty() {
-                            summaries.push(format!("{} task caches", data.tasks_cache.len()));
-                        }
-                        if !data.snapshot_cache.is_empty() {
-                            summaries
-                                .push(format!("{} snapshot caches", data.snapshot_cache.len()));
-                        }
-                        if !summaries.is_empty() {
-                            ui.label(
-                                egui::RichText::new(summaries.join(" · "))
-                                    .size(11.0)
-                                    .color(Theme::text_muted()),
-                            );
-                        }
-                    }
+                ui.add_space(8.0);
+            }
 
-                    // Edit form inline
-                    if is_selected && state.editing_cluster.is_some() {
-                        ui.add_space(8.0);
-                        ui.separator();
+            // Add new cluster form (when no cluster selected and not editing)
+            if state.editing_cluster.is_none() && state.selected_cluster.is_none() {
+                egui::Frame::new()
+                    .fill(Theme::bg_card())
+                    .corner_radius(Theme::CARD_ROUNDING)
+                    .inner_margin(Theme::CARD_PADDING)
+                    .show(ui, |ui| {
+                        ui.label(
+                            egui::RichText::new("New Cluster")
+                                .strong()
+                                .size(14.0)
+                                .color(Theme::text_primary()),
+                        );
                         ui.add_space(8.0);
                         render_edit_form(ui, state, on_save, on_fetch_repos, on_fetch_slm);
-                    }
-                });
-
-            ui.add_space(8.0);
-        }
-
-        // Add new cluster form (when no cluster selected and not editing)
-        if state.editing_cluster.is_none() && state.selected_cluster.is_none() {
-            egui::Frame::new()
-                .fill(Theme::bg_card())
-                .corner_radius(Theme::CARD_ROUNDING)
-                .inner_margin(Theme::CARD_PADDING)
-                .show(ui, |ui| {
-                    ui.label(
-                        egui::RichText::new("New Cluster")
-                            .strong()
-                            .size(14.0)
-                            .color(Theme::text_primary()),
-                    );
-                    ui.add_space(8.0);
-                    render_edit_form(ui, state, on_save, on_fetch_repos, on_fetch_slm);
-                });
-        }
-    });
+                    });
+            }
+        });
 }
 
 fn render_edit_form(
@@ -243,9 +248,16 @@ fn render_edit_form(
     });
     if !state.fetched_repos.is_empty() {
         ui.indent("repo_indent", |ui| {
-            ui.label(egui::RichText::new("Available repos:").size(11.0).color(Theme::text_muted()));
+            ui.label(
+                egui::RichText::new("Available repos:")
+                    .size(11.0)
+                    .color(Theme::text_muted()),
+            );
             for repo in state.fetched_repos.clone() {
-                if ui.selectable_label(repo == form.snapshot_repo, &repo).clicked() {
+                if ui
+                    .selectable_label(repo == form.snapshot_repo, &repo)
+                    .clicked()
+                {
                     form.snapshot_repo = repo;
                 }
             }
@@ -264,9 +276,16 @@ fn render_edit_form(
     });
     if !state.fetched_slm_policies.is_empty() {
         ui.indent("slm_indent", |ui| {
-            ui.label(egui::RichText::new("Available policies:").size(11.0).color(Theme::text_muted()));
+            ui.label(
+                egui::RichText::new("Available policies:")
+                    .size(11.0)
+                    .color(Theme::text_muted()),
+            );
             for policy in state.fetched_slm_policies.clone() {
-                if ui.selectable_label(policy == form.slm_policy, &policy).clicked() {
+                if ui
+                    .selectable_label(policy == form.slm_policy, &policy)
+                    .clicked()
+                {
                     form.slm_policy = policy;
                 }
             }
@@ -302,7 +321,11 @@ fn render_edit_form(
     }
 
     ui.add_space(4.0);
-    ui.label(egui::RichText::new("CA Certificate (PEM format):").strong().size(12.0));
+    ui.label(
+        egui::RichText::new("CA Certificate (PEM format):")
+            .strong()
+            .size(12.0),
+    );
     ui.add(
         egui::TextEdit::multiline(&mut form.ca_cert_pem)
             .font(egui::TextStyle::Monospace)
