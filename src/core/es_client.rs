@@ -54,6 +54,12 @@ impl EsClient {
             }
         };
 
+        if !config.ca_cert_pem.is_empty() {
+            let cert = reqwest::Certificate::from_pem(config.ca_cert_pem.as_bytes())
+                .context("Invalid pasted PEM CA certificate")?;
+            builder = builder.add_root_certificate(cert);
+        }
+
         if !config.verify_ssl || config.ssh_tunnel {
             builder = builder.danger_accept_invalid_certs(true);
         }
@@ -295,8 +301,12 @@ impl EsClient {
     }
 
     pub async fn snapshot_current(&self, repo: &str) -> Result<SnapshotResponse, EsError> {
-        let path = format!("/_snapshot/{}/_current", repo);
+        let path = format!("/_snapshot/{}/_all?size=1&sort=start_time&order=desc", repo);
         let (req, method, url) = self.request(reqwest::Method::GET, &path);
+        self.exec(req, &method, &url).await
+    }
+    pub async fn snapshot_repositories(&self) -> Result<serde_json::Value, EsError> {
+        let (req, method, url) = self.request(reqwest::Method::GET, "/_snapshot");
         self.exec(req, &method, &url).await
     }
 

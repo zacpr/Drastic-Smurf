@@ -253,6 +253,8 @@ impl DrasticSmurfApp {
                         slm_next_run: latest.slm_next_run.clone(),
                         slm_in_progress: latest.slm_in_progress,
                         slm_policies: latest.slm_policies.clone(),
+                        has_repositories: latest.has_repositories,
+                        resolved_repo: latest.resolved_repo.clone(),
                     };
                     app.snapshot_statuses.push(status);
                 }
@@ -784,6 +786,8 @@ impl DrasticSmurfApp {
             slm_next_run: status.slm_next_run.clone(),
             slm_in_progress: status.slm_in_progress,
             slm_policies: status.slm_policies.clone(),
+            has_repositories: status.has_repositories,
+            resolved_repo: status.resolved_repo.clone(),
         };
         if let Some(mut data) = self.cluster_manager.get_cluster_data(name) {
             data.snapshot_cache.push(entry);

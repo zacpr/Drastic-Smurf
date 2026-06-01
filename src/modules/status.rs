@@ -76,7 +76,7 @@ pub fn render_status_module(
                                 let pending_tasks = state.pending_tasks.get(&cluster.name).cloned();
                                 render_status_card(
                                     ui,
-                                    &cluster.name,
+                                    cluster,
                                     &health,
                                     stats,
                                     es_version,
@@ -105,7 +105,7 @@ pub fn render_status_module(
 
 fn render_status_card(
     ui: &mut Ui,
-    name: &str,
+    config: &ClusterConfig,
     health: &Option<ClusterHealth>,
     stats: Option<ClusterStats>,
     es_version: Option<String>,
@@ -119,6 +119,7 @@ fn render_status_card(
     col_width: f32,
     hover_effects: bool,
 ) {
+    let name = &config.name;
     let frame = egui::Frame::new()
         .fill(Theme::bg_card())
         .corner_radius(Theme::CARD_ROUNDING)
@@ -273,48 +274,154 @@ if count.voting_only > 0 {
                 }
             }
 
-            // Main stats grid
-            for pair in items.chunks(2) {
-                ui.horizontal(|ui| {
-                    ui.set_width(ui.available_width());
-                    let half = ui.available_width() / 2.0 - 8.0;
-                    for (j, (label, value)) in pair.iter().enumerate() {
-                        if j > 0 {
-                            ui.add_space(16.0);
-                        }
-                        ui.allocate_ui_with_layout(
-                            egui::Vec2::new(half, 18.0),
-                            egui::Layout::left_to_right(egui::Align::Center),
-                            |ui| {
-                                ui.label(
-                                    egui::RichText::new(format!("{}: ", label))
-                                        .color(Theme::text_muted())
-                                        .size(11.0),
-                                );
-                                ui.label(
-                                    egui::RichText::new(value.clone())
-                                        .color(Theme::text_primary())
-                                        .size(11.0)
-                                        .strong(),
-                                );
-                            },
-                        );
-                    }
-                });
-            }
+            // Horizontal split: Left for Stats, Right for Clickable orange links
+            ui.horizontal(|ui| {
+                ui.set_width(ui.available_width());
+                let left_w = ui.available_width() * 0.58;
+                let right_w = ui.available_width() - left_w - 12.0;
 
-            if let Some((used, max)) = jvm_heap {
-                ui.add_space(8.0);
-                ui.label(
-                    egui::RichText::new(format!(
-                        "JVM Heap: {} / {}",
-                        human_bytes(used),
-                        human_bytes(max)
-                    ))
-                    .size(11.0)
-                    .color(Theme::text_muted()),
-                );
-            }
+                // --- LEFT COLUMN: STATS ---
+                ui.allocate_ui(egui::Vec2::new(left_w, ui.available_height()), |ui| {
+                    ui.vertical(|ui| {
+                        for pair in items.chunks(2) {
+                            ui.horizontal(|ui| {
+                                let item_w = left_w / 2.0 - 8.0;
+                                for (j, (label, value)) in pair.iter().enumerate() {
+                                    if j > 0 {
+                                        ui.add_space(8.0);
+                                    }
+                                    ui.allocate_ui_with_layout(
+                                        egui::Vec2::new(item_w, 18.0),
+                                        egui::Layout::left_to_right(egui::Align::Center),
+                                        |ui| {
+                                            ui.label(
+                                                egui::RichText::new(format!("{}: ", label))
+                                                    .color(Theme::text_muted())
+                                                    .size(11.0),
+                                            );
+                                            ui.label(
+                                                egui::RichText::new(value.clone())
+                                                    .color(Theme::text_primary())
+                                                    .size(11.0)
+                                                    .strong(),
+                                            );
+                                        },
+                                    );
+                                }
+                            });
+                        }
+
+                        if let Some((used, max)) = jvm_heap {
+                            ui.add_space(8.0);
+                            ui.label(
+                                egui::RichText::new(format!(
+                                    "JVM Heap: {} / {}",
+                                    human_bytes(used),
+                                    human_bytes(max)
+                                ))
+                                .size(11.0)
+                                .color(Theme::text_muted()),
+                            );
+                        }
+                    });
+                });
+
+                ui.add_space(12.0);
+
+                // --- RIGHT COLUMN: ORANGE HYPERLINKS ---
+                ui.allocate_ui(egui::Vec2::new(right_w, ui.available_height()), |ui| {
+                    ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
+                        // Elastic link
+                        let es_url_raw = config.host.clone();
+                        let es_url = if es_url_raw.starts_with("http://") || es_url_raw.starts_with("https://") {
+                            es_url_raw.clone()
+                        } else {
+                            format!("http://{}", es_url_raw)
+                        };
+                        let es_btn = ui.hyperlink_to(
+                            egui::RichText::new(&es_url)
+                                .size(11.0)
+                                .color(Theme::accent()),
+                            &es_url,
+                        );
+                        if es_btn.clicked() {
+                            ui.ctx().open_url(egui::OpenUrl::new_tab(&es_url));
+                            open_link(&es_url);
+                        }
+                        ui.add_space(2.0);
+
+                        // Kibana link (with auto fallback if empty)
+                        let kb_url_raw = if config.kibana_host.is_empty() {
+                            if config.host.contains("elastic") {
+                                config.host.replace("elastic", "kibana")
+                            } else {
+                                config.host.clone()
+                            }
+                        } else {
+                            config.kibana_host.clone()
+                        };
+                        let kb_url = if kb_url_raw.starts_with("http://") || kb_url_raw.starts_with("https://") {
+                            kb_url_raw.clone()
+                        } else {
+                            format!("http://{}", kb_url_raw)
+                        };
+                        let kb_btn = ui.hyperlink_to(
+                            egui::RichText::new(&kb_url)
+                                .size(11.0)
+                                .color(Theme::accent()),
+                            &kb_url,
+                        );
+                        if kb_btn.clicked() {
+                            ui.ctx().open_url(egui::OpenUrl::new_tab(&kb_url));
+                            open_link(&kb_url);
+                        }
+                        ui.add_space(2.0);
+
+                        // HAProxy link
+                        if !config.haproxy_host.is_empty() {
+                            let ha_url_raw = config.haproxy_host.clone();
+                            let ha_url = if ha_url_raw.starts_with("http://") || ha_url_raw.starts_with("https://") {
+                                ha_url_raw.clone()
+                            } else {
+                                format!("http://{}", ha_url_raw)
+                            };
+                            let ha_btn = ui.hyperlink_to(
+                                egui::RichText::new(&ha_url)
+                                    .size(11.0)
+                                    .color(Theme::accent()),
+                                &ha_url,
+                            );
+                            if ha_btn.clicked() {
+                                ui.ctx().open_url(egui::OpenUrl::new_tab(&ha_url));
+                                open_link(&ha_url);
+                            }
+                            ui.add_space(2.0);
+                        }
+
+                        // Custom links
+                        for (_name, url_raw) in &config.custom_links {
+                            if !url_raw.is_empty() {
+                                let url = if url_raw.starts_with("http://") || url_raw.starts_with("https://") {
+                                    url_raw.clone()
+                                } else {
+                                    format!("http://{}", url_raw)
+                                };
+                                let cust_btn = ui.hyperlink_to(
+                                    egui::RichText::new(&url)
+                                        .size(11.0)
+                                        .color(Theme::accent()),
+                                    &url,
+                                );
+                                if cust_btn.clicked() {
+                                    ui.ctx().open_url(egui::OpenUrl::new_tab(&url));
+                                    open_link(&url);
+                                }
+                                ui.add_space(2.0);
+                            }
+                        }
+                    });
+                });
+            });
 
             if !node_role_items.is_empty() {
                 ui.add_space(8.0);
@@ -529,3 +636,19 @@ if count.voting_only > 0 {
         }
     }
 }
+
+fn open_link(url: &str) {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = std::process::Command::new("open").arg(url).spawn();
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let _ = std::process::Command::new("cmd").args(&["/C", "start", "", url]).spawn();
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let _ = std::process::Command::new("xdg-open").arg(url).spawn();
+    }
+}
+

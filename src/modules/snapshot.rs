@@ -137,6 +137,10 @@ pub struct ClusterSnapshotStatus {
     pub slm_in_progress: bool,
     #[serde(default)]
     pub slm_policies: Vec<(String, crate::core::es_client::SlmPolicyDetail)>,
+    #[serde(default)]
+    pub has_repositories: bool,
+    #[serde(default)]
+    pub resolved_repo: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -242,53 +246,83 @@ pub async fn fetch_cluster_snapshot(
         }
     }
 
+    // Resolve the repository to monitor (auto-detect if config is empty)
+    let resolved_repo = if !config.snapshot_repo.is_empty() {
+        status.has_repositories = true;
+        status.resolved_repo = Some(config.snapshot_repo.clone());
+        Some(config.snapshot_repo.clone())
+    } else {
+        match client.snapshot_repositories().await {
+            Ok(val) => {
+                if let Some(obj) = val.as_object() {
+                    status.has_repositories = !obj.is_empty();
+                    let first_repo = obj.keys().next().cloned();
+                    status.resolved_repo = first_repo.clone();
+                    first_repo
+                } else {
+                    status.has_repositories = false;
+                    None
+                }
+            }
+            _ => {
+                status.has_repositories = false;
+                None
+            }
+        }
+    };
+
     // Try snapshot current
     let mut snapshot_info: Option<SnapshotInfo> = None;
-    if !config.snapshot_repo.is_empty() {
-        let repo = &config.snapshot_repo;
+    if let Some(ref repo) = resolved_repo {
         match client.snapshot_current(repo).await {
-            Ok(resp) if !resp.snapshots.is_empty() => {
+            Ok(mut resp) if !resp.snapshots.is_empty() => {
+                // Ensure sorting descending by start_time_in_millis as a robust client-side fallback
+                resp.snapshots.sort_by(|a, b| {
+                    b.start_time_in_millis.unwrap_or(0).cmp(&a.start_time_in_millis.unwrap_or(0))
+                });
                 snapshot_info = Some(resp.snapshots.into_iter().next().unwrap());
             }
             _ => {}
         }
     }
 
-    // Fallback: snapshot status all
+    // Fallback: snapshot status all (filtering strictly by our resolved repository)
     if snapshot_info.is_none() {
-        match client.snapshot_status_all().await {
-            Ok(resp) if !resp.snapshots.is_empty() => {
-                let info = &resp.snapshots[0];
-                snapshot_info = Some(SnapshotInfo {
-                    snapshot: info.snapshot.clone(),
-                    uuid: info.uuid.clone(),
-                    repository: info.repository.clone(),
-                    state: info.state.clone(),
-                    start_time: None,
-                    start_time_in_millis: None,
-                    end_time: None,
-                    end_time_in_millis: None,
-                    duration_in_millis: None,
-                    indices: None,
-                    shards: info.shards_stats.as_ref().map(|s| {
-                        crate::core::es_client::ShardStats {
-                            total: s.total,
-                            failed: s.failed,
-                            successful: s.done,
-                        }
-                    }),
-                    failures: None,
-                });
+        if let Some(ref repo) = resolved_repo {
+            match client.snapshot_status_all().await {
+                Ok(resp) => {
+                    if let Some(info) = resp.snapshots.iter().find(|s| &s.repository == repo) {
+                        snapshot_info = Some(SnapshotInfo {
+                            snapshot: info.snapshot.clone(),
+                            uuid: info.uuid.clone(),
+                            repository: info.repository.clone(),
+                            state: info.state.clone(),
+                            start_time: None,
+                            start_time_in_millis: None,
+                            end_time: None,
+                            end_time_in_millis: None,
+                            duration_in_millis: None,
+                            indices: None,
+                            shards: info.shards_stats.as_ref().map(|s| {
+                                crate::core::es_client::ShardStats {
+                                    total: s.total,
+                                    failed: s.failed,
+                                    successful: s.done,
+                                }
+                            }),
+                            failures: None,
+                        });
+                    }
+                }
+                _ => {}
             }
-            _ => {}
         }
     }
 
     // Get detailed status if in progress
     if let Some(ref info) = snapshot_info {
         if info.state.to_uppercase() == "IN_PROGRESS" || info.state.to_uppercase() == "STARTED" {
-            if !config.snapshot_repo.is_empty() {
-                let repo = &config.snapshot_repo;
+            if let Some(ref repo) = resolved_repo {
                 match client.snapshot_status(repo, &info.snapshot).await {
                     Ok(detailed) if !detailed.snapshots.is_empty() => {
                         let detail = &detailed.snapshots[0];
@@ -553,6 +587,23 @@ fn render_cluster_card(
         } else if let Some(ref info) = status.snapshot_info {
             let state = SnapshotState::from_str(&info.state);
 
+            if let Some(ref repo) = status.resolved_repo {
+                ui.horizontal(|ui| {
+                    ui.label(
+                        egui::RichText::new("Repository:")
+                            .size(10.5)
+                            .color(Theme::text_muted()),
+                    );
+                    ui.label(
+                        egui::RichText::new(repo)
+                            .size(10.5)
+                            .color(Theme::accent())
+                            .strong(),
+                    );
+                });
+                ui.add_space(4.0);
+            }
+
             // ── State badge + snapshot name + copy ──
             ui.horizontal(|ui| {
                 ui.add(StatePill::new(state.as_str(), state.color()));
@@ -765,11 +816,43 @@ fn render_cluster_card(
             }
         } else if status.reachable {
             ui.add_space(8.0);
-            ui.label(
-                egui::RichText::new("No snapshot in progress")
-                    .color(Theme::text_muted())
-                    .size(13.0),
-            );
+            if !status.has_repositories {
+                ui.colored_label(Theme::danger(), "⚠ No snapshot repository registered");
+                ui.add_space(2.0);
+                ui.label(
+                    egui::RichText::new("Configure a repository in cluster settings or via Console to monitor backups.")
+                        .size(11.0)
+                        .color(Theme::text_muted()),
+                );
+            } else {
+                if let Some(ref repo) = status.resolved_repo {
+                    ui.horizontal(|ui| {
+                        ui.label(
+                            egui::RichText::new("Repository:")
+                                .size(11.0)
+                                .color(Theme::text_muted()),
+                        );
+                        ui.label(
+                            egui::RichText::new(repo)
+                                .size(11.0)
+                                .color(Theme::accent())
+                                .strong(),
+                        );
+                    });
+                    ui.add_space(4.0);
+                    ui.label(
+                        egui::RichText::new("No active or completed snapshots found in this repository.")
+                            .size(12.0)
+                            .color(Theme::text_muted()),
+                    );
+                } else {
+                    ui.label(
+                        egui::RichText::new("No snapshot in progress")
+                            .color(Theme::text_muted())
+                            .size(13.0),
+                    );
+                }
+            }
         } else {
             ui.label(
                 egui::RichText::new("Cluster unreachable")

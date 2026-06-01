@@ -25,6 +25,7 @@ pub struct ClustersState {
     pub export_success: Option<String>,
     pub fetched_repos: Vec<String>,
     pub fetched_slm_policies: Vec<String>,
+    pub ca_cert_import_path: String,
 }
 
 pub fn render_clusters_module(
@@ -271,6 +272,64 @@ fn render_edit_form(
             }
         });
     }
+    ui.horizontal(|ui| {
+        ui.label("HAProxy Host:");
+        ui.text_edit_singleline(&mut form.haproxy_host);
+    });
+
+    ui.add_space(4.0);
+    ui.horizontal(|ui| {
+        ui.label(egui::RichText::new("Custom Links:").strong().size(12.0));
+        if ui.button("➕ Add Link").clicked() {
+            form.custom_links.push((String::new(), String::new()));
+        }
+    });
+
+    let mut link_to_remove = None;
+    for (idx, (name, url)) in form.custom_links.iter_mut().enumerate() {
+        ui.horizontal(|ui| {
+            ui.label("Name:");
+            ui.text_edit_singleline(name);
+            ui.label("URL:");
+            ui.text_edit_singleline(url);
+            if ui.button("🗑").clicked() {
+                link_to_remove = Some(idx);
+            }
+        });
+    }
+    if let Some(idx) = link_to_remove {
+        form.custom_links.remove(idx);
+    }
+
+    ui.add_space(4.0);
+    ui.label(egui::RichText::new("CA Certificate (PEM format):").strong().size(12.0));
+    ui.add(
+        egui::TextEdit::multiline(&mut form.ca_cert_pem)
+            .font(egui::TextStyle::Monospace)
+            .desired_rows(4)
+            .desired_width(ui.available_width())
+            .hint_text("-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----"),
+    );
+
+    ui.horizontal(|ui| {
+        ui.label("Import from File:");
+        ui.text_edit_singleline(&mut state.ca_cert_import_path);
+        if ui.button("📂 Load").clicked() {
+            if !state.ca_cert_import_path.is_empty() {
+                match std::fs::read_to_string(&state.ca_cert_import_path) {
+                    Ok(pem) => {
+                        form.ca_cert_pem = pem;
+                        state.ca_cert_import_path.clear();
+                    }
+                    Err(e) => {
+                        state.test_result = Some(format!("Failed to load PEM file: {}", e));
+                    }
+                }
+            }
+        }
+    });
+    ui.add_space(4.0);
+
     ui.horizontal(|ui| {
         ui.checkbox(&mut form.verify_ssl, "Verify SSL");
     });

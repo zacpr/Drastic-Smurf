@@ -91,6 +91,12 @@ pub struct ClusterConfig {
     pub slm_policy: String,
     #[serde(default)]
     pub kibana_host: String,
+    #[serde(default)]
+    pub haproxy_host: String,
+    #[serde(default)]
+    pub custom_links: Vec<(String, String)>,
+    #[serde(default)]
+    pub ca_cert_pem: String,
     #[serde(default = "default_verify_ssl")]
     pub verify_ssl: bool,
     #[serde(default)]
@@ -120,6 +126,9 @@ impl Default for ClusterConfig {
             snapshot_repo: String::new(),
             slm_policy: String::new(),
             kibana_host: String::new(),
+            haproxy_host: String::new(),
+            custom_links: Vec::new(),
+            ca_cert_pem: String::new(),
             verify_ssl: true,
             ca_cert: CaCert::default(),
             ssh_tunnel: false,
@@ -181,6 +190,10 @@ pub struct SnapshotCacheEntry {
     pub slm_in_progress: bool,
     #[serde(default)]
     pub slm_policies: Vec<(String, crate::core::es_client::SlmPolicyDetail)>,
+    #[serde(default)]
+    pub has_repositories: bool,
+    #[serde(default)]
+    pub resolved_repo: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
