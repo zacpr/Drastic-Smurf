@@ -159,7 +159,10 @@ fn render_input_document(ui: &mut Ui, state: &mut PipelineState) {
                     .font(egui::TextStyle::Monospace)
                     .code_editor()
                     .desired_rows(12)
-                    .desired_width(ui.available_width()),
+                    .desired_width(ui.available_width())
+                    .layouter(&mut |ui, text, wrap_width| {
+                        crate::ui::widgets::json_layouter(ui, text, wrap_width)
+                    }),
             );
 
             if let Some(ref err) = state.input_error {
@@ -174,11 +177,12 @@ fn render_input_document(ui: &mut Ui, state: &mut PipelineState) {
             ui.add_space(12.0);
             
             // Run Simulation Button
+            let success_color = Theme::success();
             let run_btn = egui::Button::new(
                 egui::RichText::new("🔄 Run Simulation")
-                    .color(egui::Color32::WHITE)
+                    .color(Theme::contrast_text_color(success_color))
                     .strong()
-            ).fill(Theme::success());
+            ).fill(success_color);
             
             if ui.add_sized([ui.available_width(), 32.0], run_btn).clicked() {
                 run_simulation(state);
@@ -210,7 +214,10 @@ fn render_pipeline_output(ui: &mut Ui, state: &mut PipelineState) {
                             .code_editor()
                             .desired_rows(18)
                             .desired_width(ui.available_width())
-                            .interactive(false),
+                            .interactive(false)
+                            .layouter(&mut |ui, text, wrap_width| {
+                                crate::ui::widgets::json_layouter(ui, text, wrap_width)
+                            }),
                     );
                     state.output_text = output;
                 });

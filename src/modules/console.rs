@@ -712,7 +712,8 @@ pub fn render_console_module(
                             let is_active = state.active_tab == tab;
                             let text = egui::RichText::new(label).size(11.0);
                             let text = if is_active {
-                                text.color(crate::ui::theme::Theme::accent()).strong()
+                                let active_bg = crate::ui::theme::Theme::accent().linear_multiply(0.25);
+                                text.color(crate::ui::theme::Theme::contrast_text_color(active_bg)).strong()
                             } else {
                                 text.color(crate::ui::theme::Theme::text_secondary())
                             };
@@ -999,7 +1000,15 @@ pub fn render_console_module(
                         // Right-to-Left block for buttons to float right!
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             // Send
-                            let send_btn = ui.add_enabled(!state.is_loading, egui::Button::new("⚡ Send").fill(crate::ui::theme::Theme::accent()));
+                            let accent_color = crate::ui::theme::Theme::accent();
+                            let send_btn = ui.add_enabled(
+                                !state.is_loading,
+                                egui::Button::new(
+                                    egui::RichText::new("⚡ Send")
+                                        .color(crate::ui::theme::Theme::contrast_text_color(accent_color))
+                                )
+                                .fill(accent_color),
+                            );
                             if state.is_loading {
                                 ui.spinner();
                             }
@@ -1154,11 +1163,14 @@ pub fn render_console_module(
                     let max_body_h = (ui.available_height() - 150.0).max(80.0);
                     body_h = body_h.clamp(80.0, max_body_h);
 
-                    let res = ui.add_sized(
+                     let res = ui.add_sized(
                         [ui.available_width(), body_h],
                         egui::TextEdit::multiline(&mut state.body)
                             .code_editor()
-                            .desired_rows(4),
+                            .desired_rows(4)
+                            .layouter(&mut |ui, text, wrap_width| {
+                                crate::ui::widgets::json_layouter(ui, text, wrap_width)
+                            }),
                     );
                     if res.changed() {
                         state.json_error = None;
@@ -1218,7 +1230,10 @@ pub fn render_console_module(
                                 egui::TextEdit::multiline(&mut state.response)
                                     .code_editor()
                                     .desired_width(ui.available_width())
-                                    .desired_rows(6),
+                                    .desired_rows(6)
+                                    .layouter(&mut |ui, text, wrap_width| {
+                                        crate::ui::widgets::json_layouter(ui, text, wrap_width)
+                                    }),
                             );
                         });
                 });

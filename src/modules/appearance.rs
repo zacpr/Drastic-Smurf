@@ -22,7 +22,8 @@ pub fn render_appearance_module(
     ui.add_space(8.0);
 
     ui.horizontal(|ui| {
-        if ui.add(egui::Button::new(egui::RichText::new("🚀 Start Onboarding Tour").color(egui::Color32::WHITE)).fill(Theme::accent())).clicked() {
+        let accent_color = Theme::accent();
+        if ui.add(egui::Button::new(egui::RichText::new("🚀 Start Onboarding Tour").color(Theme::contrast_text_color(accent_color))).fill(accent_color)).clicked() {
             *on_tour_triggered = true;
         }
         ui.label(egui::RichText::new("Learn how to use all features step-by-step.").color(Theme::text_muted()).size(11.0));

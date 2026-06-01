@@ -168,10 +168,11 @@ impl StatePill {
 
 impl Widget for StatePill {
     fn ui(self, ui: &mut Ui) -> egui::Response {
+        let text_color = Theme::contrast_text_color(self.color);
         let galley = ui.painter().layout_no_wrap(
             self.text.clone(),
             egui::FontId::default(),
-            Theme::text_primary(),
+            text_color,
         );
         let padding = Vec2::new(8.0, 4.0);
         let desired_size = galley.size() + padding * 2.0;
@@ -181,7 +182,7 @@ impl Widget for StatePill {
             ui.painter()
                 .rect_filled(rect, CornerRadius::same(4), self.color);
             let text_pos = rect.min + padding;
-            ui.painter().galley(text_pos, galley, Theme::text_primary());
+            ui.painter().galley(text_pos, galley, text_color);
         }
         response
     }
@@ -469,6 +470,221 @@ impl Widget for WarningLight {
 
         response
     }
+}
+
+pub fn json_layouter(ui: &Ui, text: &str, wrap_width: f32) -> std::sync::Arc<egui::Galley> {
+    let mut job = json_highlight(ui, text);
+    job.wrap.max_width = wrap_width;
+    ui.fonts(|f| f.layout_job(job))
+}
+
+pub fn json_highlight(_ui: &Ui, text: &str) -> egui::text::LayoutJob {
+    let mut job = egui::text::LayoutJob::default();
+    let trimmed = text.trim_start();
+    
+    // Check if the output is JSON
+    let is_json = trimmed.starts_with('{') || trimmed.starts_with('[');
+    
+    if is_json {
+        // --- JSON MODE ---
+        let key_color = Color32::from_rgb(125, 211, 252);     // Cyan/Blue (Sky 300)
+        let string_color = Color32::from_rgb(251, 146, 60);  // Amber/Orange (Amber 400)
+        let number_color = Color32::from_rgb(74, 222, 128);  // Green (Green 400)
+        let bool_color = Color32::from_rgb(251, 113, 133);   // Rose/Pink (Rose 400)
+        let null_color = Color32::from_rgb(192, 132, 252);   // Purple/Lavender (Purple 400)
+        let punc_color = Color32::from_rgb(156, 163, 175);   // Border Gray (Gray 400)
+        let comment_color = Color32::from_rgb(107, 114, 128); // Muted Dark Gray (Gray 500)
+        let text_color = Theme::text_primary();              // Default text
+        
+        let chars: Vec<char> = text.chars().collect();
+        let mut i = 0;
+        let font_id = egui::FontId::monospace(11.0);
+        
+        while i < chars.len() {
+            // Handle line comments (//)
+            if chars[i] == '/' && i + 1 < chars.len() && chars[i+1] == '/' {
+                let start = i;
+                while i < chars.len() && chars[i] != '\n' {
+                    i += 1;
+                }
+                let slice: String = chars[start..i].iter().collect();
+                job.append(&slice, 0.0, egui::TextFormat { font_id: font_id.clone(), color: comment_color, ..Default::default() });
+                continue;
+            }
+            
+            // Handle shell comments (#)
+            if chars[i] == '#' {
+                let start = i;
+                while i < chars.len() && chars[i] != '\n' {
+                    i += 1;
+                }
+                let slice: String = chars[start..i].iter().collect();
+                job.append(&slice, 0.0, egui::TextFormat { font_id: font_id.clone(), color: comment_color, ..Default::default() });
+                continue;
+            }
+
+            // Handle string literals
+            if chars[i] == '"' {
+                let start = i;
+                i += 1; // skip opening quote
+                let mut escaped = false;
+                while i < chars.len() {
+                    if escaped {
+                        escaped = false;
+                    } else if chars[i] == '\\' {
+                        escaped = true;
+                    } else if chars[i] == '"' {
+                        i += 1; // include closing quote
+                        break;
+                    }
+                    i += 1;
+                }
+                let slice: String = chars[start..i].iter().collect();
+                
+                // Check if this string is a JSON key (followed by some spaces and a colon ':')
+                let mut is_key = false;
+                let mut peek = i;
+                while peek < chars.len() && chars[peek].is_whitespace() {
+                    peek += 1;
+                }
+                if peek < chars.len() && chars[peek] == ':' {
+                    is_key = true;
+                }
+                
+                let color = if is_key {
+                    key_color
+                } else {
+                    let inner = slice.trim_matches('"').to_lowercase();
+                    match inner.as_str() {
+                        "green" | "active" | "success" | "ok" => Theme::success(),
+                        "yellow" | "warning" | "pending" => Theme::warning(),
+                        "red" | "danger" | "failed" | "error" => Theme::danger(),
+                        _ => string_color,
+                    }
+                };
+                job.append(&slice, 0.0, egui::TextFormat { font_id: font_id.clone(), color, ..Default::default() });
+                continue;
+            }
+            
+            // Handle numbers
+            if chars[i].is_ascii_digit() || (chars[i] == '-' && i + 1 < chars.len() && chars[i+1].is_ascii_digit()) {
+                let start = i;
+                if chars[i] == '-' {
+                    i += 1;
+                }
+                while i < chars.len() && (chars[i].is_ascii_digit() || chars[i] == '.') {
+                    i += 1;
+                }
+                let slice: String = chars[start..i].iter().collect();
+                job.append(&slice, 0.0, egui::TextFormat { font_id: font_id.clone(), color: number_color, ..Default::default() });
+                continue;
+            }
+            
+            // Handle keywords (true, false, null)
+            if chars[i].is_alphabetic() {
+                let start = i;
+                while i < chars.len() && chars[i].is_alphanumeric() {
+                    i += 1;
+                }
+                let slice: String = chars[start..i].iter().collect();
+                let color = match slice.as_str() {
+                    "true" | "false" => bool_color,
+                    "null" => null_color,
+                    _ => text_color,
+                };
+                job.append(&slice, 0.0, egui::TextFormat { font_id: font_id.clone(), color, ..Default::default() });
+                continue;
+            }
+            
+            // Handle punctuation/brackets
+            if "{}[],:".contains(chars[i]) {
+                let slice = chars[i].to_string();
+                i += 1;
+                job.append(&slice, 0.0, egui::TextFormat { font_id: font_id.clone(), color: punc_color, ..Default::default() });
+                continue;
+            }
+            
+            // Default white-space or unstyled character
+            let slice = chars[i].to_string();
+            i += 1;
+            job.append(&slice, 0.0, egui::TextFormat { font_id: font_id.clone(), color: text_color, ..Default::default() });
+        }
+    } else {
+        // --- TABULAR / CAT API MODE ---
+        let header_color = Color32::from_rgb(147, 197, 253);  // Sky Blue for headers
+        let success_color = Theme::success();
+        let warning_color = Theme::warning();
+        let danger_color = Theme::danger();
+        let number_color = Color32::from_rgb(74, 222, 128);   // Vibrant Green
+        let text_color = Theme::text_primary();
+        
+        let font_id = egui::FontId::monospace(11.0);
+        
+        let lines: Vec<&str> = text.split('\n').collect();
+        for (line_idx, line) in lines.iter().enumerate() {
+            let is_header = line_idx == 0 && lines.len() > 1 && !line.trim().is_empty();
+            let chars: Vec<char> = line.chars().collect();
+            let mut i = 0;
+            
+            while i < chars.len() {
+                // Headers get bold accent color
+                if is_header && !chars[i].is_whitespace() {
+                    let start = i;
+                    while i < chars.len() && !chars[i].is_whitespace() {
+                        i += 1;
+                    }
+                    let slice: String = chars[start..i].iter().collect();
+                    job.append(&slice, 0.0, egui::TextFormat {
+                        font_id: font_id.clone(),
+                        color: header_color,
+                        ..Default::default()
+                    });
+                    continue;
+                }
+                
+                // Numbers & quantities (sizes, percentages, unit values)
+                if chars[i].is_ascii_digit() || (chars[i] == '-' && i + 1 < chars.len() && chars[i+1].is_ascii_digit()) {
+                    let start = i;
+                    if chars[i] == '-' {
+                        i += 1;
+                    }
+                    while i < chars.len() && (chars[i].is_ascii_digit() || chars[i] == '.' || chars[i] == '%' || chars[i].is_alphabetic()) {
+                        i += 1;
+                    }
+                    let slice: String = chars[start..i].iter().collect();
+                    job.append(&slice, 0.0, egui::TextFormat { font_id: font_id.clone(), color: number_color, ..Default::default() });
+                    continue;
+                }
+                
+                // Status indicator keywords
+                if chars[i].is_alphabetic() {
+                    let start = i;
+                    while i < chars.len() && chars[i].is_alphanumeric() {
+                        i += 1;
+                    }
+                    let slice: String = chars[start..i].iter().collect();
+                    let color = match slice.to_lowercase().as_str() {
+                        "green" | "active" | "success" | "ok" => success_color,
+                        "yellow" | "warning" | "pending" => warning_color,
+                        "red" | "danger" | "failed" | "error" => danger_color,
+                        _ => text_color,
+                    };
+                    job.append(&slice, 0.0, egui::TextFormat { font_id: font_id.clone(), color, ..Default::default() });
+                    continue;
+                }
+                
+                let slice = chars[i].to_string();
+                i += 1;
+                job.append(&slice, 0.0, egui::TextFormat { font_id: font_id.clone(), color: text_color, ..Default::default() });
+            }
+            
+            if line_idx < lines.len() - 1 {
+                job.append("\n", 0.0, egui::TextFormat { font_id: font_id.clone(), color: text_color, ..Default::default() });
+            }
+        }
+    }
+    
+    job
 }
 
 #[cfg(test)]

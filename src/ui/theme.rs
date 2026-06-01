@@ -555,4 +555,26 @@ impl Theme {
             )
         })
     }
+
+    /// Returns BLACK or WHITE depending on which has better contrast against the given background color,
+    /// optionally blending it over a backdrop color if the background is translucent.
+    pub fn contrast_text_color_blended(bg: Color32, backdrop: Color32) -> Color32 {
+        let a = bg.a() as f32 / 255.0;
+        let blended_r = (bg.r() as f32 * a + backdrop.r() as f32 * (1.0 - a)) as u8;
+        let blended_g = (bg.g() as f32 * a + backdrop.g() as f32 * (1.0 - a)) as u8;
+        let blended_b = (bg.b() as f32 * a + backdrop.b() as f32 * (1.0 - a)) as u8;
+
+        let y = (blended_r as u32 * 299 + blended_g as u32 * 587 + blended_b as u32 * 114) / 1000;
+        if y >= 128 {
+            Color32::BLACK
+        } else {
+            Color32::WHITE
+        }
+    }
+
+    /// Returns BLACK or WHITE depending on which has better contrast against the given background color,
+    /// automatically blending it over the active theme's card background.
+    pub fn contrast_text_color(bg: Color32) -> Color32 {
+        Self::contrast_text_color_blended(bg, Self::bg_card())
+    }
 }

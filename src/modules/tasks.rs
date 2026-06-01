@@ -180,12 +180,17 @@ pub fn render_tasks_module(ui: &mut Ui, state: &mut TasksState) {
                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                 // Cancellable pill
                                 if task.cancellable {
+                                    let bg_color = Theme::danger().linear_multiply(0.15);
                                     Frame::new()
-                                        .fill(Theme::danger().linear_multiply(0.15))
+                                        .fill(bg_color)
                                         .corner_radius(CornerRadius::same(4))
                                         .inner_margin(Margin::symmetric(6, 2))
                                         .show(ui, |ui| {
-                                            ui.label(egui::RichText::new("Cancellable").size(10.0).color(Theme::danger()));
+                                            ui.label(
+                                                egui::RichText::new("Cancellable")
+                                                    .size(10.0)
+                                                    .color(Theme::contrast_text_color(bg_color)),
+                                            );
                                         });
                                 }
 

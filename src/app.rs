@@ -807,6 +807,42 @@ impl DrasticSmurfApp {
     }
 
     fn render_sidebar(&mut self, ui: &mut egui::Ui) {
+        let clusters = self.cluster_manager.clusters();
+
+        // 1. Calculate overall status first so we can draw it at the bottom.
+        let overall_status = if clusters.is_empty() {
+            "offline"
+        } else {
+            let mut has_contact = false;
+            let mut any_yellow = false;
+            let mut any_red = false;
+            for cluster in &clusters {
+                let health_opt = self
+                    .status_state
+                    .health_data
+                    .iter()
+                    .find(|(n, _)| n == &cluster.name)
+                    .and_then(|(_, h)| h.as_ref());
+                if let Some(health) = health_opt {
+                    has_contact = true;
+                    if health.status == "red" {
+                        any_red = true;
+                    } else if health.status == "yellow" {
+                        any_yellow = true;
+                    }
+                }
+            }
+            if !has_contact {
+                "offline"
+            } else if any_red {
+                "red"
+            } else if any_yellow {
+                "yellow"
+            } else {
+                "green"
+            }
+        };
+
         ui.add_space(16.0);
         
         // Render logo image
@@ -843,208 +879,192 @@ impl DrasticSmurfApp {
 
         ui.add_space(20.0);
 
-        ui.label(
-            egui::RichText::new("Clusters")
-                .strong()
-                .color(Theme::text_secondary())
-                .size(12.0),
-        );
-        ui.add_space(4.0);
+        let screen_height = ui.ctx().screen_rect().height();
+        let default_open = screen_height >= 750.0;
 
-        let filter_res = ui.add(
-            egui::TextEdit::singleline(&mut self.cluster_filter)
-                .hint_text("🔍 Filter clusters...")
-                .desired_width(f32::INFINITY),
-        );
-        if filter_res.changed() {
-            self.cluster_manager.set_cluster_filter(self.cluster_filter.clone());
-        }
-        ui.add_space(4.0);
+        // Calculate the maximum height we want to allocate for the scrollable middle section.
+        // We leave exactly 75 pixels for the bottom status footer.
+        let scroll_max_height = (ui.available_height() - 75.0).max(100.0);
 
-        let clusters = self.cluster_manager.clusters();
-        let scroll_height = ui.available_height() - 170.0;
         egui::ScrollArea::vertical()
-            .max_height(scroll_height)
-            .id_salt("cluster_scroll")
+            .max_height(scroll_max_height)
+            .id_salt("sidebar_scroll")
             .show(ui, |ui| {
-                for cluster in &clusters {
-                    if !self.cluster_matches_filter(&cluster.name) {
-                        continue;
-                    }
-                    ui.horizontal(|ui| {
-                        let health_opt = self
-                            .status_state
-                            .health_data
-                            .iter()
-                            .find(|(n, _)| n == &cluster.name)
-                            .and_then(|(_, h)| h.as_ref());
-                        
-                        let dot_color = match health_opt {
-                            Some(health) => match health.status.as_str() {
-                                "green" => Theme::success(),
-                                "yellow" => egui::Color32::from_rgb(235, 179, 41), // Vibrant Yellow
-                                "red" => Theme::danger(),
-                                _ => egui::Color32::from_rgb(60, 60, 60), // Dark Grey
-                            },
-                            None => egui::Color32::from_rgb(60, 60, 60), // Offline
-                        };
+                // 🔌 Clusters
+                egui::CollapsingHeader::new(
+                    egui::RichText::new("🔌 Clusters")
+                        .strong()
+                        .color(Theme::text_secondary())
+                        .size(12.0),
+                )
+                .default_open(default_open)
+                .show(ui, |ui| {
+                    ui.add_space(4.0);
 
-                        ui.add(crate::ui::widgets::ConnectionDot::new(health_opt.is_some()).color(dot_color).size(8.0));
-                        ui.label(
-                            egui::RichText::new(&cluster.name)
-                                .color(Theme::text_primary())
-                                .size(13.0),
-                        );
-                    });
-                }
-
-                if clusters.is_empty() {
-                    ui.label(
-                        egui::RichText::new("No clusters configured")
-                            .color(Theme::text_muted())
-                            .size(11.0),
+                    let filter_res = ui.add(
+                        egui::TextEdit::singleline(&mut self.cluster_filter)
+                            .hint_text("🔍 Filter clusters...")
+                            .desired_width(f32::INFINITY),
                     );
+                    if filter_res.changed() {
+                        self.cluster_manager.set_cluster_filter(self.cluster_filter.clone());
+                    }
+                    ui.add_space(4.0);
+
+                    for cluster in &clusters {
+                        if !self.cluster_matches_filter(&cluster.name) {
+                            continue;
+                        }
+                        ui.horizontal(|ui| {
+                            let health_opt = self
+                                .status_state
+                                .health_data
+                                .iter()
+                                .find(|(n, _)| n == &cluster.name)
+                                .and_then(|(_, h)| h.as_ref());
+                            
+                            let dot_color = match health_opt {
+                                Some(health) => match health.status.as_str() {
+                                    "green" => Theme::success(),
+                                    "yellow" => egui::Color32::from_rgb(235, 179, 41), // Vibrant Yellow
+                                    "red" => Theme::danger(),
+                                    _ => egui::Color32::from_rgb(60, 60, 60), // Dark Grey
+                                },
+                                None => egui::Color32::from_rgb(60, 60, 60), // Offline
+                            };
+
+                            ui.add(crate::ui::widgets::ConnectionDot::new(health_opt.is_some()).color(dot_color).size(8.0));
+                            ui.label(
+                                egui::RichText::new(&cluster.name)
+                                    .color(Theme::text_primary())
+                                    .size(13.0),
+                            );
+                        });
+                    }
+
+                    if clusters.is_empty() {
+                        ui.label(
+                            egui::RichText::new("No clusters configured")
+                                .color(Theme::text_muted())
+                                .size(11.0),
+                        );
+                    }
+
+                    ui.add_space(12.0);
+                    if ui.button("+ Add Cluster").clicked() {
+                        self.new_cluster = ClusterConfig::default();
+                        self.new_password.clear();
+                        self.editing_cluster = None;
+                        self.test_result = None;
+                        self.show_add_cluster = true;
+                    }
+                });
+
+                self.render_timezone_clocks(ui);
+
+                ui.add_space(8.0);
+
+                let mut auto_refresh_changed = false;
+                let mut interval_changed = false;
+
+                egui::CollapsingHeader::new(
+                    egui::RichText::new("⚙️ Refresh Settings")
+                        .strong()
+                        .color(Theme::text_secondary())
+                        .size(12.0),
+                )
+                .default_open(default_open)
+                .show(ui, |ui| {
+                    ui.add_space(4.0);
+
+                    if let Some(last) = self.last_refresh {
+                        let ago = last.elapsed().as_secs();
+                        ui.label(
+                            egui::RichText::new(format!("Last refresh: {}s ago", ago))
+                                .size(10.0)
+                                .color(Theme::text_muted()),
+                        );
+                    }
+
+                    if ui.button("🔄 Refresh Now").clicked() {
+                        self.trigger_refresh(ui.ctx());
+                    }
+
+                    ui.horizontal(|ui| {
+                        ui.label("Interval:");
+                        if ui
+                            .add(
+                                egui::DragValue::new(&mut self.refresh_interval_secs)
+                                    .speed(1)
+                                    .range(5..=300),
+                            )
+                            .changed()
+                        {
+                            interval_changed = true;
+                        }
+                        ui.label("s");
+                    });
+
+                    if ui
+                        .checkbox(&mut self.auto_refresh, "Auto Refresh")
+                        .changed()
+                    {
+                        auto_refresh_changed = true;
+                    }
+                });
+
+                if auto_refresh_changed || interval_changed {
+                    self.cluster_manager.set_auto_refresh(self.auto_refresh);
+                    self.cluster_manager
+                        .set_refresh_interval_secs(self.refresh_interval_secs);
                 }
             });
 
-        ui.add_space(12.0);
-        if ui.button("+ Add Cluster").clicked() {
-            self.new_cluster = ClusterConfig::default();
-            self.new_password.clear();
-            self.editing_cluster = None;
-            self.test_result = None;
-            self.show_add_cluster = true;
+        // 4. Spacer to push the footer to the bottom
+        let remaining_space = ui.available_height() - 75.0;
+        if remaining_space > 0.0 {
+            ui.add_space(remaining_space);
         }
 
-        ui.add_space(8.0);
+        // 5. Render footer warning light top-down
         ui.separator();
-        self.render_timezone_clocks(ui);
+        ui.add_space(8.0);
 
-        // Push bottom controls to the bottom of the sidebar
-        ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
-            // Render Overall Status Warning Light first (so it stays at the bottom!)
-            let overall_status = if clusters.is_empty() {
-                "offline"
-            } else {
-                let mut has_contact = false;
-                let mut any_yellow = false;
-                let mut any_red = false;
-                for cluster in &clusters {
-                    let health_opt = self
-                        .status_state
-                        .health_data
-                        .iter()
-                        .find(|(n, _)| n == &cluster.name)
-                        .and_then(|(_, h)| h.as_ref());
-                    if let Some(health) = health_opt {
-                        has_contact = true;
-                        if health.status == "red" {
-                            any_red = true;
-                        } else if health.status == "yellow" {
-                            any_yellow = true;
-                        }
-                    }
-                }
-                if !has_contact {
-                    "offline"
-                } else if any_red {
-                    "red"
-                } else if any_yellow {
-                    "yellow"
-                } else {
-                    "green"
-                }
-            };
-
-            ui.add_space(24.0);
-            ui.horizontal(|ui| {
-                // Add the warning light widget
-                ui.add(crate::ui::widgets::WarningLight::new(overall_status));
+        ui.horizontal(|ui| {
+            // Add the warning light widget
+            ui.add(crate::ui::widgets::WarningLight::new(overall_status));
+            
+            // Status panel description next to the light
+            ui.vertical(|ui| {
+                ui.add_space(2.0);
+                let (title, color, desc) = match overall_status {
+                    "green" => (
+                        "SYSTEM ONLINE", 
+                        Theme::success(), 
+                        "All connected clusters healthy.\nStandby mode active."
+                    ),
+                    "yellow" => (
+                        "MINOR WARNING", 
+                        egui::Color32::from_rgb(235, 179, 41), 
+                        "One or more clusters yellow.\nCheck shard allocation."
+                    ),
+                    "red" => (
+                        "CRITICAL FAILURE", 
+                        Theme::danger(), 
+                        "Immediate attention required!\nRed health detected."
+                    ),
+                    _ => (
+                        "SYSTEM OFFLINE", 
+                        egui::Color32::from_rgb(120, 120, 125), 
+                        "No active cluster contact.\nFilament disconnected."
+                    ),
+                };
                 
-                // Status panel description next to the light
-                ui.vertical(|ui| {
-                    ui.add_space(2.0);
-                    let (title, color, desc) = match overall_status {
-                        "green" => (
-                            "SYSTEM ONLINE", 
-                            Theme::success(), 
-                            "All connected clusters healthy.\nStandby mode active."
-                        ),
-                        "yellow" => (
-                            "MINOR WARNING", 
-                            egui::Color32::from_rgb(235, 179, 41), 
-                            "One or more clusters yellow.\nCheck shard allocation."
-                        ),
-                        "red" => (
-                            "CRITICAL FAILURE", 
-                            Theme::danger(), 
-                            "Immediate attention required!\nRed health detected."
-                        ),
-                        _ => (
-                            "SYSTEM OFFLINE", 
-                            egui::Color32::from_rgb(120, 120, 125), 
-                            "No active cluster contact.\nFilament disconnected."
-                        ),
-                    };
-                    
-                    ui.colored_label(color, egui::RichText::new(title).strong().size(11.0));
-                    ui.label(egui::RichText::new(desc).size(8.5).color(Theme::text_muted()));
-                });
+                ui.colored_label(color, egui::RichText::new(title).strong().size(11.0));
+                ui.label(egui::RichText::new(desc).size(8.5).color(Theme::text_muted()));
             });
-            ui.add_space(8.0);
-            ui.separator();
-            ui.add_space(8.0);
-
-            if let Some(last) = self.last_refresh {
-                let ago = last.elapsed().as_secs();
-                ui.label(
-                    egui::RichText::new(format!("Last refresh: {}s ago", ago))
-                        .size(10.0)
-                        .color(Theme::text_muted()),
-                );
-            }
-
-            if ui.button("🔄 Refresh Now").clicked() {
-                self.trigger_refresh(ui.ctx());
-            }
-
-            let mut auto_refresh_changed = false;
-            let mut interval_changed = false;
-            let _old_auto = self.auto_refresh;
-            let _old_interval = self.refresh_interval_secs;
-
-            ui.horizontal(|ui| {
-                ui.label("Interval:");
-                if ui
-                    .add(
-                        egui::DragValue::new(&mut self.refresh_interval_secs)
-                            .speed(1)
-                            .range(5..=300),
-                    )
-                    .changed()
-                {
-                    interval_changed = true;
-                }
-                ui.label("s");
-            });
-
-            if ui
-                .checkbox(&mut self.auto_refresh, "Auto Refresh")
-                .changed()
-            {
-                auto_refresh_changed = true;
-            }
-
-            if auto_refresh_changed || interval_changed {
-                self.cluster_manager.set_auto_refresh(self.auto_refresh);
-                self.cluster_manager
-                    .set_refresh_interval_secs(self.refresh_interval_secs);
-            }
-
-            ui.add_space(8.0);
-            ui.separator();
-            ui.add_space(8.0);
         });
+        ui.add_space(12.0); // bottom padding
     }
 
     fn render_timezone_clocks(&self, ui: &mut egui::Ui) {
@@ -1228,7 +1248,8 @@ impl DrasticSmurfApp {
                         let is_active = self.current_tab == tab;
                         let text = egui::RichText::new(label).size(14.0);
                         let text = if is_active {
-                            text.color(Theme::accent()).strong()
+                            let active_bg = Theme::accent().linear_multiply(0.25);
+                            text.color(Theme::contrast_text_color(active_bg)).strong()
                         } else {
                             text.color(Theme::text_secondary())
                         };

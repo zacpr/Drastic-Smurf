@@ -373,14 +373,15 @@ pub fn render_discover_module(
 
                 // Search Button with loading indicator
                 let search_btn_text = if state.is_loading { "Searching..." } else { "🔍 Search" };
+                let accent_color = Theme::accent();
                 let btn = ui.add_enabled(
                     !state.is_loading && !state.selected_cluster.is_empty(),
                     egui::Button::new(
                         egui::RichText::new(search_btn_text)
-                            .color(Color32::WHITE)
+                            .color(Theme::contrast_text_color(accent_color))
                             .strong(),
                     )
-                    .fill(Theme::accent()),
+                    .fill(accent_color),
                 );
 
                 // Trigger query on Enter or Search click
@@ -495,11 +496,12 @@ pub fn render_discover_module(
 
                 // Footer Apply / Cancel buttons
                 ui.horizontal(|ui| {
+                    let success_color = Theme::success();
                     let apply_btn = egui::Button::new(
                         egui::RichText::new("Apply Custom Range")
-                            .color(Color32::WHITE)
+                            .color(Theme::contrast_text_color(success_color))
                             .strong()
-                    ).fill(Theme::success());
+                    ).fill(success_color);
                     
                     if ui.add(apply_btn).clicked() {
                         state.time_preset = TimeframePreset::Custom;
@@ -634,16 +636,18 @@ pub fn render_discover_module(
 
     // Error alert banner
     if let Some(err) = &state.error {
+        let danger_color = Theme::danger();
+        let text_color = Theme::contrast_text_color(danger_color);
         egui::Frame::new()
-            .fill(Theme::danger())
+            .fill(danger_color)
             .corner_radius(Theme::CARD_ROUNDING)
             .inner_margin(Theme::CARD_PADDING)
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new("⚠️").size(16.0).color(Color32::WHITE));
+                    ui.label(egui::RichText::new("⚠️").size(16.0).color(text_color));
                     ui.label(
                         egui::RichText::new(format!("Search Error: {}", err))
-                            .color(Color32::WHITE)
+                            .color(text_color)
                             .strong(),
                     );
                 });

@@ -178,14 +178,15 @@ fn render_status_card(
 
                 if let Some(ref tasks) = pending_tasks {
                     if !tasks.is_empty() {
+                        let danger_color = Theme::danger();
                         let btn = ui.add(
                             egui::Button::new(
                                 egui::RichText::new(format!("⚠️ {} Pending", tasks.len()))
                                     .size(10.0)
                                     .strong()
-                                    .color(Color32::WHITE)
+                                    .color(Theme::contrast_text_color(danger_color))
                             )
-                            .fill(Theme::danger())
+                            .fill(danger_color)
                             .corner_radius(4.0)
                         ).on_hover_text("Delayed master metadata updates/actions. Click to inspect pending task queue.");
                         if btn.clicked() {
