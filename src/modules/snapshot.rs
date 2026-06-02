@@ -452,6 +452,50 @@ pub fn render_snapshot_module(
         1
     };
     let col_width = (available_width - (cols - 1) as f32 * card_spacing) / cols as f32;
+    let available_height = ui.available_height().max(500.0);
+
+    // Distribute statuses across columns sequentially using estimated card heights
+    // to fill up the first column before overflowing to subsequent columns.
+    let mut col_items = vec![Vec::new(); cols];
+    let mut current_col = 0;
+    let mut current_col_height = 0.0;
+
+    for (i, status) in statuses.iter().enumerate() {
+        if cols == 1 {
+            col_items[0].push((i, status));
+        } else {
+            // Estimate the card height
+            let mut est_height = 140.0;
+            if status.reachable {
+                if status.error_message.is_some() {
+                    est_height = 120.0;
+                } else if status.snapshot_info.is_some() {
+                    est_height = 160.0;
+                    if status.snapshot_stats.is_some() {
+                        est_height += 120.0; // sparkline/progress bar/stats grid
+                    }
+                    if status.slm_last_run.is_some() || status.slm_next_run.is_some() {
+                        est_height += 60.0;
+                    }
+                    if !status.slm_policies.is_empty() {
+                        est_height += 20.0 + (status.slm_policies.len() as f32 * 18.0);
+                    }
+                } else {
+                    est_height = 130.0;
+                }
+            }
+
+            // Check if this item fits in the current column.
+            // If it exceeds the available height and we have more columns, move to the next column.
+            if current_col + 1 < cols && current_col_height + est_height > available_height {
+                current_col += 1;
+                current_col_height = 0.0;
+            }
+
+            col_items[current_col].push((i, status));
+            current_col_height += est_height + card_spacing;
+        }
+    }
 
     egui::ScrollArea::vertical()
         .id_salt("snapshot")
@@ -475,20 +519,18 @@ pub fn render_snapshot_module(
                         egui::Vec2::new(col_width, ui.available_height()),
                         egui::Layout::top_down(egui::Align::Min),
                         |ui| {
-                            for (i, status) in statuses.iter().enumerate() {
-                                if i % cols == col_idx {
-                                    render_cluster_card(
-                                        ui,
-                                        status,
-                                        histories,
-                                        on_edit,
-                                        on_delete,
-                                        on_show_history,
-                                        col_width,
-                                        shimmer,
-                                    );
-                                    ui.add_space(card_spacing);
-                                }
+                            for &(_, status) in &col_items[col_idx] {
+                                render_cluster_card(
+                                    ui,
+                                    status,
+                                    histories,
+                                    on_edit,
+                                    on_delete,
+                                    on_show_history,
+                                    col_width,
+                                    shimmer,
+                                );
+                                ui.add_space(card_spacing);
                             }
                         },
                     );
