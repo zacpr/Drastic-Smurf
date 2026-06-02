@@ -551,7 +551,7 @@ pub struct SnapshotResponse {
     pub snapshots: Vec<SnapshotInfo>,
 }
 
-#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, Clone, Default, serde::Deserialize, serde::Serialize)]
 
 pub struct SnapshotInfo {
     pub snapshot: String,
@@ -576,7 +576,7 @@ pub struct SnapshotInfo {
     pub failures: Option<Vec<serde_json::Value>>,
 }
 
-#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, Clone, Default, serde::Deserialize, serde::Serialize)]
 
 pub struct ShardStats {
     pub total: u32,

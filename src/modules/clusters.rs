@@ -240,7 +240,7 @@ fn render_edit_form(
         ui.add(egui::TextEdit::singleline(&mut state.edit_password).password(true));
     });
     ui.horizontal(|ui| {
-        ui.label("Snapshot Repo:");
+        ui.label("Snapshot Repo(s):");
         ui.text_edit_singleline(&mut form.snapshot_repo);
         if ui.button("🔍 Fetch").clicked() {
             *on_fetch_repos = Some(state.selected_cluster.clone().unwrap_or_default());
@@ -249,16 +249,27 @@ fn render_edit_form(
     if !state.fetched_repos.is_empty() {
         ui.indent("repo_indent", |ui| {
             ui.label(
-                egui::RichText::new("Available repos:")
+                egui::RichText::new("Available repos (select one or more):")
                     .size(11.0)
                     .color(Theme::text_muted()),
             );
+            let mut current_repos: Vec<String> = form.snapshot_repo
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
             for repo in state.fetched_repos.clone() {
-                if ui
-                    .selectable_label(repo == form.snapshot_repo, &repo)
-                    .clicked()
-                {
-                    form.snapshot_repo = repo;
+                let is_selected = current_repos.contains(&repo);
+                let mut checkbox = is_selected;
+                if ui.checkbox(&mut checkbox, &repo).clicked() {
+                    if checkbox {
+                        if !is_selected {
+                            current_repos.push(repo);
+                        }
+                    } else {
+                        current_repos.retain(|r| r != &repo);
+                    }
+                    form.snapshot_repo = current_repos.join(", ");
                 }
             }
         });
@@ -380,7 +391,13 @@ fn render_edit_form(
     }
 
     if let Some(ref result) = state.test_result {
-        let color = if result.contains("Connected") || result.contains("connected") {
+        let is_success = result.contains("Connected")
+            || result.contains("connected")
+            || result.contains("Fetched")
+            || result.contains("fetched")
+            || result.contains("successful")
+            || result.contains("Success");
+        let color = if is_success {
             Theme::success()
         } else {
             Theme::danger()

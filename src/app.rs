@@ -257,6 +257,7 @@ impl DrasticSmurfApp {
                         slm_policies: latest.slm_policies.clone(),
                         has_repositories: latest.has_repositories,
                         resolved_repo: latest.resolved_repo.clone(),
+                        backups: latest.backups.clone(),
                     };
                     app.snapshot_statuses.push(status);
                 }
@@ -815,6 +816,7 @@ impl DrasticSmurfApp {
             slm_policies: status.slm_policies.clone(),
             has_repositories: status.has_repositories,
             resolved_repo: status.resolved_repo.clone(),
+            backups: status.backups.clone(),
         };
         if let Some(mut data) = self.cluster_manager.get_cluster_data(name) {
             data.snapshot_cache.push(entry);
@@ -1478,7 +1480,7 @@ impl DrasticSmurfApp {
                         let tx = self.refresh_tx.clone();
                         let name = cluster_name.clone();
                         tokio::spawn(async move {
-                            match client.slm_policy("_all").await {
+                            match client.slm_policies_all().await {
                                 Ok(resp) => {
                                     let policies: Vec<String> =
                                         resp.policies.keys().cloned().collect();
