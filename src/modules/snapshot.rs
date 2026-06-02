@@ -788,12 +788,20 @@ fn render_item_card(
                             .size(10.5)
                             .color(Theme::text_muted()),
                     );
-                    ui.label(
-                        egui::RichText::new(&b.repository)
-                            .size(10.5)
-                            .color(Theme::accent())
-                            .strong(),
-                    );
+                    
+                    // Prevent Repository name from stretching column width
+                    let max_repo_width = col_width - Theme::CARD_PADDING.x * 2.0 - 180.0;
+                    ui.allocate_ui(egui::Vec2::new(max_repo_width, 18.0), |ui| {
+                        ui.add(
+                            egui::Label::new(
+                                egui::RichText::new(&b.repository)
+                                    .size(10.5)
+                                    .color(Theme::accent())
+                                    .strong()
+                            )
+                            .truncate()
+                        );
+                    });
                     
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         let (badge_text, badge_color) = if b.is_current {
@@ -806,29 +814,35 @@ fn render_item_card(
                 });
                 ui.add_space(4.0);
 
-                // State Badge, snapshot name & Copy
+                // State Badge, snapshot name & Copy icon
                 ui.horizontal(|ui| {
                     ui.add(StatePill::new(state.as_str(), state.color()));
-                    ui.label(
-                        egui::RichText::new(&b.snapshot_info.snapshot)
-                            .monospace()
-                            .size(12.0)
-                            .strong()
-                            .color(Theme::text_secondary()),
+                    
+                    // Replace 'Copy' text with a sleek clipboard icon button
+                    let copy_btn = ui.add(
+                        egui::Button::new("📋")
+                            .frame(false)
+                            .small()
                     );
-                    if ui
-                        .add(
-                            egui::Label::new(
-                                egui::RichText::new("Copy")
-                                    .size(10.0)
-                                    .color(Theme::text_muted()),
-                            )
-                            .sense(egui::Sense::click()),
-                        )
-                        .clicked()
-                    {
+                    if copy_btn.clicked() {
                         ui.ctx().copy_text(b.snapshot_info.snapshot.clone());
                     }
+                    copy_btn.on_hover_text("Copy snapshot name to clipboard");
+
+                    // Snapshot Name (truncated to avoid stretching columns!)
+                    let max_name_width = col_width - Theme::CARD_PADDING.x * 2.0 - 120.0;
+                    ui.allocate_ui(egui::Vec2::new(max_name_width, 20.0), |ui| {
+                        ui.add(
+                            egui::Label::new(
+                                egui::RichText::new(&b.snapshot_info.snapshot)
+                                    .monospace()
+                                    .size(11.5)
+                                    .strong()
+                                    .color(Theme::text_secondary())
+                            )
+                            .truncate()
+                        );
+                    });
                 });
 
                 if let Some(ref stats) = b.snapshot_stats {

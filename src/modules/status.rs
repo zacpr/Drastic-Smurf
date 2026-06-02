@@ -337,6 +337,17 @@ if count.voting_only > 0 {
                 // --- RIGHT COLUMN: ORANGE HYPERLINKS ---
                 ui.allocate_ui(egui::Vec2::new(right_w, ui.available_height()), |ui| {
                     ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
+                        let truncate_url = |url: &str| -> String {
+                            let clean = url.trim_start_matches("http://").trim_start_matches("https://");
+                            if clean.chars().count() > 28 {
+                                let mut truncated: String = clean.chars().take(25).collect();
+                                truncated.push_str("...");
+                                truncated
+                            } else {
+                                clean.to_string()
+                            }
+                        };
+
                         // Elastic link
                         let es_url_raw = config.host.clone();
                         let es_url = if es_url_raw.starts_with("http://") || es_url_raw.starts_with("https://") {
@@ -346,13 +357,13 @@ if count.voting_only > 0 {
                         };
                         let es_btn = ui.add(
                             egui::Link::new(
-                                egui::RichText::new(&es_url)
+                                egui::RichText::new(truncate_url(&es_url))
                                     .size(11.0)
                                     .color(Theme::accent()),
                             )
                         );
                         if es_btn.clicked() {
-                            open_link(&es_url);
+                            open_link(ui.ctx(), &es_url);
                         }
                         ui.add_space(2.0);
 
@@ -373,13 +384,13 @@ if count.voting_only > 0 {
                         };
                         let kb_btn = ui.add(
                             egui::Link::new(
-                                egui::RichText::new(&kb_url)
+                                egui::RichText::new(truncate_url(&kb_url))
                                     .size(11.0)
                                     .color(Theme::accent()),
                             )
                         );
                         if kb_btn.clicked() {
-                            open_link(&kb_url);
+                            open_link(ui.ctx(), &kb_url);
                         }
                         ui.add_space(2.0);
 
@@ -393,13 +404,13 @@ if count.voting_only > 0 {
                             };
                             let ha_btn = ui.add(
                                 egui::Link::new(
-                                    egui::RichText::new(&ha_url)
+                                    egui::RichText::new(truncate_url(&ha_url))
                                         .size(11.0)
                                         .color(Theme::accent()),
                                 )
                             );
                             if ha_btn.clicked() {
-                                open_link(&ha_url);
+                                open_link(ui.ctx(), &ha_url);
                             }
                             ui.add_space(2.0);
                         }
@@ -414,13 +425,13 @@ if count.voting_only > 0 {
                                 };
                                 let cust_btn = ui.add(
                                     egui::Link::new(
-                                        egui::RichText::new(&url)
+                                        egui::RichText::new(truncate_url(&url))
                                             .size(11.0)
                                             .color(Theme::accent()),
                                     )
                                 );
                                 if cust_btn.clicked() {
-                                    open_link(&url);
+                                    open_link(ui.ctx(), &url);
                                 }
                                 ui.add_space(2.0);
                             }
