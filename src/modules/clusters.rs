@@ -33,7 +33,7 @@ pub fn render_clusters_module(
     state: &mut ClustersState,
     clusters: &[ClusterConfig],
     cluster_data: &std::collections::HashMap<String, ClusterData>,
-    connected: &std::collections::HashMap<String, bool>,
+    health_status: &std::collections::HashMap<String, Option<String>>,
     on_save: &mut Option<(Option<String>, ClusterConfig, String)>,
     on_delete: &mut Option<String>,
     on_test: &mut Option<(String, String)>,
@@ -102,10 +102,17 @@ pub fn render_clusters_module(
                             ui.set_width(ui.available_width());
 
                             // Selection click area
-                            let is_connected = *connected.get(&cluster.name).unwrap_or(&false);
+                            let status_opt = health_status.get(&cluster.name).cloned().flatten();
+                            let is_connected = status_opt.is_some();
+                            let dot_color = match status_opt.as_deref() {
+                                Some("green") => Theme::success(),
+                                Some("yellow") => Theme::warning(),
+                                Some("red") => Theme::danger(),
+                                _ => Theme::text_muted(),
+                            };
                             let response = ui
                                 .horizontal(|ui| {
-                                    ConnectionDot::new(is_connected).ui(ui);
+                                    ConnectionDot::new(is_connected).color(dot_color).ui(ui);
                                     ui.label(
                                         egui::RichText::new(&cluster.name)
                                             .strong()

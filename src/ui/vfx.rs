@@ -20,6 +20,12 @@ pub fn paint_background(ctx: &Context, settings: &VfxSettings, rect: Rect) {
                 ctx.request_repaint();
             }
         }
+        BackgroundEffect::Particles => {
+            paint_particles(ctx, rect, settings);
+            if !settings.reduce_motion {
+                ctx.request_repaint();
+            }
+        }
     }
 }
 
@@ -207,4 +213,183 @@ fn paint_mesh(ctx: &Context, rect: Rect, settings: &VfxSettings) {
             }
         }
     }
+}
+
+// --- Dynamic Interactive Neural Constellation Particle System ---
+
+struct SimpleRng {
+    state: u32,
+}
+
+impl SimpleRng {
+    fn new(seed: u32) -> Self {
+        Self { state: seed }
+    }
+
+    fn next_u32(&mut self) -> u32 {
+        self.state = self.state.wrapping_mul(1664525).wrapping_add(1013904223);
+        self.state
+    }
+
+    fn next_f32(&mut self) -> f32 {
+        (self.next_u32() as f32) / (u32::MAX as f32)
+    }
+
+    fn gen_range(&mut self, min: f32, max: f32) -> f32 {
+        min + self.next_f32() * (max - min)
+    }
+}
+
+#[derive(Clone)]
+struct Particle {
+    pos: Pos2,
+    vel: Vec2,
+    size: f32,
+    alpha_phase: f32,
+    alpha_speed: f32,
+}
+
+std::thread_local! {
+    static PARTICLES: std::cell::RefCell<Vec<Particle>> = std::cell::RefCell::new(Vec::new());
+    static LAST_TIME: std::cell::RefCell<Option<f32>> = std::cell::RefCell::new(None);
+}
+
+fn paint_particles(ctx: &Context, rect: Rect, settings: &VfxSettings) {
+    let painter = ctx.layer_painter(egui::LayerId::background());
+    let intensity = settings.background_intensity;
+    if intensity <= 0.0 {
+        return;
+    }
+
+    let current_time = ctx.input(|i| i.time as f32);
+    
+    // Calculate precise delta time to ensure smooth particle drift independent of frame drops
+    let mut dt = LAST_TIME.with(|t| {
+        let mut last = t.borrow_mut();
+        if let Some(prev) = *last {
+            let diff = current_time - prev;
+            *last = Some(current_time);
+            diff.clamp(0.0, 0.1) // prevent massive jumps on frame lag
+        } else {
+            *last = Some(current_time);
+            0.0
+        }
+    });
+
+    if settings.reduce_motion {
+        dt = 0.0;
+    } else {
+        dt *= settings.animation_speed;
+    }
+
+    let accent = Theme::accent();
+    let num_particles = 70;
+
+    PARTICLES.with(|p| {
+        let mut particles = p.borrow_mut();
+        
+        // Spawn particles inside the active view bounds on first execution
+        if particles.is_empty() {
+            let mut rng = SimpleRng::new(54321);
+            for _ in 0..num_particles {
+                particles.push(Particle {
+                    pos: Pos2::new(
+                        rng.gen_range(rect.min.x, rect.max.x),
+                        rng.gen_range(rect.min.y, rect.max.y),
+                    ),
+                    vel: Vec2::new(
+                        rng.gen_range(-12.0, 12.0),
+                        rng.gen_range(-12.0, 12.0),
+                    ),
+                    size: rng.gen_range(1.2, 3.2),
+                    alpha_phase: rng.gen_range(0.0, 6.28),
+                    alpha_speed: rng.gen_range(1.0, 2.5),
+                });
+            }
+        }
+
+        // Parallax offset and cursor repulsion calculations
+        let mouse_pos = ctx.input(|i| i.pointer.latest_pos());
+        let parallax_offset = if settings.reduce_motion || settings.parallax_amount <= 0.0 {
+            Vec2::ZERO
+        } else {
+            ctx.input(|i| {
+                if let Some(mpos) = i.pointer.latest_pos() {
+                    let center = rect.center();
+                    let delta = mpos - center;
+                    delta * settings.parallax_amount * 0.02
+                } else {
+                    Vec2::ZERO
+                }
+            })
+        };
+
+        // Update positions, wrap boundaries, and calculate cursor field repulsion
+        for particle in particles.iter_mut() {
+            // Apply drift velocity
+            particle.pos += particle.vel * dt;
+
+            // Apply parallax shift relative to motion
+            particle.pos -= parallax_offset * dt;
+
+            // Gentle push away from cursor to create interactive sweeping ripples
+            if let Some(mpos) = mouse_pos {
+                let to_mouse = mpos - particle.pos;
+                let dist = to_mouse.length();
+                if dist < 120.0 && dist > 1.0 {
+                    let force = (1.0 - dist / 120.0) * 35.0; 
+                    let dir = to_mouse.normalized();
+                    particle.pos -= dir * force * dt;
+                }
+            }
+
+            // Boundary wrapping
+            if particle.pos.x < rect.min.x {
+                particle.pos.x = rect.max.x;
+            } else if particle.pos.x > rect.max.x {
+                particle.pos.x = rect.min.x;
+            }
+            if particle.pos.y < rect.min.y {
+                particle.pos.y = rect.max.y;
+            } else if particle.pos.y > rect.max.y {
+                particle.pos.y = rect.min.y;
+            }
+        }
+
+        // 1. Draw neural constellation connection segments between close nodes
+        let line_max_dist = 90.0;
+        let len = particles.len();
+        for i in 0..len {
+            for j in (i + 1)..len {
+                let p1 = &particles[i];
+                let p2 = &particles[j];
+                let dist = p1.pos.distance(p2.pos);
+                if dist < line_max_dist {
+                    let pct = 1.0 - (dist / line_max_dist);
+                    let alpha = (pct * pct * intensity * 15.0) as u8;
+                    if alpha > 0 {
+                        let color = Color32::from_rgba_premultiplied(accent.r(), accent.g(), accent.b(), alpha);
+                        painter.line_segment([p1.pos, p2.pos], egui::Stroke::new(0.5, color));
+                    }
+                }
+            }
+        }
+
+        // 2. Draw the floating particle stars themselves with organic pulsing halos
+        for particle in particles.iter() {
+            let pulse = (particle.alpha_phase + current_time * particle.alpha_speed).sin() * 0.35 + 0.65;
+            let alpha = (pulse * intensity * 75.0) as u8;
+            if alpha > 0 {
+                let color = Color32::from_rgba_premultiplied(accent.r(), accent.g(), accent.b(), alpha);
+                painter.circle_filled(particle.pos, particle.size, color);
+
+                // Halo glow ring for larger particle stars
+                if particle.size > 2.2 {
+                    let halo_alpha = (alpha as f32 * 0.2) as u8;
+                    let halo_color = Color32::from_rgba_premultiplied(accent.r(), accent.g(), accent.b(), halo_alpha);
+                    painter.circle_filled(particle.pos, particle.size * 2.5, halo_color);
+                }
+            }
+        }
+    });
 }

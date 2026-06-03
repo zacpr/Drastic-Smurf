@@ -139,7 +139,16 @@ fn render_status_card(
         // Header
         ui.horizontal(|ui| {
             let connected = health.is_some();
-            ui.add(ConnectionDot::new(connected).size(10.0));
+            let dot_color = match health {
+                Some(h) => match h.status.as_str() {
+                    "green" => Theme::success(),
+                    "yellow" => Theme::warning(),
+                    "red" => Theme::danger(),
+                    _ => Theme::text_muted(),
+                },
+                None => Theme::text_muted(),
+            };
+            ui.add(ConnectionDot::new(connected).color(dot_color).size(10.0));
             ui.vertical(|ui| {
                 ui.label(
                     egui::RichText::new(name)

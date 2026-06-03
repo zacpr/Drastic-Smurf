@@ -19,7 +19,7 @@ pub struct VfxSettings {
     pub hover_effects: bool,
     #[serde(default = "default_true")]
     pub shimmer_effects: bool,
-    #[serde(default = "default_false")]
+    #[serde(default = "default_true")]
     pub cursor_glow: bool,
     #[serde(default = "default_parallax")]
     pub parallax_amount: f32,
@@ -33,31 +33,32 @@ pub enum BackgroundEffect {
     None,
     Gradient,
     Mesh,
+    Particles,
 }
 
 impl Default for VfxSettings {
     fn default() -> Self {
         Self {
-            background_effect: BackgroundEffect::Gradient,
-            background_intensity: 0.15,
-            animation_speed: 1.0,
+            background_effect: BackgroundEffect::None,
+            background_intensity: 0.0,
+            animation_speed: 0.0,
             hover_effects: true,
             shimmer_effects: true,
-            cursor_glow: false,
-            parallax_amount: 0.2,
+            cursor_glow: true,
+            parallax_amount: 0.0,
             reduce_motion: false,
         }
     }
 }
 
 fn default_background_effect() -> BackgroundEffect {
-    BackgroundEffect::Gradient
+    BackgroundEffect::None
 }
 fn default_background_intensity() -> f32 {
-    0.15
+    0.0
 }
 fn default_animation_speed() -> f32 {
-    1.0
+    0.0
 }
 fn default_true() -> bool {
     true
@@ -66,7 +67,7 @@ fn default_false() -> bool {
     false
 }
 fn default_parallax() -> f32 {
-    0.2
+    0.0
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]

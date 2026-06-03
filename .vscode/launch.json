@@ -28,6 +28,24 @@
             },
             "args": [],
             "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug drastic-smurf (Windows)",
+            "program": "${workspaceFolder}/target/debug/drastic-smurf.exe",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "preLaunchTask": "Build Windows (Debug)"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Release drastic-smurf (Windows)",
+            "program": "${workspaceFolder}/target/release/drastic-smurf.exe",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "preLaunchTask": "Build Windows (Release)"
         }
     ]
 }

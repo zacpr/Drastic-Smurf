@@ -1335,18 +1335,18 @@ impl DrasticSmurfApp {
                 let mut on_show_dialog = false;
                 let mut on_fetch_repos: Option<String> = None;
                 let mut on_fetch_slm: Option<String> = None;
-                let connected: std::collections::HashMap<String, bool> = self
+                let health_status: std::collections::HashMap<String, Option<String>> = self
                     .status_state
                     .health_data
                     .iter()
-                    .map(|(n, h)| (n.clone(), h.is_some()))
+                    .map(|(n, h)| (n.clone(), h.as_ref().map(|health| health.status.clone())))
                     .collect();
                 render_clusters_module(
                     ui,
                     &mut self.clusters_state,
                     &clusters,
                     &data,
-                    &connected,
+                    &health_status,
                     &mut on_save,
                     &mut on_delete,
                     &mut on_test,
@@ -1366,6 +1366,7 @@ impl DrasticSmurfApp {
                     if let Err(e) = crate::core::auth::set_password(&config.name, &password) {
                         self.toasts.error(format!("Failed to save password: {}", e));
                     }
+                    let mut success = false;
                     if let Some(old) = old_name {
                         if let Err(e) =
                             self.cluster_manager
@@ -1373,11 +1374,18 @@ impl DrasticSmurfApp {
                         {
                             self.toasts
                                 .error(format!("Failed to update cluster: {}", e));
+                        } else {
+                            success = true;
                         }
                     } else {
                         if let Err(e) = self.cluster_manager.add_cluster(config, Some(&password)) {
                             self.toasts.error(format!("Failed to add cluster: {}", e));
+                        } else {
+                            success = true;
                         }
+                    }
+                    if success {
+                        self.trigger_refresh(&ctx);
                     }
                 }
                 if let Some(name) = on_delete {
@@ -2249,6 +2257,7 @@ impl DrasticSmurfApp {
                         };
 
                         if save_ok {
+                            self.trigger_refresh(ctx);
                             self.show_add_cluster = false;
                             self.editing_cluster = None;
                             self.new_cluster = ClusterConfig::default();
