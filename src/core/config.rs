@@ -195,6 +195,8 @@ pub struct SnapshotCacheEntry {
     pub has_repositories: bool,
     #[serde(default)]
     pub resolved_repo: Option<String>,
+    #[serde(default)]
+    pub backups: Vec<crate::modules::snapshot::BackupStatus>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

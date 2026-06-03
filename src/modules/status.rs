@@ -1,7 +1,7 @@
 use crate::core::config::ClusterConfig;
 use crate::core::es_client::{ClusterHealth, ClusterStats};
 use crate::ui::theme::Theme;
-use crate::ui::widgets::{ConnectionDot, human_bytes, human_docs};
+use crate::ui::widgets::{ConnectionDot, human_bytes, human_docs, open_link};
 use egui::{Color32, Ui};
 
 #[derive(Debug, Clone, Default)]
@@ -346,6 +346,17 @@ if count.voting_only > 0 {
                 // --- RIGHT COLUMN: ORANGE HYPERLINKS ---
                 ui.allocate_ui(egui::Vec2::new(right_w, ui.available_height()), |ui| {
                     ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
+                        let truncate_url = |url: &str| -> String {
+                            let clean = url.trim_start_matches("http://").trim_start_matches("https://");
+                            if clean.chars().count() > 28 {
+                                let mut truncated: String = clean.chars().take(25).collect();
+                                truncated.push_str("...");
+                                truncated
+                            } else {
+                                clean.to_string()
+                            }
+                        };
+
                         // Elastic link
                         let es_url_raw = config.host.clone();
                         let es_url = if es_url_raw.starts_with("http://") || es_url_raw.starts_with("https://") {
@@ -353,15 +364,15 @@ if count.voting_only > 0 {
                         } else {
                             format!("http://{}", es_url_raw)
                         };
-                        let es_btn = ui.hyperlink_to(
-                            egui::RichText::new(&es_url)
-                                .size(11.0)
-                                .color(Theme::accent()),
-                            &es_url,
+                        let es_btn = ui.add(
+                            egui::Link::new(
+                                egui::RichText::new(truncate_url(&es_url))
+                                    .size(11.0)
+                                    .color(Theme::accent()),
+                            )
                         );
                         if es_btn.clicked() {
-                            ui.ctx().open_url(egui::OpenUrl::new_tab(&es_url));
-                            open_link(&es_url);
+                            open_link(ui.ctx(), &es_url);
                         }
                         ui.add_space(2.0);
 
@@ -380,15 +391,15 @@ if count.voting_only > 0 {
                         } else {
                             format!("http://{}", kb_url_raw)
                         };
-                        let kb_btn = ui.hyperlink_to(
-                            egui::RichText::new(&kb_url)
-                                .size(11.0)
-                                .color(Theme::accent()),
-                            &kb_url,
+                        let kb_btn = ui.add(
+                            egui::Link::new(
+                                egui::RichText::new(truncate_url(&kb_url))
+                                    .size(11.0)
+                                    .color(Theme::accent()),
+                            )
                         );
                         if kb_btn.clicked() {
-                            ui.ctx().open_url(egui::OpenUrl::new_tab(&kb_url));
-                            open_link(&kb_url);
+                            open_link(ui.ctx(), &kb_url);
                         }
                         ui.add_space(2.0);
 
@@ -400,15 +411,15 @@ if count.voting_only > 0 {
                             } else {
                                 format!("http://{}", ha_url_raw)
                             };
-                            let ha_btn = ui.hyperlink_to(
-                                egui::RichText::new(&ha_url)
-                                    .size(11.0)
-                                    .color(Theme::accent()),
-                                &ha_url,
+                            let ha_btn = ui.add(
+                                egui::Link::new(
+                                    egui::RichText::new(truncate_url(&ha_url))
+                                        .size(11.0)
+                                        .color(Theme::accent()),
+                                )
                             );
                             if ha_btn.clicked() {
-                                ui.ctx().open_url(egui::OpenUrl::new_tab(&ha_url));
-                                open_link(&ha_url);
+                                open_link(ui.ctx(), &ha_url);
                             }
                             ui.add_space(2.0);
                         }
@@ -421,15 +432,15 @@ if count.voting_only > 0 {
                                 } else {
                                     format!("http://{}", url_raw)
                                 };
-                                let cust_btn = ui.hyperlink_to(
-                                    egui::RichText::new(&url)
-                                        .size(11.0)
-                                        .color(Theme::accent()),
-                                    &url,
+                                let cust_btn = ui.add(
+                                    egui::Link::new(
+                                        egui::RichText::new(truncate_url(&url))
+                                            .size(11.0)
+                                            .color(Theme::accent()),
+                                    )
                                 );
                                 if cust_btn.clicked() {
-                                    ui.ctx().open_url(egui::OpenUrl::new_tab(&url));
-                                    open_link(&url);
+                                    open_link(ui.ctx(), &url);
                                 }
                                 ui.add_space(2.0);
                             }
@@ -649,22 +660,5 @@ if count.voting_only > 0 {
                 egui::StrokeKind::Middle,
             );
         }
-    }
-}
-
-fn open_link(url: &str) {
-    #[cfg(target_os = "macos")]
-    {
-        let _ = std::process::Command::new("open").arg(url).spawn();
-    }
-    #[cfg(target_os = "windows")]
-    {
-        let _ = std::process::Command::new("cmd")
-            .args(&["/C", "start", "", url])
-            .spawn();
-    }
-    #[cfg(target_os = "linux")]
-    {
-        let _ = std::process::Command::new("xdg-open").arg(url).spawn();
     }
 }

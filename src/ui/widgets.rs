@@ -276,6 +276,7 @@ pub fn human_bytes(bytes: u64) -> String {
     }
 }
 
+#[allow(dead_code)]
 pub fn human_speed(bps: f64) -> String {
     format!("{}/s", human_bytes(bps as u64))
 }
@@ -824,6 +825,10 @@ pub fn json_highlight(_ui: &Ui, text: &str) -> egui::text::LayoutJob {
     }
 
     job
+}
+
+pub fn open_link(ctx: &egui::Context, url: &str) {
+    ctx.open_url(egui::OpenUrl::new_tab(url));
 }
 
 #[cfg(test)]
