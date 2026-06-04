@@ -840,6 +840,48 @@ impl DrasticSmurfApp {
             .contains(&self.cluster_filter.to_lowercase())
     }
 
+    fn get_unfiltered_cluster_names(&self) -> Vec<String> {
+        self.cluster_manager
+            .clusters()
+            .iter()
+            .filter(|c| self.cluster_matches_filter(&c.name))
+            .map(|c| c.name.clone())
+            .collect()
+    }
+
+    fn ensure_selected_clusters_match_filter(&mut self) {
+        let allowed = self.get_unfiltered_cluster_names();
+
+        // 1. Console
+        if !allowed.contains(&self.console_state.selected_cluster) {
+            self.console_state.selected_cluster = allowed.first().cloned().unwrap_or_default();
+        }
+
+        // 2. Discover
+        if !allowed.contains(&self.discover_state.selected_cluster) {
+            self.discover_state.selected_cluster = allowed.first().cloned().unwrap_or_default();
+        }
+
+        // 3. Indices
+        if !allowed.contains(&self.indices_state.selected_cluster) {
+            self.indices_state.selected_cluster = allowed.first().cloned().unwrap_or_default();
+        }
+
+        // 4. Observability
+        if !allowed.contains(&self.observability_state.selected_cluster) {
+            self.observability_state.selected_cluster =
+                allowed.first().cloned().unwrap_or_default();
+        }
+
+        // 5. Clusters selection & edit forms
+        if let Some(ref selected) = self.clusters_state.selected_cluster {
+            if !allowed.contains(selected) {
+                self.clusters_state.selected_cluster = None;
+                self.clusters_state.editing_cluster = None;
+            }
+        }
+    }
+
     fn render_sidebar(&mut self, ui: &mut egui::Ui) {
         let clusters = self.cluster_manager.clusters();
 
@@ -940,6 +982,7 @@ impl DrasticSmurfApp {
                     if filter_res.changed() {
                         self.cluster_manager
                             .set_cluster_filter(self.cluster_filter.clone());
+                        self.ensure_selected_clusters_match_filter();
                     }
                     ui.add_space(4.0);
 
@@ -2316,6 +2359,9 @@ impl eframe::App for DrasticSmurfApp {
 
         // Process async results
         self.process_refresh_results(ctx);
+
+        // Ensure selected clusters match current filter
+        self.ensure_selected_clusters_match_filter();
 
         // Handle clusters import
         if let Some(imported) = self.clusters_import.take() {

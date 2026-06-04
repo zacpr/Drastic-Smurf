@@ -311,8 +311,10 @@ pub fn render_discover_module(
     ui.heading("Discover");
     ui.add_space(8.0);
 
-    // Initial cluster selection if empty
-    if state.selected_cluster.is_empty() && !cluster_names.is_empty() {
+    // Initial cluster selection if empty or filtered out
+    if (state.selected_cluster.is_empty() || !cluster_names.contains(&state.selected_cluster))
+        && !cluster_names.is_empty()
+    {
         state.selected_cluster = cluster_names[0].clone();
     }
 
