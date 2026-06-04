@@ -262,7 +262,7 @@ fn paint_particles(ctx: &Context, rect: Rect, settings: &VfxSettings) {
     }
 
     let current_time = ctx.input(|i| i.time as f32);
-    
+
     // Calculate precise delta time to ensure smooth particle drift independent of frame drops
     let mut dt = LAST_TIME.with(|t| {
         let mut last = t.borrow_mut();
@@ -287,7 +287,7 @@ fn paint_particles(ctx: &Context, rect: Rect, settings: &VfxSettings) {
 
     PARTICLES.with(|p| {
         let mut particles = p.borrow_mut();
-        
+
         // Spawn particles inside the active view bounds on first execution
         if particles.is_empty() {
             let mut rng = SimpleRng::new(54321);
@@ -297,10 +297,7 @@ fn paint_particles(ctx: &Context, rect: Rect, settings: &VfxSettings) {
                         rng.gen_range(rect.min.x, rect.max.x),
                         rng.gen_range(rect.min.y, rect.max.y),
                     ),
-                    vel: Vec2::new(
-                        rng.gen_range(-12.0, 12.0),
-                        rng.gen_range(-12.0, 12.0),
-                    ),
+                    vel: Vec2::new(rng.gen_range(-12.0, 12.0), rng.gen_range(-12.0, 12.0)),
                     size: rng.gen_range(1.2, 3.2),
                     alpha_phase: rng.gen_range(0.0, 6.28),
                     alpha_speed: rng.gen_range(1.0, 2.5),
@@ -337,7 +334,7 @@ fn paint_particles(ctx: &Context, rect: Rect, settings: &VfxSettings) {
                 let to_mouse = mpos - particle.pos;
                 let dist = to_mouse.length();
                 if dist < 120.0 && dist > 1.0 {
-                    let force = (1.0 - dist / 120.0) * 35.0; 
+                    let force = (1.0 - dist / 120.0) * 35.0;
                     let dir = to_mouse.normalized();
                     particle.pos -= dir * force * dt;
                 }
@@ -368,7 +365,12 @@ fn paint_particles(ctx: &Context, rect: Rect, settings: &VfxSettings) {
                     let pct = 1.0 - (dist / line_max_dist);
                     let alpha = (pct * pct * intensity * 15.0) as u8;
                     if alpha > 0 {
-                        let color = Color32::from_rgba_premultiplied(accent.r(), accent.g(), accent.b(), alpha);
+                        let color = Color32::from_rgba_premultiplied(
+                            accent.r(),
+                            accent.g(),
+                            accent.b(),
+                            alpha,
+                        );
                         painter.line_segment([p1.pos, p2.pos], egui::Stroke::new(0.5, color));
                     }
                 }
@@ -377,16 +379,23 @@ fn paint_particles(ctx: &Context, rect: Rect, settings: &VfxSettings) {
 
         // 2. Draw the floating particle stars themselves with organic pulsing halos
         for particle in particles.iter() {
-            let pulse = (particle.alpha_phase + current_time * particle.alpha_speed).sin() * 0.35 + 0.65;
+            let pulse =
+                (particle.alpha_phase + current_time * particle.alpha_speed).sin() * 0.35 + 0.65;
             let alpha = (pulse * intensity * 75.0) as u8;
             if alpha > 0 {
-                let color = Color32::from_rgba_premultiplied(accent.r(), accent.g(), accent.b(), alpha);
+                let color =
+                    Color32::from_rgba_premultiplied(accent.r(), accent.g(), accent.b(), alpha);
                 painter.circle_filled(particle.pos, particle.size, color);
 
                 // Halo glow ring for larger particle stars
                 if particle.size > 2.2 {
                     let halo_alpha = (alpha as f32 * 0.2) as u8;
-                    let halo_color = Color32::from_rgba_premultiplied(accent.r(), accent.g(), accent.b(), halo_alpha);
+                    let halo_color = Color32::from_rgba_premultiplied(
+                        accent.r(),
+                        accent.g(),
+                        accent.b(),
+                        halo_alpha,
+                    );
                     painter.circle_filled(particle.pos, particle.size * 2.5, halo_color);
                 }
             }

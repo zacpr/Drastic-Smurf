@@ -260,7 +260,8 @@ fn render_edit_form(
                     .size(11.0)
                     .color(Theme::text_muted()),
             );
-            let mut current_repos: Vec<String> = form.snapshot_repo
+            let mut current_repos: Vec<String> = form
+                .snapshot_repo
                 .split(',')
                 .map(|s| s.trim().to_string())
                 .filter(|s| !s.is_empty())

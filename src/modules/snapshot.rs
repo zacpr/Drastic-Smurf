@@ -5,8 +5,7 @@ use crate::core::config::ClusterConfig;
 use crate::core::es_client::{EsClient, SnapshotInfo};
 use crate::ui::theme::Theme;
 use crate::ui::widgets::{
-    ConnectionDot, GradientProgressBar, StatePill, human_bytes, human_duration,
-    human_speed,
+    ConnectionDot, GradientProgressBar, StatePill, human_bytes, human_duration, human_speed,
 };
 use egui::{CornerRadius, Vec2};
 
@@ -264,7 +263,8 @@ pub async fn fetch_cluster_snapshot(
     let mut resolved_repos = Vec::new();
     if !config.snapshot_repo.is_empty() {
         status.has_repositories = true;
-        resolved_repos = config.snapshot_repo
+        resolved_repos = config
+            .snapshot_repo
             .split(',')
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
@@ -313,7 +313,7 @@ pub async fn fetch_cluster_snapshot(
                     // Let's get detailed status (especially if in progress)
                     let is_active = info.state.to_uppercase() == "IN_PROGRESS"
                         || info.state.to_uppercase() == "STARTED";
-                    
+
                     if is_active {
                         match client.snapshot_status(repo, &info.snapshot).await {
                             Ok(detailed) if !detailed.snapshots.is_empty() => {
@@ -331,7 +331,8 @@ pub async fn fetch_cluster_snapshot(
                                         (processed_bytes as f64 / total_bytes as f64 * 100.0) as f32
                                     } else if let Some(shards) = &detail.shards_stats {
                                         if shards.total > 0 {
-                                            (shards.done as f64 / shards.total as f64 * 100.0) as f32
+                                            (shards.done as f64 / shards.total as f64 * 100.0)
+                                                as f32
                                         } else {
                                             0.0
                                         }
@@ -345,9 +346,9 @@ pub async fn fetch_cluster_snapshot(
                                         total_bytes,
                                         processed_files,
                                         total_files,
-                                        start_time: info
-                                            .start_time_in_millis
-                                            .and_then(|ms| chrono::DateTime::from_timestamp_millis(ms)),
+                                        start_time: info.start_time_in_millis.and_then(|ms| {
+                                            chrono::DateTime::from_timestamp_millis(ms)
+                                        }),
                                         has_byte_stats: stats.incremental.is_some()
                                             || stats.total_size_in_bytes > 0,
                                         processed_shards: detail
@@ -365,7 +366,8 @@ pub async fn fetch_cluster_snapshot(
 
                                     // Map additional required stats
                                     b_status.total_transferred_bytes = processed_bytes;
-                                    b_status.total_pending_bytes = total_bytes.saturating_sub(processed_bytes);
+                                    b_status.total_pending_bytes =
+                                        total_bytes.saturating_sub(processed_bytes);
                                 }
                             }
                             _ => {}
@@ -373,8 +375,9 @@ pub async fn fetch_cluster_snapshot(
                     } else {
                         // Completed snapshot: construct stats using metadata from _snapshot list
                         let total_shards = info.shards.as_ref().map(|s| s.total).unwrap_or(0);
-                        let successful_shards = info.shards.as_ref().map(|s| s.successful).unwrap_or(0);
-                        
+                        let successful_shards =
+                            info.shards.as_ref().map(|s| s.successful).unwrap_or(0);
+
                         // For completed backups, try to call status API to retrieve the exact size & file count!
                         let mut loaded_detail_stats = false;
                         match client.snapshot_status(repo, &info.snapshot).await {
@@ -387,22 +390,22 @@ pub async fn fetch_cluster_snapshot(
                                         .map(|i| i.size_in_bytes)
                                         .unwrap_or(stats.total_size_in_bytes);
                                     let processed_bytes = stats.processed_size_in_bytes;
-                                    
+
                                     b_status.snapshot_stats = Some(SnapshotStats {
                                         progress_pct: 100.0,
                                         processed_bytes,
                                         total_bytes,
                                         processed_files: stats.processed_files,
                                         total_files: stats.number_of_files,
-                                        start_time: info
-                                            .start_time_in_millis
-                                            .and_then(|ms| chrono::DateTime::from_timestamp_millis(ms)),
+                                        start_time: info.start_time_in_millis.and_then(|ms| {
+                                            chrono::DateTime::from_timestamp_millis(ms)
+                                        }),
                                         has_byte_stats: true,
                                         processed_shards: successful_shards,
                                         total_shards,
                                         ..Default::default()
                                     });
-                                    
+
                                     b_status.total_transferred_bytes = processed_bytes;
                                     b_status.total_pending_bytes = 0;
                                     loaded_detail_stats = true;
@@ -410,7 +413,7 @@ pub async fn fetch_cluster_snapshot(
                             }
                             _ => {}
                         }
-                        
+
                         if !loaded_detail_stats {
                             b_status.snapshot_stats = Some(SnapshotStats {
                                 progress_pct: 100.0,
@@ -428,7 +431,8 @@ pub async fn fetch_cluster_snapshot(
                     // Compute overall rates
                     if let Some(ref stats) = b_status.snapshot_stats {
                         if stats.processed_bytes > 0 {
-                            let duration_secs = info.duration_in_millis.unwrap_or(0) as f64 / 1000.0;
+                            let duration_secs =
+                                info.duration_in_millis.unwrap_or(0) as f64 / 1000.0;
                             if duration_secs > 0.0 {
                                 let avg_rate = stats.processed_bytes as f64 / duration_secs;
                                 b_status.avg_network_rate_bytes = avg_rate;
@@ -525,10 +529,7 @@ pub fn render_snapshot_module(
             render_items.push(RenderItem::NoBackups(status));
         } else {
             for b in &status.backups {
-                render_items.push(RenderItem::Backup {
-                    status,
-                    backup: b,
-                });
+                render_items.push(RenderItem::Backup { status, backup: b });
             }
         }
     }
@@ -536,7 +537,9 @@ pub fn render_snapshot_module(
     let min_card_width = 420.0;
     let card_spacing = 16.0;
     let available_width = ui.available_width();
-    let cols = ((available_width + card_spacing) / (min_card_width + card_spacing)).floor().max(1.0) as usize;
+    let cols = ((available_width + card_spacing) / (min_card_width + card_spacing))
+        .floor()
+        .max(1.0) as usize;
     let col_width = (available_width - (cols - 1) as f32 * card_spacing) / cols as f32;
 
     egui::ScrollArea::vertical()
@@ -616,30 +619,35 @@ fn render_item_card(
             RenderItem::NoBackups(s) => (s, true, None),
             RenderItem::Backup { status: s, .. } => (s, true, None),
         };
-        
+
         // 1. Draw subtle background graph for backups!
-        if let RenderItem::Backup { status: s, backup: b } = item {
+        if let RenderItem::Backup {
+            status: s,
+            backup: b,
+        } = item
+        {
             let rect = ui.max_rect();
             let painter = ui.painter();
-            
+
             let mut speeds = Vec::new();
             if b.snapshot_info.state.to_uppercase() == "IN_PROGRESS" {
                 if let Some(history) = histories.get(&s.config.name) {
                     speeds = history.speed_history();
                 }
             }
-            
+
             let mut points = Vec::new();
             let steps = 40;
             let width = rect.width();
             let height = rect.height();
-            
+
             for i in 0..=steps {
                 let progress = i as f32 / steps as f32;
                 let x = rect.min.x + progress * width;
-                
+
                 let val = if !speeds.is_empty() {
-                    let idx = ((progress * (speeds.len() - 1) as f32) as usize).min(speeds.len() - 1);
+                    let idx =
+                        ((progress * (speeds.len() - 1) as f32) as usize).min(speeds.len() - 1);
                     let max_speed = speeds.iter().cloned().fold(0.0, f64::max).max(1.0);
                     (speeds[idx] / max_speed) as f32
                 } else {
@@ -648,16 +656,16 @@ fn render_item_card(
                     let noise = ((progress * 12.0).cos() * 0.1) + ((progress * 24.0).sin() * 0.04);
                     (base + noise).clamp(0.0, 1.0)
                 };
-                
+
                 // Scale to bottom 30% of the card
                 let y = rect.max.y - val * (height * 0.30);
                 points.push(egui::Pos2::new(x, y));
             }
-            
+
             // Close the polygon
             points.push(egui::Pos2::new(rect.max.x, rect.max.y));
             points.push(egui::Pos2::new(rect.min.x, rect.max.y));
-            
+
             // Draw gradient convex polygon
             painter.add(egui::Shape::convex_polygon(
                 points,
@@ -788,7 +796,7 @@ fn render_item_card(
                             .size(10.5)
                             .color(Theme::text_muted()),
                     );
-                    
+
                     // Prevent Repository name from stretching column width
                     let max_repo_width = col_width - Theme::CARD_PADDING.x * 2.0 - 180.0;
                     ui.allocate_ui(egui::Vec2::new(max_repo_width, 18.0), |ui| {
@@ -797,12 +805,12 @@ fn render_item_card(
                                 egui::RichText::new(&b.repository)
                                     .size(10.5)
                                     .color(Theme::accent())
-                                    .strong()
+                                    .strong(),
                             )
-                            .truncate()
+                            .truncate(),
                         );
                     });
-                    
+
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         let (badge_text, badge_color) = if b.is_current {
                             ("CURRENT BACKUP", Theme::snapshot_success())
@@ -817,13 +825,9 @@ fn render_item_card(
                 // State Badge, snapshot name & Copy icon
                 ui.horizontal(|ui| {
                     ui.add(StatePill::new(state.as_str(), state.color()));
-                    
+
                     // Replace 'Copy' text with a sleek clipboard icon button
-                    let copy_btn = ui.add(
-                        egui::Button::new("📋")
-                            .frame(false)
-                            .small()
-                    );
+                    let copy_btn = ui.add(egui::Button::new("📋").frame(false).small());
                     if copy_btn.clicked() {
                         ui.ctx().copy_text(b.snapshot_info.snapshot.clone());
                     }
@@ -838,9 +842,9 @@ fn render_item_card(
                                     .monospace()
                                     .size(11.5)
                                     .strong()
-                                    .color(Theme::text_secondary())
+                                    .color(Theme::text_secondary()),
                             )
-                            .truncate()
+                            .truncate(),
                         );
                     });
                 });
@@ -878,10 +882,7 @@ fn render_item_card(
                     let mut row_items: Vec<(&str, String)> = Vec::new();
 
                     if stats.has_byte_stats || b.total_transferred_bytes > 0 {
-                        row_items.push((
-                            "Transferred",
-                            human_bytes(b.total_transferred_bytes),
-                        ));
+                        row_items.push(("Transferred", human_bytes(b.total_transferred_bytes)));
                         row_items.push((
                             "Pending",
                             if b.total_pending_bytes > 0 {
@@ -892,14 +893,8 @@ fn render_item_card(
                         ));
                     }
 
-                    row_items.push((
-                        "Avg Speed",
-                        format_mb_s(b.avg_network_rate_bytes),
-                    ));
-                    row_items.push((
-                        "Peak Speed",
-                        format_mb_s(b.peak_network_rate_bytes),
-                    ));
+                    row_items.push(("Avg Speed", format_mb_s(b.avg_network_rate_bytes)));
+                    row_items.push(("Peak Speed", format_mb_s(b.peak_network_rate_bytes)));
 
                     if stats.total_shards > 0 {
                         let shards_val = if let Some(ref shards) = b.snapshot_info.shards {
