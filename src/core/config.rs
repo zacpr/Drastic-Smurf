@@ -335,4 +335,54 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn test_app_config_roundtrip() {
+        let mut config = AppConfig::default();
+        config.clusters.push(ClusterConfig {
+            name: "test-cluster".to_string(),
+            host: "http://localhost:9200".to_string(),
+            username: "admin".to_string(),
+            snapshot_repo: "backup-repo".to_string(),
+            slm_policy: "daily-snapshots".to_string(),
+            kibana_host: "http://localhost:5601".to_string(),
+            haproxy_host: "http://localhost:8080".to_string(),
+            custom_links: vec![("ES Dashboard".to_string(), "http://kibana/dash".to_string())],
+            ca_cert_pem: "PEM DATA".to_string(),
+            verify_ssl: false,
+            ca_cert: CaCert::System,
+            ssh_tunnel: true,
+            ssh_host: "10.0.0.1".to_string(),
+            ssh_user: "ssh-user".to_string(),
+            ssh_port: 2222,
+        });
+        config.cluster_filter = "test".to_string();
+        config.wizard_completed = true;
+
+        let serialized = serde_json::to_string(&config).unwrap();
+        let deserialized: AppConfig = serde_json::from_str(&serialized).unwrap();
+
+        assert_eq!(deserialized.clusters.len(), 1);
+        let cluster = &deserialized.clusters[0];
+        assert_eq!(cluster.name, "test-cluster");
+        assert_eq!(cluster.host, "http://localhost:9200");
+        assert_eq!(cluster.username, "admin");
+        assert_eq!(cluster.snapshot_repo, "backup-repo");
+        assert_eq!(cluster.slm_policy, "daily-snapshots");
+        assert_eq!(cluster.kibana_host, "http://localhost:5601");
+        assert_eq!(cluster.haproxy_host, "http://localhost:8080");
+        assert_eq!(
+            cluster.custom_links,
+            vec![("ES Dashboard".to_string(), "http://kibana/dash".to_string())]
+        );
+        assert_eq!(cluster.ca_cert_pem, "PEM DATA");
+        assert_eq!(cluster.verify_ssl, false);
+        assert_eq!(cluster.ca_cert, CaCert::System);
+        assert_eq!(cluster.ssh_tunnel, true);
+        assert_eq!(cluster.ssh_host, "10.0.0.1");
+        assert_eq!(cluster.ssh_user, "ssh-user");
+        assert_eq!(cluster.ssh_port, 2222);
+        assert_eq!(deserialized.cluster_filter, "test");
+        assert_eq!(deserialized.wizard_completed, true);
+    }
 }
