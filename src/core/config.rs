@@ -70,17 +70,12 @@ fn default_parallax() -> f32 {
     0.0
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, Default)]
 pub enum CaCert {
+    #[default]
     System,
     Bundled,
     Custom(PathBuf),
-}
-
-impl Default for CaCert {
-    fn default() -> Self {
-        CaCert::System
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

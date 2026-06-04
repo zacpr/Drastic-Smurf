@@ -39,7 +39,7 @@ pub enum Tab {
 }
 
 pub enum RefreshMsg {
-    SnapshotResult(String, ClusterSnapshotStatus),
+    SnapshotResult(String, Box<ClusterSnapshotStatus>),
     HealthResult(String, Option<ClusterHealth>),
     HealthError(String, String),
     StatsResult(String, Option<crate::core::es_client::ClusterStats>),
@@ -299,7 +299,7 @@ impl DrasticSmurfApp {
                         let config = manager2.clusters().into_iter().find(|c| c.name == name2);
                         if let Some(config) = config {
                             let status = fetch_cluster_snapshot(&client, &config).await;
-                            let _ = tx2.send(RefreshMsg::SnapshotResult(name2, status));
+                            let _ = tx2.send(RefreshMsg::SnapshotResult(name2, Box::new(status)));
                         }
                     }
                     ctx2.request_repaint();
@@ -455,6 +455,7 @@ impl DrasticSmurfApp {
         while let Ok(msg) = self.refresh_rx.try_recv() {
             match msg {
                 RefreshMsg::SnapshotResult(name, status) => {
+                    let status = *status;
                     let status_for_cache = status.clone();
                     // Rebuild client on auth failure
                     if status

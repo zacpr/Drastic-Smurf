@@ -346,9 +346,9 @@ pub async fn fetch_cluster_snapshot(
                                         total_bytes,
                                         processed_files,
                                         total_files,
-                                        start_time: info.start_time_in_millis.and_then(|ms| {
-                                            chrono::DateTime::from_timestamp_millis(ms)
-                                        }),
+                                        start_time: info
+                                            .start_time_in_millis
+                                            .and_then(chrono::DateTime::from_timestamp_millis),
                                         has_byte_stats: stats.incremental.is_some()
                                             || stats.total_size_in_bytes > 0,
                                         processed_shards: detail
@@ -397,9 +397,9 @@ pub async fn fetch_cluster_snapshot(
                                         total_bytes,
                                         processed_files: stats.processed_files,
                                         total_files: stats.number_of_files,
-                                        start_time: info.start_time_in_millis.and_then(|ms| {
-                                            chrono::DateTime::from_timestamp_millis(ms)
-                                        }),
+                                        start_time: info
+                                            .start_time_in_millis
+                                            .and_then(chrono::DateTime::from_timestamp_millis),
                                         has_byte_stats: true,
                                         processed_shards: successful_shards,
                                         total_shards,
@@ -419,7 +419,7 @@ pub async fn fetch_cluster_snapshot(
                                 progress_pct: 100.0,
                                 start_time: info
                                     .start_time_in_millis
-                                    .and_then(|ms| chrono::DateTime::from_timestamp_millis(ms)),
+                                    .and_then(chrono::DateTime::from_timestamp_millis),
                                 has_byte_stats: false,
                                 processed_shards: successful_shards,
                                 total_shards,

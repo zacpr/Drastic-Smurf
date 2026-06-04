@@ -250,8 +250,8 @@ struct Particle {
 }
 
 std::thread_local! {
-    static PARTICLES: std::cell::RefCell<Vec<Particle>> = std::cell::RefCell::new(Vec::new());
-    static LAST_TIME: std::cell::RefCell<Option<f32>> = std::cell::RefCell::new(None);
+    static PARTICLES: std::cell::RefCell<Vec<Particle>> = const { std::cell::RefCell::new(Vec::new()) };
+    static LAST_TIME: std::cell::RefCell<Option<f32>> = const { std::cell::RefCell::new(None) };
 }
 
 fn paint_particles(ctx: &Context, rect: Rect, settings: &VfxSettings) {
@@ -299,7 +299,7 @@ fn paint_particles(ctx: &Context, rect: Rect, settings: &VfxSettings) {
                     ),
                     vel: Vec2::new(rng.gen_range(-12.0, 12.0), rng.gen_range(-12.0, 12.0)),
                     size: rng.gen_range(1.2, 3.2),
-                    alpha_phase: rng.gen_range(0.0, 6.28),
+                    alpha_phase: rng.gen_range(0.0, std::f32::consts::TAU),
                     alpha_speed: rng.gen_range(1.0, 2.5),
                 });
             }

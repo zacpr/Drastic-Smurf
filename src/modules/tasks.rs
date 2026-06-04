@@ -447,7 +447,7 @@ mod tests {
             headers: None,
         };
 
-        let tasks = vec![
+        let tasks = [
             ("cluster_a".to_string(), task_indices),
             ("cluster_a".to_string(), task_cluster),
         ];

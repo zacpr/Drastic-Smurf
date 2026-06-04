@@ -570,7 +570,7 @@ fn run_simulation(state: &mut PipelineState) {
         if !step.changed_paths.is_empty() {
             output.push_str(&format!("  Changes: {}\n", step.changed_paths.join(", ")));
         }
-        output.push_str("\n");
+        output.push('\n');
     }
 
     output.push_str("===================================\n\n");

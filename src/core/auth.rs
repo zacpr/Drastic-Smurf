@@ -85,11 +85,11 @@ pub fn get_password(cluster_name: &str) -> Result<Option<String>> {
             );
             let guard = memory_store();
             let result = guard.as_ref().and_then(|m| m.get(cluster_name).cloned());
-            if result.is_some() {
+            if let Some(ref pw) = result {
                 tracing::info!(
                     "get_password for '{}': found in memory fallback ({} chars)",
                     cluster_name,
-                    result.as_ref().unwrap().len()
+                    pw.len()
                 );
             } else {
                 tracing::warn!("get_password for '{}': NOT FOUND anywhere", cluster_name);
