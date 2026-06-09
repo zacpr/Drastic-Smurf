@@ -367,6 +367,14 @@ impl EsClient {
         self.exec(req, &method, &url).await
     }
 
+    pub async fn cat_nodes(&self) -> Result<Vec<CatNode>, EsError> {
+        let (req, method, url) = self.request(
+            reqwest::Method::GET,
+            "/_cat/nodes?format=json&h=ip,name,role,cpu,ram.percent,heap.percent,master",
+        );
+        self.exec(req, &method, &url).await
+    }
+
     pub async fn get_es_version(&self) -> Result<String, EsError> {
         let res: serde_json::Value = self.execute(reqwest::Method::GET, "/", None).await?;
         if let Some(v) = res
@@ -746,6 +754,19 @@ pub struct CatAllocation {
     #[serde(rename = "disk.total")]
     pub disk_total: Option<String>,
     pub node: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, Default)]
+pub struct CatNode {
+    pub ip: Option<String>,
+    pub name: Option<String>,
+    pub role: Option<String>,
+    pub cpu: Option<String>,
+    #[serde(rename = "ram.percent")]
+    pub ram_percent: Option<String>,
+    #[serde(rename = "heap.percent")]
+    pub heap_percent: Option<String>,
+    pub master: Option<String>,
 }
 
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]

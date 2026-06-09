@@ -20,6 +20,7 @@
 |--------|--------|-------------|
 | **Snapshot Monitoring** | ✅ Functional | Cards with progress bars, speed/ETA, sparklines, SLM policy info. Modeled after `es-snap-mon`. Responsive 1→2 column layout. |
 | **Cluster Status** | ✅ Functional | Health dashboard with nodes, shards, indices, docs, store size, JVM heap. Responsive 1→2 column layout. |
+| **Dashboard** | ✅ Functional | Multi-tab cluster dashboard with Overview grid and detailed Single Cluster observability (nodes list, shard allocation details, JVM heap, index statistics). |
 | **Task Monitoring** | ✅ Functional | Filterable task grid (cluster, action, description, running time, cancellable) with dynamic category dropdown filtering. |
 | **Clusters** | ✅ Functional | Centralized cluster management: list, add/edit, test connection, import/export. |
 | **Elastic Console** | ✅ Enhanced | Category-based Elasticsearch & Kibana presets (40+ items), official documentation links, automatic connection target host toggles (ES vs Kibana), custom variables with interpolation, command history cycling, saved queries, JSON body prettification, and live validation error reporting. |
@@ -46,6 +47,8 @@ src/
 ├── modules/
 │   ├── clusters.rs     # Clusters management tab
 │   ├── console.rs      # Elastic Console tab
+│   ├── dashboard.rs    # Cluster Dashboard tab (Overview & Detail views)
+│   ├── discover.rs     # Discover tab
 │   ├── indices.rs      # Datastreams & Indices explorer tab
 │   ├── observability.rs # Kibana Synthetics Monitors tab
 │   ├── snapshot.rs     # Snapshot Monitoring tab
@@ -145,7 +148,7 @@ $ cargo generate-rpm
 ## Next Steps / Known Gaps
 
 1. **Tests** — Add unit tests for snapshot stat calculations and config roundtrips. (Completed: `human_duration`, `human_nanos`, `human_bytes`, and `human_docs` formatting helpers are now fully tested!)
-2. **Status module depth** — Currently shows a flat card list. The plan calls for an overview of all clusters, selected subset view, and detailed single-cluster view.
+2. **Status module depth** — (Completed: Added a brand new tabbed Dashboard module containing high-level cluster grids and detailed single-cluster views with node list, shards distribution table, index stats, and JVM heap charts!)
 3. **Task type filtering** — (Completed: Task-type dropdown filtering is fully implemented, allowing users to select and filter by action namespaces like indices, cluster, or transport!)
 4. **Console enhancements** — No JSON syntax highlighting or response folding. (Completed: Prettify/Format JSON button with live parser validation error reporting is now fully functional!)
 5. **Passphrase-encrypted export** — Export is currently plaintext JSON without passwords. Encrypted export could be added later.

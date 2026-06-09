@@ -1,6 +1,7 @@
 pub mod appearance;
 pub mod clusters;
 pub mod console;
+pub mod dashboard;
 pub mod discover;
 pub mod indices;
 pub mod observability;

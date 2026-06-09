@@ -13,6 +13,7 @@ pub struct StatusState {
     pub es_versions: std::collections::HashMap<String, String>,
     pub kibana_versions: std::collections::HashMap<String, String>,
     pub allocations: std::collections::HashMap<String, Vec<crate::core::es_client::CatAllocation>>,
+    pub nodes: std::collections::HashMap<String, Vec<crate::core::es_client::CatNode>>,
     pub pending_tasks: std::collections::HashMap<String, Vec<serde_json::Value>>,
     pub errors: std::collections::HashMap<String, String>,
 }

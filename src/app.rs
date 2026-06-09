@@ -11,6 +11,7 @@ use crate::core::es_client::{ClusterHealth, EsClient};
 use crate::modules::appearance::{AppearanceState, render_appearance_module};
 use crate::modules::clusters::{ClustersState, render_clusters_module};
 use crate::modules::console::{ConsoleState, render_console_module};
+use crate::modules::dashboard::{DashboardState, render_dashboard_module};
 use crate::modules::discover::{DiscoverState, render_discover_module};
 use crate::modules::indices::{IndicesState, render_indices_module};
 use crate::modules::observability::{ObservabilityState, render_observability_module};
@@ -29,6 +30,7 @@ pub enum Tab {
     Clusters,
     Snapshot,
     Status,
+    Dashboard,
     Tasks,
     Console,
     Discover,
@@ -69,6 +71,7 @@ pub enum RefreshMsg {
     HotThreadsResult(String, String, Result<String, String>),
     PendingTasksResult(String, Vec<serde_json::Value>),
     IndexDetailResult(String, Result<crate::modules::indices::IndexDetail, String>),
+    NodesResult(String, Vec<crate::core::es_client::CatNode>),
 }
 
 pub struct DrasticSmurfApp {
@@ -77,6 +80,7 @@ pub struct DrasticSmurfApp {
     pub snapshot_statuses: Vec<ClusterSnapshotStatus>,
     pub snapshot_histories: HashMap<String, SnapshotHistory>,
     pub status_state: StatusState,
+    pub dashboard_state: DashboardState,
     pub tasks_state: TasksState,
     pub console_state: ConsoleState,
     pub discover_state: DiscoverState,
@@ -168,6 +172,7 @@ impl DrasticSmurfApp {
             snapshot_statuses: Vec::new(),
             snapshot_histories: HashMap::new(),
             status_state: StatusState::default(),
+            dashboard_state: DashboardState::default(),
             tasks_state: TasksState::default(),
             console_state,
             discover_state: DiscoverState::default(),
@@ -403,6 +408,20 @@ impl DrasticSmurfApp {
                         }
                     }
                     ctx_alloc.request_repaint();
+                });
+
+                // Nodes list refresh
+                let tx_nodes = tx.clone();
+                let name_nodes = name.clone();
+                let ctx_nodes = ctx.clone();
+                let manager_nodes = manager.clone();
+                tokio::spawn(async move {
+                    if let Some(client) = manager_nodes.get_client(&name_nodes) {
+                        if let Ok(nodes) = client.cat_nodes().await {
+                            let _ = tx_nodes.send(RefreshMsg::NodesResult(name_nodes, nodes));
+                        }
+                    }
+                    ctx_nodes.request_repaint();
                 });
 
                 // Pending tasks refresh
@@ -727,6 +746,9 @@ impl DrasticSmurfApp {
                 RefreshMsg::AllocationResult(name, allocations) => {
                     self.status_state.allocations.insert(name, allocations);
                 }
+                RefreshMsg::NodesResult(name, nodes) => {
+                    self.status_state.nodes.insert(name, nodes);
+                }
                 RefreshMsg::PendingTasksResult(name, tasks) => {
                     self.status_state.pending_tasks.insert(name, tasks);
                 }
@@ -871,6 +893,11 @@ impl DrasticSmurfApp {
         if !allowed.contains(&self.observability_state.selected_cluster) {
             self.observability_state.selected_cluster =
                 allowed.first().cloned().unwrap_or_default();
+        }
+
+        // 4b. Dashboard
+        if !allowed.contains(&self.dashboard_state.selected_cluster) {
+            self.dashboard_state.selected_cluster = allowed.first().cloned().unwrap_or_default();
         }
 
         // 5. Clusters selection & edit forms
@@ -1338,6 +1365,7 @@ impl DrasticSmurfApp {
                         ("Clusters", Tab::Clusters),
                         ("Snapshot", Tab::Snapshot),
                         ("Status", Tab::Status),
+                        ("Dashboard", Tab::Dashboard),
                         ("Tasks", Tab::Tasks),
                         ("Console", Tab::Console),
                         ("Discover", Tab::Discover),
@@ -1713,6 +1741,13 @@ impl DrasticSmurfApp {
                         .filter(|(n, _)| self.cluster_matches_filter(n))
                         .map(|(n, t)| (n.clone(), t.clone()))
                         .collect(),
+                    nodes: self
+                        .status_state
+                        .nodes
+                        .iter()
+                        .filter(|(n, _)| self.cluster_matches_filter(n))
+                        .map(|(n, nodes_vec)| (n.clone(), nodes_vec.clone()))
+                        .collect(),
                 };
                 let mut on_hot_threads = None;
                 let mut on_show_pending = None;
@@ -1765,6 +1800,86 @@ impl DrasticSmurfApp {
                 if let Some(cluster_name) = on_show_pending {
                     self.show_pending_cluster = Some(cluster_name);
                 }
+            }
+            Tab::Dashboard => {
+                let clusters: Vec<_> = self
+                    .cluster_manager
+                    .clusters()
+                    .into_iter()
+                    .filter(|c| self.cluster_matches_filter(&c.name))
+                    .collect();
+                let filtered_state = StatusState {
+                    health_data: self
+                        .status_state
+                        .health_data
+                        .iter()
+                        .filter(|(n, _)| self.cluster_matches_filter(n))
+                        .cloned()
+                        .collect(),
+                    stats_data: self
+                        .status_state
+                        .stats_data
+                        .iter()
+                        .filter(|(n, _)| self.cluster_matches_filter(n))
+                        .cloned()
+                        .collect(),
+                    errors: self
+                        .status_state
+                        .errors
+                        .iter()
+                        .filter(|(n, _)| self.cluster_matches_filter(n))
+                        .map(|(n, e)| (n.clone(), e.clone()))
+                        .collect(),
+                    explains: self
+                        .status_state
+                        .explains
+                        .iter()
+                        .filter(|(n, _)| self.cluster_matches_filter(n))
+                        .map(|(n, e)| (n.clone(), e.clone()))
+                        .collect(),
+                    es_versions: self
+                        .status_state
+                        .es_versions
+                        .iter()
+                        .filter(|(n, _)| self.cluster_matches_filter(n))
+                        .map(|(n, v)| (n.clone(), v.clone()))
+                        .collect(),
+                    kibana_versions: self
+                        .status_state
+                        .kibana_versions
+                        .iter()
+                        .filter(|(n, _)| self.cluster_matches_filter(n))
+                        .map(|(n, v)| (n.clone(), v.clone()))
+                        .collect(),
+                    allocations: self
+                        .status_state
+                        .allocations
+                        .iter()
+                        .filter(|(n, _)| self.cluster_matches_filter(n))
+                        .map(|(n, a)| (n.clone(), a.clone()))
+                        .collect(),
+                    nodes: self
+                        .status_state
+                        .nodes
+                        .iter()
+                        .filter(|(n, _)| self.cluster_matches_filter(n))
+                        .map(|(n, nodes_vec)| (n.clone(), nodes_vec.clone()))
+                        .collect(),
+                    pending_tasks: self
+                        .status_state
+                        .pending_tasks
+                        .iter()
+                        .filter(|(n, _)| self.cluster_matches_filter(n))
+                        .map(|(n, t)| (n.clone(), t.clone()))
+                        .collect(),
+                };
+                render_dashboard_module(
+                    ui,
+                    &clusters,
+                    &mut self.dashboard_state,
+                    &filtered_state,
+                    self.vfx.hover_effects && !self.vfx.reduce_motion,
+                );
             }
             Tab::Tasks => {
                 let mut filtered_tasks_state = TasksState {
