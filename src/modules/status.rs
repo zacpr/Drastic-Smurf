@@ -347,15 +347,8 @@ if count.voting_only > 0 {
                 // --- RIGHT COLUMN: ORANGE HYPERLINKS ---
                 ui.allocate_ui(egui::Vec2::new(right_w, ui.available_height()), |ui| {
                     ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
-                        let truncate_url = |url: &str| -> String {
-                            let clean = url.trim_start_matches("http://").trim_start_matches("https://");
-                            if clean.chars().count() > 28 {
-                                let mut truncated: String = clean.chars().take(25).collect();
-                                truncated.push_str("...");
-                                truncated
-                            } else {
-                                clean.to_string()
-                            }
+                        let clean_url = |url: &str| -> String {
+                            url.trim_start_matches("http://").trim_start_matches("https://").to_string()
                         };
 
                         // Elastic link
@@ -367,7 +360,7 @@ if count.voting_only > 0 {
                         };
                         let es_btn = ui.add(
                             egui::Link::new(
-                                egui::RichText::new(truncate_url(&es_url))
+                                egui::RichText::new(clean_url(&es_url))
                                     .size(11.0)
                                     .color(Theme::accent()),
                             )
@@ -394,7 +387,7 @@ if count.voting_only > 0 {
                         };
                         let kb_btn = ui.add(
                             egui::Link::new(
-                                egui::RichText::new(truncate_url(&kb_url))
+                                egui::RichText::new(clean_url(&kb_url))
                                     .size(11.0)
                                     .color(Theme::accent()),
                             )
@@ -414,7 +407,7 @@ if count.voting_only > 0 {
                             };
                             let ha_btn = ui.add(
                                 egui::Link::new(
-                                    egui::RichText::new(truncate_url(&ha_url))
+                                    egui::RichText::new(clean_url(&ha_url))
                                         .size(11.0)
                                         .color(Theme::accent()),
                                 )
@@ -435,7 +428,7 @@ if count.voting_only > 0 {
                                 };
                                 let cust_btn = ui.add(
                                     egui::Link::new(
-                                        egui::RichText::new(truncate_url(&url))
+                                        egui::RichText::new(clean_url(&url))
                                             .size(11.0)
                                             .color(Theme::accent()),
                                     )

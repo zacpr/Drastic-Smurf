@@ -1,6 +1,6 @@
 [package]
 name = "drastic-smurf"
-version = "0.5.3"
+version = "0.5.4"
 edition = "2024"
 authors = ["Zac <zac@example.com>"]
 description = "Extensible desktop GUI for monitoring and interacting with multiple Elasticsearch clusters"
@@ -24,6 +24,7 @@ thiserror = "2.0"
 poll-promise = { version = "0.3", features = ["tokio"] }
 tracing = "0.1"
 tracing-subscriber = "0.3"
+webbrowser = "1.2.1"
 [target.'cfg(target_os = "linux")'.dependencies]
 keyring = { version = "3.6", features = ["sync-secret-service"] }
 eframe = { version = "0.31", features = ["default"] }

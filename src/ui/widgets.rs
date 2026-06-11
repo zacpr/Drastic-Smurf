@@ -841,8 +841,10 @@ pub fn json_highlight(_ui: &Ui, text: &str) -> egui::text::LayoutJob {
     job
 }
 
-pub fn open_link(ctx: &egui::Context, url: &str) {
-    ctx.open_url(egui::OpenUrl::new_tab(url));
+pub fn open_link(_ctx: &egui::Context, url: &str) {
+    if let Err(e) = webbrowser::open(url) {
+        tracing::error!("Failed to open link '{}': {}", url, e);
+    }
 }
 
 #[cfg(test)]
