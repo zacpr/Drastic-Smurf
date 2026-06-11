@@ -150,6 +150,8 @@ jobs:
           cargo install cargo-deb cargo-generate-rpm
           cargo deb
           cargo generate-rpm
+          cp target/debian/*.deb . || true
+          cp target/generate-rpm/*.rpm . || true
       - id: cargo-dist
         name: Post-build
         # We force bash here just because github makes it really hard to get values up
@@ -170,8 +172,8 @@ jobs:
           path: |
             ${{ steps.cargo-dist.outputs.paths }}
             ${{ env.BUILD_MANIFEST_NAME }}
-            target/debian/*.deb
-            target/generate-rpm/*.rpm
+            *.deb
+            *.rpm
 
   # Build and package all the platform-agnostic(ish) things
   build-global-artifacts:
