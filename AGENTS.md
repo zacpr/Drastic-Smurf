@@ -133,15 +133,14 @@ $ cargo generate-rpm
 | Workflow | Trigger | What it does |
 |----------|---------|--------------|
 | `ci.yml` | Push/PR to `main`/`master` | `cargo check`, `cargo test`, `cargo fmt --check`, `cargo clippy` |
-| `release.yml` | Tag push (`v*.*.*`) | cargo-dist builds archives + MSI + shell/PowerShell installers, creates GitHub Release |
-| `packages.yml` | Release published | Builds `.deb` (cargo-deb) and `.rpm` (cargo-generate-rpm), uploads to release |
+| `release.yml` | Tag push (`v*.*.*`) | cargo-dist builds archives + MSI installers + DEB/RPM packages + shell/PowerShell installers, and creates the GitHub Release |
 
 ### Releasing
 
 1. Bump version in `Cargo.toml` (and `Cargo.lock` via `cargo check`)
 2. Commit and tag: `git tag v0.x.y`
 3. Push tag: `git push origin v0.x.y`
-4. cargo-dist creates the release automatically; `packages.yml` appends `.deb` and `.rpm`
+4. cargo-dist creates the release automatically with all built packages.
 
 ---
 

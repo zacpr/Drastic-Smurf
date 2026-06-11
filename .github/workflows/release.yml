@@ -144,6 +144,12 @@ jobs:
           # Actually do builds and make zips and whatnot
           dist build ${{ needs.plan.outputs.tag-flag }} --print=linkage --output-format=json ${{ matrix.dist_args }} > dist-manifest.json
           echo "dist ran successfully"
+      - name: Build DEB and RPM
+        if: matrix.runner == 'ubuntu-22.04'
+        run: |
+          cargo install cargo-deb cargo-generate-rpm
+          cargo deb
+          cargo generate-rpm
       - id: cargo-dist
         name: Post-build
         # We force bash here just because github makes it really hard to get values up
@@ -164,6 +170,8 @@ jobs:
           path: |
             ${{ steps.cargo-dist.outputs.paths }}
             ${{ env.BUILD_MANIFEST_NAME }}
+            target/debian/*.deb
+            target/generate-rpm/*.rpm
 
   # Build and package all the platform-agnostic(ish) things
   build-global-artifacts:
