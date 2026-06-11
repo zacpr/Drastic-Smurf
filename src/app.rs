@@ -668,12 +668,12 @@ impl DrasticSmurfApp {
                         Err(e) => format!("Error: {}", e),
                     };
                     self.console_state.full_response = Some(text.clone());
-                    
+
                     if text.len() > 100_000 {
                         text.truncate(100_000);
                         text.push_str("\n\n... [Response truncated for performance. Use 'Copy JSON' to get the full payload] ...");
                     }
-                    
+
                     self.console_state.response = text;
                     self.console_state.is_loading = false;
                 }
