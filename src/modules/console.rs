@@ -19,6 +19,7 @@ pub struct ConsoleState {
     pub path: String,
     pub body: String,
     pub response: String,
+    pub full_response: Option<String>,
     pub history: Vec<(String, String, String, String)>,
     pub history_index: Option<usize>,
     pub is_loading: bool,
@@ -1249,10 +1250,12 @@ pub fn render_console_module(
                     ui.horizontal(|ui| {
                         ui.label("Response:");
                         if ui.small_button("📋 Copy JSON").clicked() {
-                            ui.ctx().copy_text(state.response.clone());
+                            let text_to_copy = state.full_response.as_ref().unwrap_or(&state.response).clone();
+                            ui.ctx().copy_text(text_to_copy);
                         }
                         if ui.small_button("Clear").clicked() {
                             state.response.clear();
+                            state.full_response = None;
                         }
                     });
 

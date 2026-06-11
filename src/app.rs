@@ -657,7 +657,7 @@ impl DrasticSmurfApp {
                     self.tasks_state.errors.insert(name, err);
                 }
                 RefreshMsg::ConsoleResult(result) => {
-                    self.console_state.response = match result {
+                    let mut text = match result {
                         Ok(val) => {
                             if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&val) {
                                 serde_json::to_string_pretty(&parsed).unwrap_or(val)
@@ -667,6 +667,14 @@ impl DrasticSmurfApp {
                         }
                         Err(e) => format!("Error: {}", e),
                     };
+                    self.console_state.full_response = Some(text.clone());
+                    
+                    if text.len() > 100_000 {
+                        text.truncate(100_000);
+                        text.push_str("\n\n... [Response truncated for performance. Use 'Copy JSON' to get the full payload] ...");
+                    }
+                    
+                    self.console_state.response = text;
                     self.console_state.is_loading = false;
                 }
                 RefreshMsg::DiscoverResult(result) => {

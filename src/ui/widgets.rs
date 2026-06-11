@@ -524,6 +524,20 @@ pub fn json_highlight(_ui: &Ui, text: &str) -> egui::text::LayoutJob {
     // Check if the output is JSON
     let is_json = trimmed.starts_with('{') || trimmed.starts_with('[');
 
+    if text.len() > 100_000 {
+        // Skip syntax highlighting for very large text to prevent UI freezing
+        job.append(
+            text,
+            0.0,
+            egui::TextFormat {
+                font_id: egui::FontId::monospace(11.0),
+                color: Theme::text_primary(),
+                ..Default::default()
+            },
+        );
+        return job;
+    }
+
     if is_json {
         // --- JSON MODE ---
         let key_color = Color32::from_rgb(125, 211, 252); // Cyan/Blue (Sky 300)
