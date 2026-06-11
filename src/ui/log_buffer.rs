@@ -36,11 +36,11 @@ impl LogBuffer {
     }
 }
 
-impl tracing_subscriber::Layer<tracing_subscriber::registry::Registry> for LogBuffer {
+impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for LogBuffer {
     fn on_event(
         &self,
         event: &tracing::Event<'_>,
-        _ctx: tracing_subscriber::layer::Context<'_, tracing_subscriber::registry::Registry>,
+        _ctx: tracing_subscriber::layer::Context<'_, S>,
     ) {
         let meta = event.metadata();
         let timestamp = chrono::Local::now().format("%H:%M:%S%.3f").to_string();
@@ -63,11 +63,16 @@ impl tracing_subscriber::Layer<tracing_subscriber::registry::Registry> for LogBu
 
 pub fn init_logging() -> Arc<RwLock<Vec<LogEntry>>> {
     use tracing_subscriber::prelude::*;
+    use tracing_subscriber::EnvFilter;
 
     let buffer = LogBuffer::new();
     let shared = buffer.shared();
 
+    let filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| EnvFilter::new("info,drastic_smurf=debug"));
+
     let subscriber = tracing_subscriber::registry()
+        .with(filter)
         .with(buffer)
         .with(tracing_subscriber::fmt::Layer::new().with_writer(std::io::stderr));
 
