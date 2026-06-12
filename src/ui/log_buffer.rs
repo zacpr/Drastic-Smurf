@@ -62,8 +62,8 @@ impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for LogBuffer {
 }
 
 pub fn init_logging() -> Arc<RwLock<Vec<LogEntry>>> {
-    use tracing_subscriber::prelude::*;
     use tracing_subscriber::EnvFilter;
+    use tracing_subscriber::prelude::*;
 
     let buffer = LogBuffer::new();
     let shared = buffer.shared();
