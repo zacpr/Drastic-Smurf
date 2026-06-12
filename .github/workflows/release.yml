@@ -286,6 +286,16 @@ jobs:
           # Write and read notes from a file to avoid quoting breaking things
           echo "$ANNOUNCEMENT_BODY" > $RUNNER_TEMP/notes.txt
           
+          # Append DEB and RPM to the table if they exist
+          DEB_FILE=$(find artifacts -name '*.deb' -exec basename {} \; | head -n 1)
+          RPM_FILE=$(find artifacts -name '*.rpm' -exec basename {} \; | head -n 1)
+          if [ -n "$DEB_FILE" ]; then
+            echo "| [$DEB_FILE](https://github.com/${{ github.repository }}/releases/download/${{ needs.plan.outputs.tag }}/$DEB_FILE) | x64 Debian/Ubuntu |  |" >> $RUNNER_TEMP/notes.txt
+          fi
+          if [ -n "$RPM_FILE" ]; then
+            echo "| [$RPM_FILE](https://github.com/${{ github.repository }}/releases/download/${{ needs.plan.outputs.tag }}/$RPM_FILE) | x64 RHEL/Fedora |  |" >> $RUNNER_TEMP/notes.txt
+          fi
+          
           # Gather all files to upload, ignoring directories
           ASSETS=()
           while IFS= read -r -d '' file; do

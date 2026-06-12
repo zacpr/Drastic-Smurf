@@ -10,11 +10,15 @@ use crate::ui::toasts::Toasts;
 pub enum WizardStep {
     Welcome,
     AddCluster,
-    SnapshotMon,
+    Dashboard,
     ClusterStatus,
+    SnapshotMon,
     TaskMon,
+    Indices,
+    Observability,
     ElasticConsole,
     DiscoverTab,
+    WorldClocks,
     Finish,
 }
 
@@ -22,12 +26,16 @@ impl WizardStep {
     pub fn next(self) -> Option<Self> {
         match self {
             Self::Welcome => Some(Self::AddCluster),
-            Self::AddCluster => Some(Self::SnapshotMon),
-            Self::SnapshotMon => Some(Self::ClusterStatus),
-            Self::ClusterStatus => Some(Self::TaskMon),
-            Self::TaskMon => Some(Self::ElasticConsole),
+            Self::AddCluster => Some(Self::Dashboard),
+            Self::Dashboard => Some(Self::ClusterStatus),
+            Self::ClusterStatus => Some(Self::SnapshotMon),
+            Self::SnapshotMon => Some(Self::TaskMon),
+            Self::TaskMon => Some(Self::Indices),
+            Self::Indices => Some(Self::Observability),
+            Self::Observability => Some(Self::ElasticConsole),
             Self::ElasticConsole => Some(Self::DiscoverTab),
-            Self::DiscoverTab => Some(Self::Finish),
+            Self::DiscoverTab => Some(Self::WorldClocks),
+            Self::WorldClocks => Some(Self::Finish),
             Self::Finish => None,
         }
     }
@@ -36,12 +44,16 @@ impl WizardStep {
         match self {
             Self::Welcome => None,
             Self::AddCluster => Some(Self::Welcome),
-            Self::SnapshotMon => Some(Self::AddCluster),
-            Self::ClusterStatus => Some(Self::SnapshotMon),
-            Self::TaskMon => Some(Self::ClusterStatus),
-            Self::ElasticConsole => Some(Self::TaskMon),
+            Self::Dashboard => Some(Self::AddCluster),
+            Self::ClusterStatus => Some(Self::Dashboard),
+            Self::SnapshotMon => Some(Self::ClusterStatus),
+            Self::TaskMon => Some(Self::SnapshotMon),
+            Self::Indices => Some(Self::TaskMon),
+            Self::Observability => Some(Self::Indices),
+            Self::ElasticConsole => Some(Self::Observability),
             Self::DiscoverTab => Some(Self::ElasticConsole),
-            Self::Finish => Some(Self::DiscoverTab),
+            Self::WorldClocks => Some(Self::DiscoverTab),
+            Self::Finish => Some(Self::WorldClocks),
         }
     }
 
@@ -49,12 +61,16 @@ impl WizardStep {
         match self {
             Self::Welcome => 0,
             Self::AddCluster => 1,
-            Self::SnapshotMon => 2,
+            Self::Dashboard => 2,
             Self::ClusterStatus => 3,
-            Self::TaskMon => 4,
-            Self::ElasticConsole => 5,
-            Self::DiscoverTab => 6,
-            Self::Finish => 7,
+            Self::SnapshotMon => 4,
+            Self::TaskMon => 5,
+            Self::Indices => 6,
+            Self::Observability => 7,
+            Self::ElasticConsole => 8,
+            Self::DiscoverTab => 9,
+            Self::WorldClocks => 10,
+            Self::Finish => 11,
         }
     }
 
@@ -62,11 +78,15 @@ impl WizardStep {
         match self {
             Self::Welcome => "Welcome to DRASTIC SMURF",
             Self::AddCluster => "1. Connect a Cluster",
-            Self::SnapshotMon => "2. Snapshot Monitoring",
+            Self::Dashboard => "2. Cluster Dashboard",
             Self::ClusterStatus => "3. Cluster Health Status",
-            Self::TaskMon => "4. Task Management",
-            Self::ElasticConsole => "5. Elastic Console",
-            Self::DiscoverTab => "6. Kibana Discover",
+            Self::SnapshotMon => "4. Snapshot Monitoring",
+            Self::TaskMon => "5. Task Management",
+            Self::Indices => "6. Datastreams & Indices",
+            Self::Observability => "7. Observability",
+            Self::ElasticConsole => "8. Elastic Console",
+            Self::DiscoverTab => "9. Kibana Discover",
+            Self::WorldClocks => "10. World Clocks",
             Self::Finish => "Ready to Roll!",
         }
     }
@@ -134,7 +154,7 @@ pub fn render_wizard_overlay(
 
                 // Progress indicators (circles)
                 ui.horizontal(|ui| {
-                    let total_steps = 8;
+                    let total_steps = 12;
                     let current_idx = state.step.index();
                     let spacing = 6.0;
                     let size = 8.0;
@@ -276,6 +296,25 @@ pub fn render_wizard_overlay(
                         }
                     }
 
+                    WizardStep::Dashboard => {
+                        *current_tab = Tab::Dashboard;
+                        ui.vertical_centered(|ui| {
+                            ui.label(egui::RichText::new("📈").size(36.0));
+                            ui.add_space(8.0);
+                            ui.label(
+                                egui::RichText::new("A birds-eye view of your cluster.")
+                                    .size(13.0)
+                                    .strong()
+                            );
+                            ui.add_space(6.0);
+                            ui.label(
+                                egui::RichText::new("The Dashboard gives you high-level overviews across multiple clusters or an extremely detailed single-cluster drill down including top nodes, specific shard distributions, and active indexing rates.")
+                                    .size(11.0)
+                                    .color(Theme::text_muted())
+                            );
+                        });
+                    }
+
                     WizardStep::SnapshotMon => {
                         *current_tab = Tab::Snapshot;
                         ui.vertical_centered(|ui| {
@@ -333,6 +372,44 @@ pub fn render_wizard_overlay(
                         });
                     }
 
+                    WizardStep::Indices => {
+                        *current_tab = Tab::Indices;
+                        ui.vertical_centered(|ui| {
+                            ui.label(egui::RichText::new("🗂️").size(36.0));
+                            ui.add_space(8.0);
+                            ui.label(
+                                egui::RichText::new("Manage datastreams and indices effortlessly.")
+                                    .size(13.0)
+                                    .strong()
+                            );
+                            ui.add_space(6.0);
+                            ui.label(
+                                egui::RichText::new("The Indices tab lets you inspect all underlying data streams and concrete indices, viewing their document counts, storage sizes, and health status in a fast, filterable interface.")
+                                    .size(11.0)
+                                    .color(Theme::text_muted())
+                            );
+                        });
+                    }
+
+                    WizardStep::Observability => {
+                        *current_tab = Tab::Observability;
+                        ui.vertical_centered(|ui| {
+                            ui.label(egui::RichText::new("📡").size(36.0));
+                            ui.add_space(8.0);
+                            ui.label(
+                                egui::RichText::new("Kibana Synthetics and Uptime monitoring.")
+                                    .size(13.0)
+                                    .strong()
+                            );
+                            ui.add_space(6.0);
+                            ui.label(
+                                egui::RichText::new("Connect to a Kibana Space to interrogate synthetics monitors. View multi-region statuses, historical latency sparklines, and access a customizable Pinned Dashboard.")
+                                    .size(11.0)
+                                    .color(Theme::text_muted())
+                            );
+                        });
+                    }
+
                     WizardStep::ElasticConsole => {
                         *current_tab = Tab::Console;
                         ui.vertical_centered(|ui| {
@@ -365,6 +442,24 @@ pub fn render_wizard_overlay(
                             ui.add_space(6.0);
                             ui.label(
                                 egui::RichText::new("Query index patterns (e.g. logstash-*), build queries with KQL/Lucene terms, select custom columns recursively extracted from mappings, and view pretty-printed detail drawers.")
+                                    .size(11.0)
+                                    .color(Theme::text_muted())
+                            );
+                        });
+                    }
+
+                    WizardStep::WorldClocks => {
+                        ui.vertical_centered(|ui| {
+                            ui.label(egui::RichText::new("🌍").size(36.0));
+                            ui.add_space(8.0);
+                            ui.label(
+                                egui::RichText::new("Keep global timezones in check.")
+                                    .size(13.0)
+                                    .strong()
+                            );
+                            ui.add_space(6.0);
+                            ui.label(
+                                egui::RichText::new("The World Clocks tab allows you to configure multiple timezone offsets, quickly copy ISO 8601 timestamps to your clipboard, and manage your follow-the-sun operations.")
                                     .size(11.0)
                                     .color(Theme::text_muted())
                             );
