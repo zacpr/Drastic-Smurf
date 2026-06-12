@@ -356,16 +356,14 @@ fn render_edit_form(
     ui.horizontal(|ui| {
         ui.label("Import from File:");
         ui.text_edit_singleline(&mut state.ca_cert_import_path);
-        if ui.button("📂 Load").clicked() {
-            if !state.ca_cert_import_path.is_empty() {
-                match std::fs::read_to_string(&state.ca_cert_import_path) {
-                    Ok(pem) => {
-                        form.ca_cert_pem = pem;
-                        state.ca_cert_import_path.clear();
-                    }
-                    Err(e) => {
-                        state.test_result = Some(format!("Failed to load PEM file: {}", e));
-                    }
+        if ui.button("📂 Load").clicked() && !state.ca_cert_import_path.is_empty() {
+            match std::fs::read_to_string(&state.ca_cert_import_path) {
+                Ok(pem) => {
+                    form.ca_cert_pem = pem;
+                    state.ca_cert_import_path.clear();
+                }
+                Err(e) => {
+                    state.test_result = Some(format!("Failed to load PEM file: {}", e));
                 }
             }
         }

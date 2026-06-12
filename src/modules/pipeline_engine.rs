@@ -8,7 +8,9 @@ pub type PipelineDocument = Value;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum ProcessorType {
+    #[default]
     Set,
     Remove,
     Json,
@@ -42,12 +44,6 @@ impl ProcessorType {
             ProcessorType::Uppercase => "uppercase",
             ProcessorType::Trim => "trim",
         }
-    }
-}
-
-impl Default for ProcessorType {
-    fn default() -> Self {
-        ProcessorType::Set
     }
 }
 
@@ -269,9 +265,9 @@ pub fn split_path(path: &str) -> Result<Vec<String>, String> {
     let mut in_quote: Option<char> = None;
     let mut escaping = false;
 
-    let mut chars = path.chars().peekable();
+    let chars = path.chars().peekable();
 
-    while let Some(ch) = chars.next() {
+    for ch in chars {
         if let Some(quote) = in_quote {
             if escaping {
                 buffer.push(ch);
@@ -484,7 +480,7 @@ pub fn evaluate_if_condition(document: &Value, condition: &str) -> Result<bool, 
         expr = expr["if".len()..].trim();
     }
     if expr.starts_with('(') && expr.ends_with(')') {
-        expr = &expr[1..expr.len() - 1].trim();
+        expr = expr[1..expr.len() - 1].trim();
     }
 
     if expr.contains("==") {
@@ -638,10 +634,10 @@ fn parse_literal(val: &str) -> Value {
     if let Ok(i) = clean.parse::<i64>() {
         return Value::Number(i.into());
     }
-    if let Ok(f) = clean.parse::<f64>() {
-        if let Some(num) = serde_json::Number::from_f64(f) {
-            return Value::Number(num);
-        }
+    if let Ok(f) = clean.parse::<f64>()
+        && let Some(num) = serde_json::Number::from_f64(f)
+    {
+        return Value::Number(num);
     }
     Value::String(clean.to_string())
 }

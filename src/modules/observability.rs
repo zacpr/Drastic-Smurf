@@ -182,12 +182,9 @@ pub fn render_observability_module(
         let prev_space = state.space_id.clone();
         ui.add(egui::TextEdit::singleline(&mut state.space_id).desired_width(100.0));
 
-        if state.space_id != prev_space {
-            if ui.button("Apply").clicked() {
-                state.is_loading = true;
-                *on_refresh_monitors =
-                    Some((state.selected_cluster.clone(), state.space_id.clone()));
-            }
+        if state.space_id != prev_space && ui.button("Apply").clicked() {
+            state.is_loading = true;
+            *on_refresh_monitors = Some((state.selected_cluster.clone(), state.space_id.clone()));
         }
 
         ui.add_space(16.0);
@@ -237,10 +234,8 @@ pub fn render_observability_module(
     ui.horizontal(|ui| {
         ui.label("🔍 Filter:");
         ui.text_edit_singleline(&mut state.filter);
-        if !state.filter.is_empty() {
-            if ui.small_button("Clear").clicked() {
-                state.filter.clear();
-            }
+        if !state.filter.is_empty() && ui.small_button("Clear").clicked() {
+            state.filter.clear();
         }
     });
 

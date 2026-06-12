@@ -182,16 +182,15 @@ pub fn render_appearance_module(
                     *on_vfx_changed = true;
                 }
             });
-            if vfx.background_effect != BackgroundEffect::None {
-                if ui
+            if vfx.background_effect != BackgroundEffect::None
+                && ui
                     .add(
                         egui::Slider::new(&mut vfx.background_intensity, 0.0..=1.0)
                             .text("Intensity"),
                     )
                     .changed()
-                {
-                    *on_vfx_changed = true;
-                }
+            {
+                *on_vfx_changed = true;
             }
 
             ui.add_space(8.0);

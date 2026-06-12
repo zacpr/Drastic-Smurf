@@ -93,35 +93,32 @@ impl Default for DiscoverState {
 impl DiscoverState {
     /// Extracts all unique dot-separated field paths recursively from a JSON value.
     fn extract_fields(val: &Value, prefix: &str, fields: &mut HashSet<String>) {
-        match val {
-            Value::Object(map) => {
-                for (k, v) in map {
-                    let full_path = if prefix.is_empty() {
-                        k.clone()
-                    } else {
-                        format!("{}.{}", prefix, k)
-                    };
-                    // Only add leaf fields or simple primitives
-                    match v {
-                        Value::Object(_) => {
-                            Self::extract_fields(v, &full_path, fields);
-                        }
-                        Value::Array(arr) => {
-                            if arr.iter().all(|item| !item.is_object() && !item.is_array()) {
-                                fields.insert(full_path.clone());
-                            } else {
-                                for item in arr {
-                                    Self::extract_fields(item, &full_path, fields);
-                                }
+        if let Value::Object(map) = val {
+            for (k, v) in map {
+                let full_path = if prefix.is_empty() {
+                    k.clone()
+                } else {
+                    format!("{}.{}", prefix, k)
+                };
+                // Only add leaf fields or simple primitives
+                match v {
+                    Value::Object(_) => {
+                        Self::extract_fields(v, &full_path, fields);
+                    }
+                    Value::Array(arr) => {
+                        if arr.iter().all(|item| !item.is_object() && !item.is_array()) {
+                            fields.insert(full_path.clone());
+                        } else {
+                            for item in arr {
+                                Self::extract_fields(item, &full_path, fields);
                             }
                         }
-                        _ => {
-                            fields.insert(full_path);
-                        }
+                    }
+                    _ => {
+                        fields.insert(full_path);
                     }
                 }
             }
-            _ => {}
         }
     }
 
@@ -378,10 +375,8 @@ pub fn render_discover_module(
                 );
 
                 // Clear button inside search query space
-                if !state.search_query.is_empty() {
-                    if ui.small_button("Clear").clicked() {
-                        state.search_query.clear();
-                    }
+                if !state.search_query.is_empty() && ui.small_button("Clear").clicked() {
+                    state.search_query.clear();
                 }
 
                 ui.add_space(4.0);

@@ -48,10 +48,8 @@ pub fn render_tasks_module(ui: &mut Ui, state: &mut TasksState) {
             .hint_text("Search action, description, or cluster...");
         ui.add_sized([250.0, ui.available_height()], filter_edit);
 
-        if !state.filter.is_empty() {
-            if ui.button("Clear").clicked() {
-                state.filter.clear();
-            }
+        if !state.filter.is_empty() && ui.button("Clear").clicked() {
+            state.filter.clear();
         }
 
         ui.add_space(8.0);

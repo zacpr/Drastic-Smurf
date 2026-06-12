@@ -434,11 +434,10 @@ pub fn render_wizard_overlay(
                     }
 
                     // Skip Tour button (always visible except on last step)
-                    if state.step != WizardStep::Finish {
-                        if ui.button("Skip Tour").clicked() {
+                    if state.step != WizardStep::Finish
+                        && ui.button("Skip Tour").clicked() {
                             *on_dismiss = true;
                         }
-                    }
                 });
             });
         });

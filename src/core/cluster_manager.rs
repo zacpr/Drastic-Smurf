@@ -408,52 +408,53 @@ impl ClusterManager {
             clusters.iter().find(|c| c.name == name).cloned()
         };
 
-        if let Some(cluster) = cluster {
-            if cluster.ssh_tunnel && !cluster.ssh_host.is_empty() {
-                let info = SshTunnel::spawn(&cluster).await?;
-                let protocol = if cluster.host.starts_with("https://") {
-                    "https"
-                } else {
-                    "http"
-                };
-                let url = format!("{}://127.0.0.1:{}", protocol, info.local_port);
+        if let Some(cluster) = cluster
+            && cluster.ssh_tunnel
+            && !cluster.ssh_host.is_empty()
+        {
+            let info = SshTunnel::spawn(&cluster).await?;
+            let protocol = if cluster.host.starts_with("https://") {
+                "https"
+            } else {
+                "http"
+            };
+            let url = format!("{}://127.0.0.1:{}", protocol, info.local_port);
 
-                // Double-check after async op
-                let mut tunnels = self.tunnels.lock().unwrap();
-                if tunnels.contains_key(name) {
-                    // Another task already created the tunnel; kill ours
-                    SshTunnel::kill_by_pid(info.pid);
-                    return Ok(());
-                }
-
-                // Recreate client with tunnel URL, preserving existing password
-                let existing_password = {
-                    let clients = self.clients.lock().unwrap();
-                    clients.get(name).map(|c| c.password().to_string())
-                };
-                match existing_password {
-                    Some(pw) => {
-                        if let Ok(client) = EsClient::with_password(&cluster, &pw) {
-                            let client = client.with_tunnel(&url);
-                            self.clients
-                                .lock()
-                                .unwrap()
-                                .insert(name.to_string(), client);
-                        }
-                    }
-                    None => {
-                        if let Ok(client) = EsClient::new(&cluster) {
-                            let client = client.with_tunnel(&url);
-                            self.clients
-                                .lock()
-                                .unwrap()
-                                .insert(name.to_string(), client);
-                        }
-                    }
-                }
-
-                tunnels.insert(name.to_string(), info);
+            // Double-check after async op
+            let mut tunnels = self.tunnels.lock().unwrap();
+            if tunnels.contains_key(name) {
+                // Another task already created the tunnel; kill ours
+                SshTunnel::kill_by_pid(info.pid);
+                return Ok(());
             }
+
+            // Recreate client with tunnel URL, preserving existing password
+            let existing_password = {
+                let clients = self.clients.lock().unwrap();
+                clients.get(name).map(|c| c.password().to_string())
+            };
+            match existing_password {
+                Some(pw) => {
+                    if let Ok(client) = EsClient::with_password(&cluster, &pw) {
+                        let client = client.with_tunnel(&url);
+                        self.clients
+                            .lock()
+                            .unwrap()
+                            .insert(name.to_string(), client);
+                    }
+                }
+                None => {
+                    if let Ok(client) = EsClient::new(&cluster) {
+                        let client = client.with_tunnel(&url);
+                        self.clients
+                            .lock()
+                            .unwrap()
+                            .insert(name.to_string(), client);
+                    }
+                }
+            }
+
+            tunnels.insert(name.to_string(), info);
         }
         Ok(())
     }

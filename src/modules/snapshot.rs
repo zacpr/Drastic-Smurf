@@ -291,160 +291,154 @@ pub async fn fetch_cluster_snapshot(
     let mut backups = Vec::new();
     for repo in &resolved_repos {
         // Fetch all snapshots in this repo
-        match client.snapshot_all(repo).await {
-            Ok(mut resp) => {
-                // Sort descending by start_time_in_millis (latest first)
-                resp.snapshots.sort_by(|a, b| {
-                    b.start_time_in_millis
-                        .unwrap_or(0)
-                        .cmp(&a.start_time_in_millis.unwrap_or(0))
-                });
+        if let Ok(mut resp) = client.snapshot_all(repo).await {
+            // Sort descending by start_time_in_millis (latest first)
+            resp.snapshots.sort_by(|a, b| {
+                b.start_time_in_millis
+                    .unwrap_or(0)
+                    .cmp(&a.start_time_in_millis.unwrap_or(0))
+            });
 
-                // Get up to 2 snapshots: the current/latest one and 1 previous backup
-                for (idx, info) in resp.snapshots.iter().take(2).enumerate() {
-                    let is_current = idx == 0;
-                    let mut b_status = BackupStatus {
-                        repository: repo.clone(),
-                        snapshot_info: info.clone(),
-                        is_current,
-                        ..Default::default()
-                    };
+            // Get up to 2 snapshots: the current/latest one and 1 previous backup
+            for (idx, info) in resp.snapshots.iter().take(2).enumerate() {
+                let is_current = idx == 0;
+                let mut b_status = BackupStatus {
+                    repository: repo.clone(),
+                    snapshot_info: info.clone(),
+                    is_current,
+                    ..Default::default()
+                };
 
-                    // Let's get detailed status (especially if in progress)
-                    let is_active = info.state.to_uppercase() == "IN_PROGRESS"
-                        || info.state.to_uppercase() == "STARTED";
+                // Let's get detailed status (especially if in progress)
+                let is_active = info.state.to_uppercase() == "IN_PROGRESS"
+                    || info.state.to_uppercase() == "STARTED";
 
-                    if is_active {
-                        match client.snapshot_status(repo, &info.snapshot).await {
-                            Ok(detailed) if !detailed.snapshots.is_empty() => {
-                                let detail = &detailed.snapshots[0];
-                                if let Some(stats) = &detail.stats {
-                                    let total_bytes = stats
-                                        .incremental
-                                        .as_ref()
-                                        .map(|i| i.size_in_bytes)
-                                        .unwrap_or(stats.total_size_in_bytes);
-                                    let processed_bytes = stats.processed_size_in_bytes;
-                                    let total_files = stats.number_of_files;
-                                    let processed_files = stats.processed_files;
-                                    let progress = if total_bytes > 0 {
-                                        (processed_bytes as f64 / total_bytes as f64 * 100.0) as f32
-                                    } else if let Some(shards) = &detail.shards_stats {
-                                        if shards.total > 0 {
-                                            (shards.done as f64 / shards.total as f64 * 100.0)
-                                                as f32
-                                        } else {
-                                            0.0
-                                        }
+                if is_active {
+                    match client.snapshot_status(repo, &info.snapshot).await {
+                        Ok(detailed) if !detailed.snapshots.is_empty() => {
+                            let detail = &detailed.snapshots[0];
+                            if let Some(stats) = &detail.stats {
+                                let total_bytes = stats
+                                    .incremental
+                                    .as_ref()
+                                    .map(|i| i.size_in_bytes)
+                                    .unwrap_or(stats.total_size_in_bytes);
+                                let processed_bytes = stats.processed_size_in_bytes;
+                                let total_files = stats.number_of_files;
+                                let processed_files = stats.processed_files;
+                                let progress = if total_bytes > 0 {
+                                    (processed_bytes as f64 / total_bytes as f64 * 100.0) as f32
+                                } else if let Some(shards) = &detail.shards_stats {
+                                    if shards.total > 0 {
+                                        (shards.done as f64 / shards.total as f64 * 100.0) as f32
                                     } else {
                                         0.0
-                                    };
+                                    }
+                                } else {
+                                    0.0
+                                };
 
-                                    b_status.snapshot_stats = Some(SnapshotStats {
-                                        progress_pct: progress.min(100.0),
-                                        processed_bytes,
-                                        total_bytes,
-                                        processed_files,
-                                        total_files,
-                                        start_time: info
-                                            .start_time_in_millis
-                                            .and_then(chrono::DateTime::from_timestamp_millis),
-                                        has_byte_stats: stats.incremental.is_some()
-                                            || stats.total_size_in_bytes > 0,
-                                        processed_shards: detail
-                                            .shards_stats
-                                            .as_ref()
-                                            .map(|s| s.done)
-                                            .unwrap_or(0),
-                                        total_shards: detail
-                                            .shards_stats
-                                            .as_ref()
-                                            .map(|s| s.total)
-                                            .unwrap_or(0),
-                                        ..Default::default()
-                                    });
-
-                                    // Map additional required stats
-                                    b_status.total_transferred_bytes = processed_bytes;
-                                    b_status.total_pending_bytes =
-                                        total_bytes.saturating_sub(processed_bytes);
-                                }
-                            }
-                            _ => {}
-                        }
-                    } else {
-                        // Completed snapshot: construct stats using metadata from _snapshot list
-                        let total_shards = info.shards.as_ref().map(|s| s.total).unwrap_or(0);
-                        let successful_shards =
-                            info.shards.as_ref().map(|s| s.successful).unwrap_or(0);
-
-                        // For completed backups, try to call status API to retrieve the exact size & file count!
-                        let mut loaded_detail_stats = false;
-                        match client.snapshot_status(repo, &info.snapshot).await {
-                            Ok(detailed) if !detailed.snapshots.is_empty() => {
-                                let detail = &detailed.snapshots[0];
-                                if let Some(stats) = &detail.stats {
-                                    let total_bytes = stats
-                                        .incremental
+                                b_status.snapshot_stats = Some(SnapshotStats {
+                                    progress_pct: progress.min(100.0),
+                                    processed_bytes,
+                                    total_bytes,
+                                    processed_files,
+                                    total_files,
+                                    start_time: info
+                                        .start_time_in_millis
+                                        .and_then(chrono::DateTime::from_timestamp_millis),
+                                    has_byte_stats: stats.incremental.is_some()
+                                        || stats.total_size_in_bytes > 0,
+                                    processed_shards: detail
+                                        .shards_stats
                                         .as_ref()
-                                        .map(|i| i.size_in_bytes)
-                                        .unwrap_or(stats.total_size_in_bytes);
-                                    let processed_bytes = stats.processed_size_in_bytes;
+                                        .map(|s| s.done)
+                                        .unwrap_or(0),
+                                    total_shards: detail
+                                        .shards_stats
+                                        .as_ref()
+                                        .map(|s| s.total)
+                                        .unwrap_or(0),
+                                    ..Default::default()
+                                });
 
-                                    b_status.snapshot_stats = Some(SnapshotStats {
-                                        progress_pct: 100.0,
-                                        processed_bytes,
-                                        total_bytes,
-                                        processed_files: stats.processed_files,
-                                        total_files: stats.number_of_files,
-                                        start_time: info
-                                            .start_time_in_millis
-                                            .and_then(chrono::DateTime::from_timestamp_millis),
-                                        has_byte_stats: true,
-                                        processed_shards: successful_shards,
-                                        total_shards,
-                                        ..Default::default()
-                                    });
-
-                                    b_status.total_transferred_bytes = processed_bytes;
-                                    b_status.total_pending_bytes = 0;
-                                    loaded_detail_stats = true;
-                                }
-                            }
-                            _ => {}
-                        }
-
-                        if !loaded_detail_stats {
-                            b_status.snapshot_stats = Some(SnapshotStats {
-                                progress_pct: 100.0,
-                                start_time: info
-                                    .start_time_in_millis
-                                    .and_then(chrono::DateTime::from_timestamp_millis),
-                                has_byte_stats: false,
-                                processed_shards: successful_shards,
-                                total_shards,
-                                ..Default::default()
-                            });
-                        }
-                    }
-
-                    // Compute overall rates
-                    if let Some(ref stats) = b_status.snapshot_stats {
-                        if stats.processed_bytes > 0 {
-                            let duration_secs =
-                                info.duration_in_millis.unwrap_or(0) as f64 / 1000.0;
-                            if duration_secs > 0.0 {
-                                let avg_rate = stats.processed_bytes as f64 / duration_secs;
-                                b_status.avg_network_rate_bytes = avg_rate;
-                                b_status.peak_network_rate_bytes = avg_rate * 1.35; // realistic peak
+                                // Map additional required stats
+                                b_status.total_transferred_bytes = processed_bytes;
+                                b_status.total_pending_bytes =
+                                    total_bytes.saturating_sub(processed_bytes);
                             }
                         }
+                        _ => {}
+                    }
+                } else {
+                    // Completed snapshot: construct stats using metadata from _snapshot list
+                    let total_shards = info.shards.as_ref().map(|s| s.total).unwrap_or(0);
+                    let successful_shards = info.shards.as_ref().map(|s| s.successful).unwrap_or(0);
+
+                    // For completed backups, try to call status API to retrieve the exact size & file count!
+                    let mut loaded_detail_stats = false;
+                    match client.snapshot_status(repo, &info.snapshot).await {
+                        Ok(detailed) if !detailed.snapshots.is_empty() => {
+                            let detail = &detailed.snapshots[0];
+                            if let Some(stats) = &detail.stats {
+                                let total_bytes = stats
+                                    .incremental
+                                    .as_ref()
+                                    .map(|i| i.size_in_bytes)
+                                    .unwrap_or(stats.total_size_in_bytes);
+                                let processed_bytes = stats.processed_size_in_bytes;
+
+                                b_status.snapshot_stats = Some(SnapshotStats {
+                                    progress_pct: 100.0,
+                                    processed_bytes,
+                                    total_bytes,
+                                    processed_files: stats.processed_files,
+                                    total_files: stats.number_of_files,
+                                    start_time: info
+                                        .start_time_in_millis
+                                        .and_then(chrono::DateTime::from_timestamp_millis),
+                                    has_byte_stats: true,
+                                    processed_shards: successful_shards,
+                                    total_shards,
+                                    ..Default::default()
+                                });
+
+                                b_status.total_transferred_bytes = processed_bytes;
+                                b_status.total_pending_bytes = 0;
+                                loaded_detail_stats = true;
+                            }
+                        }
+                        _ => {}
                     }
 
-                    backups.push(b_status);
+                    if !loaded_detail_stats {
+                        b_status.snapshot_stats = Some(SnapshotStats {
+                            progress_pct: 100.0,
+                            start_time: info
+                                .start_time_in_millis
+                                .and_then(chrono::DateTime::from_timestamp_millis),
+                            has_byte_stats: false,
+                            processed_shards: successful_shards,
+                            total_shards,
+                            ..Default::default()
+                        });
+                    }
                 }
+
+                // Compute overall rates
+                if let Some(ref stats) = b_status.snapshot_stats
+                    && stats.processed_bytes > 0
+                {
+                    let duration_secs = info.duration_in_millis.unwrap_or(0) as f64 / 1000.0;
+                    if duration_secs > 0.0 {
+                        let avg_rate = stats.processed_bytes as f64 / duration_secs;
+                        b_status.avg_network_rate_bytes = avg_rate;
+                        b_status.peak_network_rate_bytes = avg_rate * 1.35; // realistic peak
+                    }
+                }
+
+                backups.push(b_status);
             }
-            _ => {}
         }
     }
 
@@ -458,31 +452,19 @@ pub async fn fetch_cluster_snapshot(
     }
 
     // Fetch all SLM policies
-    match client.slm_policies_all().await {
-        Ok(resp) => {
-            let mut policies: Vec<_> = resp.policies.into_iter().collect();
-            policies.sort_by(|a, b| a.1.next_execution_millis.cmp(&b.1.next_execution_millis));
-            status.slm_policies = policies;
+    if let Ok(resp) = client.slm_policies_all().await {
+        let mut policies: Vec<_> = resp.policies.into_iter().collect();
+        policies.sort_by_key(|a| a.1.next_execution_millis);
+        status.slm_policies = policies;
 
-            // Set main slm status for backward compatibility
-            if !config.slm_policy.is_empty() {
-                if let Some(detail) = status
-                    .slm_policies
-                    .iter()
-                    .find(|(name, _)| name == &config.slm_policy)
-                    .map(|(_, d)| d)
-                {
-                    status.slm_last_run = detail.last_success.as_ref().and_then(|s| s.time.clone());
-                    status.slm_next_run = detail.next_execution.clone();
-                    status.slm_in_progress = detail
-                        .stats
-                        .as_ref()
-                        .and_then(|s| s.total_snapshots_taken)
-                        .unwrap_or(0)
-                        > 0;
-                }
-            } else if !status.slm_policies.is_empty() {
-                let detail = &status.slm_policies[0].1;
+        // Set main slm status for backward compatibility
+        if !config.slm_policy.is_empty() {
+            if let Some(detail) = status
+                .slm_policies
+                .iter()
+                .find(|(name, _)| name == &config.slm_policy)
+                .map(|(_, d)| d)
+            {
                 status.slm_last_run = detail.last_success.as_ref().and_then(|s| s.time.clone());
                 status.slm_next_run = detail.next_execution.clone();
                 status.slm_in_progress = detail
@@ -492,8 +474,17 @@ pub async fn fetch_cluster_snapshot(
                     .unwrap_or(0)
                     > 0;
             }
+        } else if !status.slm_policies.is_empty() {
+            let detail = &status.slm_policies[0].1;
+            status.slm_last_run = detail.last_success.as_ref().and_then(|s| s.time.clone());
+            status.slm_next_run = detail.next_execution.clone();
+            status.slm_in_progress = detail
+                .stats
+                .as_ref()
+                .and_then(|s| s.total_snapshots_taken)
+                .unwrap_or(0)
+                > 0;
         }
-        _ => {}
     }
 
     status
@@ -630,10 +621,10 @@ fn render_item_card(
             let painter = ui.painter();
 
             let mut speeds = Vec::new();
-            if b.snapshot_info.state.to_uppercase() == "IN_PROGRESS" {
-                if let Some(history) = histories.get(&s.config.name) {
-                    speeds = history.speed_history();
-                }
+            if b.snapshot_info.state.to_uppercase() == "IN_PROGRESS"
+                && let Some(history) = histories.get(&s.config.name)
+            {
+                speeds = history.speed_history();
             }
 
             let mut points = Vec::new();

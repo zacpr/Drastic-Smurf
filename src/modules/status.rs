@@ -193,8 +193,8 @@ fn render_status_card(
                     ));
                 }
 
-                if let Some(ref tasks) = pending_tasks {
-                    if !tasks.is_empty() {
+                if let Some(ref tasks) = pending_tasks
+                    && !tasks.is_empty() {
                         let danger_color = Theme::danger();
                         let btn = ui.add(
                             egui::Button::new(
@@ -210,7 +210,6 @@ fn render_status_card(
                             *on_show_pending = Some(name.to_string());
                         }
                     }
-                }
             });
         });
         ui.add_space(8.0);
@@ -221,11 +220,12 @@ fn render_status_card(
         }
 
         if let Some(h) = health {
-            let mut items: Vec<(&str, String)> = Vec::new();
-            items.push(("Nodes", h.number_of_nodes.to_string()));
-            items.push(("Active Shards", h.active_shards.to_string()));
-            items.push(("Unassigned", h.unassigned_shards.to_string()));
-            items.push(("Relocating", h.relocating_shards.to_string()));
+            let mut items: Vec<(&str, String)> = vec![
+                ("Nodes", h.number_of_nodes.to_string()),
+                ("Active Shards", h.active_shards.to_string()),
+                ("Unassigned", h.unassigned_shards.to_string()),
+                ("Relocating", h.relocating_shards.to_string()),
+            ];
 
             let mut node_role_items: Vec<(&str, u32)> = Vec::new();
             let mut jvm_heap: Option<(u64, u64)> = None;
@@ -282,11 +282,10 @@ if count.voting_only > 0 {
                             node_role_items.push(("Voting", count.voting_only));
                         }
                     }
-                    if let Some(ref jvm) = nodes_stats.jvm {
-                        if let Some(ref mem) = jvm.mem {
+                    if let Some(ref jvm) = nodes_stats.jvm
+                        && let Some(ref mem) = jvm.mem {
                             jvm_heap = Some((mem.heap_used_in_bytes, mem.heap_max_in_bytes));
                         }
-                    }
                 }
             }
 

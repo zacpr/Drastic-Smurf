@@ -354,10 +354,10 @@ impl DrasticSmurfApp {
                 let ctx_es = ctx.clone();
                 let manager_es = manager.clone();
                 tokio::spawn(async move {
-                    if let Some(client) = manager_es.get_client(&name_es) {
-                        if let Ok(ver) = client.get_es_version().await {
-                            let _ = tx_es.send(RefreshMsg::EsVersionResult(name_es, ver));
-                        }
+                    if let Some(client) = manager_es.get_client(&name_es)
+                        && let Ok(ver) = client.get_es_version().await
+                    {
+                        let _ = tx_es.send(RefreshMsg::EsVersionResult(name_es, ver));
                     }
                     ctx_es.request_repaint();
                 });
@@ -402,10 +402,10 @@ impl DrasticSmurfApp {
                 let ctx_alloc = ctx.clone();
                 let manager_alloc = manager.clone();
                 tokio::spawn(async move {
-                    if let Some(client) = manager_alloc.get_client(&name_alloc) {
-                        if let Ok(allocs) = client.cat_allocation().await {
-                            let _ = tx_alloc.send(RefreshMsg::AllocationResult(name_alloc, allocs));
-                        }
+                    if let Some(client) = manager_alloc.get_client(&name_alloc)
+                        && let Ok(allocs) = client.cat_allocation().await
+                    {
+                        let _ = tx_alloc.send(RefreshMsg::AllocationResult(name_alloc, allocs));
                     }
                     ctx_alloc.request_repaint();
                 });
@@ -416,10 +416,10 @@ impl DrasticSmurfApp {
                 let ctx_nodes = ctx.clone();
                 let manager_nodes = manager.clone();
                 tokio::spawn(async move {
-                    if let Some(client) = manager_nodes.get_client(&name_nodes) {
-                        if let Ok(nodes) = client.cat_nodes().await {
-                            let _ = tx_nodes.send(RefreshMsg::NodesResult(name_nodes, nodes));
-                        }
+                    if let Some(client) = manager_nodes.get_client(&name_nodes)
+                        && let Ok(nodes) = client.cat_nodes().await
+                    {
+                        let _ = tx_nodes.send(RefreshMsg::NodesResult(name_nodes, nodes));
                     }
                     ctx_nodes.request_repaint();
                 });
@@ -430,13 +430,12 @@ impl DrasticSmurfApp {
                 let ctx_tasks = ctx.clone();
                 let manager_tasks = manager.clone();
                 tokio::spawn(async move {
-                    if let Some(client) = manager_tasks.get_client(&name_tasks) {
-                        if let Ok(tasks_val) = client.get_pending_tasks().await {
-                            if let Some(arr) = tasks_val.get("tasks").and_then(|a| a.as_array()) {
-                                let _ = tx_tasks
-                                    .send(RefreshMsg::PendingTasksResult(name_tasks, arr.clone()));
-                            }
-                        }
+                    if let Some(client) = manager_tasks.get_client(&name_tasks)
+                        && let Ok(tasks_val) = client.get_pending_tasks().await
+                        && let Some(arr) = tasks_val.get("tasks").and_then(|a| a.as_array())
+                    {
+                        let _ =
+                            tx_tasks.send(RefreshMsg::PendingTasksResult(name_tasks, arr.clone()));
                     }
                     ctx_tasks.request_repaint();
                 });
@@ -761,17 +760,18 @@ impl DrasticSmurfApp {
                     self.status_state.pending_tasks.insert(name, tasks);
                 }
                 RefreshMsg::HotThreadsResult(cluster_name, node_name, res) => {
-                    if let Some((ref active_cluster, ref active_node)) = self.hot_threads_node {
-                        if active_cluster == &cluster_name && active_node == &node_name {
-                            self.hot_threads_loading = false;
-                            match res {
-                                Ok(text) => {
-                                    self.hot_threads_text = Some(text);
-                                }
-                                Err(err) => {
-                                    self.hot_threads_text =
-                                        Some(format!("Error loading Hot Threads: {}", err));
-                                }
+                    if let Some((ref active_cluster, ref active_node)) = self.hot_threads_node
+                        && active_cluster == &cluster_name
+                        && active_node == &node_name
+                    {
+                        self.hot_threads_loading = false;
+                        match res {
+                            Ok(text) => {
+                                self.hot_threads_text = Some(text);
+                            }
+                            Err(err) => {
+                                self.hot_threads_text =
+                                    Some(format!("Error loading Hot Threads: {}", err));
                             }
                         }
                     }
@@ -909,11 +909,11 @@ impl DrasticSmurfApp {
         }
 
         // 5. Clusters selection & edit forms
-        if let Some(ref selected) = self.clusters_state.selected_cluster {
-            if !allowed.contains(selected) {
-                self.clusters_state.selected_cluster = None;
-                self.clusters_state.editing_cluster = None;
-            }
+        if let Some(ref selected) = self.clusters_state.selected_cluster
+            && !allowed.contains(selected)
+        {
+            self.clusters_state.selected_cluster = None;
+            self.clusters_state.editing_cluster = None;
         }
     }
 
@@ -1197,21 +1197,21 @@ impl DrasticSmurfApp {
             let find_nth_sunday = |year: i32, month: u32, n: u32| -> u32 {
                 let mut count = 0;
                 for day in 1..=31 {
-                    if let Some(date) = NaiveDate::from_ymd_opt(year, month, day) {
-                        if date.weekday() == Weekday::Sun {
-                            count += 1;
-                            if count == n {
-                                return day;
-                            }
+                    if let Some(date) = NaiveDate::from_ymd_opt(year, month, day)
+                        && date.weekday() == Weekday::Sun
+                    {
+                        count += 1;
+                        if count == n {
+                            return day;
                         }
                     }
                 }
                 let mut last_sun = 1;
                 for day in 1..=31 {
-                    if let Some(date) = NaiveDate::from_ymd_opt(year, month, day) {
-                        if date.weekday() == Weekday::Sun {
-                            last_sun = day;
-                        }
+                    if let Some(date) = NaiveDate::from_ymd_opt(year, month, day)
+                        && date.weekday() == Weekday::Sun
+                    {
+                        last_sun = day;
                     }
                 }
                 last_sun
@@ -1230,7 +1230,7 @@ impl DrasticSmurfApp {
                     let end_aedt_day = find_nth_sunday(year, 4, 1);
                     let start_aedt_day = find_nth_sunday(year, 10, 1);
 
-                    let is_aedt = if month > 10 || month < 4 {
+                    let is_aedt = if !(4..=10).contains(&month) {
                         true
                     } else if month == 4 {
                         day < end_aedt_day || (day == end_aedt_day && utc_now.hour() < 2)
@@ -1665,21 +1665,20 @@ impl DrasticSmurfApp {
                         ctx.request_repaint();
                     });
                 }
-                if let Some(name) = on_edit {
-                    if let Some(cluster) = self
+                if let Some(name) = on_edit
+                    && let Some(cluster) = self
                         .cluster_manager
                         .clusters()
                         .into_iter()
                         .find(|c| c.name == name)
-                    {
-                        self.editing_cluster = Some(name.clone());
-                        self.new_cluster = cluster;
-                        self.new_password = crate::core::auth::get_password(&name)
-                            .unwrap_or_default()
-                            .unwrap_or_default();
-                        self.show_add_cluster = true;
-                        self.test_result = None;
-                    }
+                {
+                    self.editing_cluster = Some(name.clone());
+                    self.new_cluster = cluster;
+                    self.new_password = crate::core::auth::get_password(&name)
+                        .unwrap_or_default()
+                        .unwrap_or_default();
+                    self.show_add_cluster = true;
+                    self.test_result = None;
                 }
                 if let Some(name) = on_delete {
                     self.pending_delete = Some(name);
@@ -2066,13 +2065,11 @@ impl DrasticSmurfApp {
                                 detail.settings = Some(settings_val.clone());
                                 if let Some(obj) = settings_val.get(&target_name).or_else(|| {
                                     settings_val.as_object().and_then(|o| o.values().next())
-                                }) {
-                                    if let Some(ilm_name) = obj
-                                        .pointer("/settings/index/lifecycle/name")
-                                        .and_then(|v| v.as_str())
-                                    {
-                                        detail.ilm_policy = Some(ilm_name.to_string());
-                                    }
+                                }) && let Some(ilm_name) = obj
+                                    .pointer("/settings/index/lifecycle/name")
+                                    .and_then(|v| v.as_str())
+                                {
+                                    detail.ilm_policy = Some(ilm_name.to_string());
                                 }
                             }
 
@@ -2082,16 +2079,15 @@ impl DrasticSmurfApp {
                                 client.execute(reqwest::Method::GET, &ilm_path, None).await
                             {
                                 detail.ilm_explain = Some(ilm_val.clone());
-                                if detail.ilm_policy.is_none() {
-                                    if let Some(policy_name) = ilm_val
+                                if detail.ilm_policy.is_none()
+                                    && let Some(policy_name) = ilm_val
                                         .pointer("/indices")
                                         .and_then(|ind| ind.as_object())
                                         .and_then(|obj| obj.values().next())
                                         .and_then(|val| val.get("policy"))
                                         .and_then(|p| p.as_str())
-                                    {
-                                        detail.ilm_policy = Some(policy_name.to_string());
-                                    }
+                                {
+                                    detail.ilm_policy = Some(policy_name.to_string());
                                 }
                             }
 
@@ -2107,41 +2103,40 @@ impl DrasticSmurfApp {
                                     {
                                         detail.index_template = Some(template_name.to_string());
                                     }
-                                    if detail.ilm_policy.is_none() {
-                                        if let Some(ilm_name) = ds_val
+                                    if detail.ilm_policy.is_none()
+                                        && let Some(ilm_name) = ds_val
                                             .pointer("/data_streams/0/ilm_policy")
                                             .and_then(|v| v.as_str())
-                                        {
-                                            detail.ilm_policy = Some(ilm_name.to_string());
-                                        }
+                                    {
+                                        detail.ilm_policy = Some(ilm_name.to_string());
                                     }
                                 }
                             } else {
                                 if let Ok(templates_val) = client
                                     .execute(reqwest::Method::GET, "/_index_template", None)
                                     .await
-                                {
-                                    if let Some(templates_arr) = templates_val
+                                    && let Some(templates_arr) = templates_val
                                         .get("index_templates")
                                         .and_then(|a| a.as_array())
-                                    {
-                                        for t in templates_arr {
-                                            if let Some(name) =
-                                                t.get("name").and_then(|n| n.as_str())
-                                            {
-                                                if let Some(patterns) = t
-                                                    .pointer("/index_template/index_patterns")
-                                                    .and_then(|p| p.as_array())
-                                                {
-                                                    let matches = patterns.iter()
-                                                        .filter_map(|p| p.as_str())
-                                                        .any(|p| crate::modules::indices::index_pattern_matches(p, &target_name));
-                                                    if matches {
-                                                        detail.index_template =
-                                                            Some(name.to_string());
-                                                        break;
-                                                    }
-                                                }
+                                {
+                                    for t in templates_arr {
+                                        if let Some(name) = t.get("name").and_then(|n| n.as_str())
+                                            && let Some(patterns) = t
+                                                .pointer("/index_template/index_patterns")
+                                                .and_then(|p| p.as_array())
+                                        {
+                                            let matches = patterns
+                                                .iter()
+                                                .filter_map(|p| p.as_str())
+                                                .any(|p| {
+                                                    crate::modules::indices::index_pattern_matches(
+                                                        p,
+                                                        &target_name,
+                                                    )
+                                                });
+                                            if matches {
+                                                detail.index_template = Some(name.to_string());
+                                                break;
                                             }
                                         }
                                     }
@@ -2257,25 +2252,23 @@ impl DrasticSmurfApp {
                                 });
                             });
 
-                        if clocks_changed {
-                            if let Err(e) = self.cluster_manager.save_timezone_clocks(self.timezone_clocks.clone()) {
+                        if clocks_changed
+                            && let Err(e) = self.cluster_manager.save_timezone_clocks(self.timezone_clocks.clone()) {
                                 self.toasts.error(format!("Failed to save timezone settings: {}", e));
                             }
-                        }
                     });
 
                 if tour_triggered {
                     self.wizard_state = Some(crate::ui::wizard::WizardState::default());
                     self.toasts.info("Onboarding tour started!");
                 }
-                if theme_changed || vfx_changed {
-                    if let Err(e) = self
+                if (theme_changed || vfx_changed)
+                    && let Err(e) = self
                         .cluster_manager
                         .save_theme_and_vfx(self.theme.clone(), self.vfx.clone())
-                    {
-                        self.toasts
-                            .error(format!("Failed to save appearance settings: {}", e));
-                    }
+                {
+                    self.toasts
+                        .error(format!("Failed to save appearance settings: {}", e));
                 }
             }
             Tab::PipelineSimulator => {
@@ -2753,9 +2746,9 @@ impl eframe::App for DrasticSmurfApp {
                     self.trigger_refresh(ctx);
                 }
             }
-            let should_refresh = self.last_refresh.map_or(true, |last| {
-                last.elapsed().as_secs() >= self.refresh_interval_secs
-            });
+            let should_refresh = self
+                .last_refresh
+                .is_none_or(|last| last.elapsed().as_secs() >= self.refresh_interval_secs);
             if should_refresh {
                 self.trigger_refresh(ctx);
             }
@@ -3285,8 +3278,8 @@ impl eframe::App for DrasticSmurfApp {
                                     if let Some(ref explain) = detail.ilm_explain {
                                         ui.add_space(8.0);
                                         let mut found_explain = false;
-                                        if let Some(indices_obj) = explain.pointer("/indices").and_then(|i| i.as_object()) {
-                                            if let Some(val) = indices_obj.values().next() {
+                                        if let Some(indices_obj) = explain.pointer("/indices").and_then(|i| i.as_object())
+                                            && let Some(val) = indices_obj.values().next() {
                                                 found_explain = true;
                                                 let phase = val.get("phase").and_then(|v| v.as_str()).unwrap_or("—");
                                                 let action = val.get("action").and_then(|v| v.as_str()).unwrap_or("—");
@@ -3303,7 +3296,6 @@ impl eframe::App for DrasticSmurfApp {
                                                     }
                                                 });
                                             }
-                                        }
                                         if !found_explain && explain.get("policy").is_some() {
                                             let phase = explain.get("phase").and_then(|v| v.as_str()).unwrap_or("—");
                                             let action = explain.get("action").and_then(|v| v.as_str()).unwrap_or("—");

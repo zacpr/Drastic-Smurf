@@ -269,28 +269,27 @@ fn render_overview_card(
                 }
 
                 // JVM heap usage preview bar
-                if let Some(ref nodes_stats) = s.nodes {
-                    if let Some(ref jvm) = nodes_stats.jvm {
-                        if let Some(ref mem) = jvm.mem {
-                            let ratio = if mem.heap_max_in_bytes > 0 {
-                                mem.heap_used_in_bytes as f32 / mem.heap_max_in_bytes as f32
-                            } else {
-                                0.0
-                            };
-                            ui.add_space(6.0);
-                            ui.label(
-                                egui::RichText::new(format!(
-                                    "JVM Heap Overall: {} / {} ({:.1}%)",
-                                    human_bytes(mem.heap_used_in_bytes),
-                                    human_bytes(mem.heap_max_in_bytes),
-                                    ratio * 100.0
-                                ))
-                                .size(10.0)
-                                .color(Theme::text_muted()),
-                            );
-                            ui.add(GradientProgressBar::new(ratio).height(6.0));
-                        }
-                    }
+                if let Some(ref nodes_stats) = s.nodes
+                    && let Some(ref jvm) = nodes_stats.jvm
+                    && let Some(ref mem) = jvm.mem
+                {
+                    let ratio = if mem.heap_max_in_bytes > 0 {
+                        mem.heap_used_in_bytes as f32 / mem.heap_max_in_bytes as f32
+                    } else {
+                        0.0
+                    };
+                    ui.add_space(6.0);
+                    ui.label(
+                        egui::RichText::new(format!(
+                            "JVM Heap Overall: {} / {} ({:.1}%)",
+                            human_bytes(mem.heap_used_in_bytes),
+                            human_bytes(mem.heap_max_in_bytes),
+                            ratio * 100.0
+                        ))
+                        .size(10.0)
+                        .color(Theme::text_muted()),
+                    );
+                    ui.add(GradientProgressBar::new(ratio).height(6.0));
                 }
             }
         } else {
@@ -460,8 +459,8 @@ fn render_detailed_view(
                         ui.separator();
 
                         // Doc count Box
-                        if let Some(ref s) = stats {
-                            if let Some(ref indices) = s.indices {
+                        if let Some(ref s) = stats
+                            && let Some(ref indices) = s.indices {
                                 ui.allocate_ui(egui::Vec2::new(width_box, 60.0), |ui| {
                                     ui.vertical(|ui| {
                                         ui.label(egui::RichText::new("Documents Count").color(Theme::text_muted()).size(10.5));
@@ -488,7 +487,6 @@ fn render_detailed_view(
                                     });
                                 });
                             }
-                        }
                     });
                 });
             ui.add_space(16.0);

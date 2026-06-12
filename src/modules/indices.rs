@@ -189,10 +189,8 @@ pub fn render_indices_module(
     ui.horizontal(|ui| {
         ui.label("🔍 Filter:");
         ui.text_edit_singleline(&mut state.filter);
-        if !state.filter.is_empty() {
-            if ui.small_button("Clear").clicked() {
-                state.filter.clear();
-            }
+        if !state.filter.is_empty() && ui.small_button("Clear").clicked() {
+            state.filter.clear();
         }
 
         ui.add_space(8.0);
@@ -495,7 +493,7 @@ fn render_indices_table(
 
                 // Column 4: Size
                 let size = idx.store_size.as_deref().unwrap_or("0");
-                let size_formatted = format_size(&size);
+                let size_formatted = format_size(size);
                 ui.horizontal(|ui| {
                     ui.label(
                         RichText::new(size_formatted)

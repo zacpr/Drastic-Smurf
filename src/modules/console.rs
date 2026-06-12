@@ -904,7 +904,7 @@ pub fn render_console_module(
                                             let label_text = format!("{} {}", method, path);
                                             let text = egui::RichText::new(&label_text).size(12.0);
 
-                                            let is_loaded = state.history_index.map_or(false, |idx| idx == rev_idx);
+                                            let is_loaded = state.history_index == Some(rev_idx);
                                             let text = if is_loaded {
                                                 text.color(crate::ui::theme::Theme::accent()).strong()
                                             } else {
@@ -1179,8 +1179,7 @@ pub fn render_console_module(
                             if ui.button("✨ Prettify JSON")
                                 .on_hover_text("Format and auto-indent the JSON body")
                                 .clicked()
-                            {
-                                if !state.body.trim().is_empty() {
+                                && !state.body.trim().is_empty() {
                                     match prettify_json_body(&state.body) {
                                         Ok(formatted) => {
                                             state.body = formatted;
@@ -1191,7 +1190,6 @@ pub fn render_console_module(
                                         }
                                     }
                                 }
-                            }
                         });
                     });
 

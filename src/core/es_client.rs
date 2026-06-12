@@ -1165,12 +1165,12 @@ pub fn parse_allocation_explain(raw: &serde_json::Value) -> AllocationExplain {
             let node_name = node["node_name"].as_str().unwrap_or("unknown");
             if let Some(decs) = node["decisions"].as_array() {
                 for dec in decs {
-                    if dec["decision"].as_str() == Some("NO") {
-                        if let Some(exp) = dec["explanation"].as_str() {
-                            explain
-                                .decider_reasons
-                                .push(format!("{}: {}", node_name, exp));
-                        }
+                    if dec["decision"].as_str() == Some("NO")
+                        && let Some(exp) = dec["explanation"].as_str()
+                    {
+                        explain
+                            .decider_reasons
+                            .push(format!("{}: {}", node_name, exp));
                     }
                 }
             }
