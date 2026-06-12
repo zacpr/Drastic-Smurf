@@ -1,6 +1,6 @@
 [package]
 name = "drastic-smurf"
-version = "0.5.8"
+version = "0.5.9"
 edition = "2024"
 authors = ["Zac <zac@example.com>"]
 description = "Extensible desktop GUI for monitoring and interacting with multiple Elasticsearch clusters"
