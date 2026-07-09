@@ -91,7 +91,7 @@ impl PipelineState {
 }
 
 pub fn render_pipeline_module(ui: &mut Ui, state: &mut PipelineState) {
-    ui.heading("Pipeline Simulator");
+    ui.heading("Pipeline Sandpit");
     ui.add_space(8.0);
 
     let available_width = ui.available_width();

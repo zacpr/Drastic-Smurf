@@ -7,13 +7,20 @@ use eframe::egui;
 
 use crate::core::cluster_manager::ClusterManager;
 use crate::core::config::ClusterConfig;
-use crate::core::es_client::{ClusterHealth, EsClient};
+use crate::core::es_client::{ClusterHealth, EsClient, LogEntry, LogFieldNames, LogFilters};
+use serde_json::Value;
 use crate::modules::appearance::{AppearanceState, render_appearance_module};
 use crate::modules::clusters::{ClustersState, render_clusters_module};
 use crate::modules::console::{ConsoleState, render_console_module};
 use crate::modules::dashboard::{DashboardState, render_dashboard_module};
 use crate::modules::discover::{DiscoverState, render_discover_module};
 use crate::modules::indices::{IndicesState, render_indices_module};
+use crate::modules::logs::{LogsState, render_logs_module};
+use crate::modules::llm_assistant::{
+    self, AssistantState, ClusterContext, SendRequest, build_cluster_context,
+    build_llm_messages, spawn_stream,
+};
+use crate::core::config::ChatMessage;
 use crate::modules::observability::{ObservabilityState, render_observability_module};
 use crate::modules::pipeline::{PipelineState, render_pipeline_module};
 use crate::modules::snapshot::{
@@ -37,7 +44,14 @@ pub enum Tab {
     Indices,
     Observability,
     PipelineSimulator,
+    Logs,
     Settings,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PipelineSubTab {
+    Sandpit,
+    Online,
 }
 
 pub enum RefreshMsg {
@@ -72,6 +86,17 @@ pub enum RefreshMsg {
     PendingTasksResult(String, Vec<serde_json::Value>),
     IndexDetailResult(String, Result<crate::modules::indices::IndexDetail, String>),
     NodesResult(String, Vec<crate::core::es_client::CatNode>),
+    OnlineIndicesResult(
+        String,
+        Vec<crate::core::es_client::CatIndex>,
+        Vec<crate::core::es_client::DataStream>,
+    ),
+    OnlinePipelinesResult(String, Vec<String>),
+    OnlinePipelineDefResult(String, String, Result<String, String>),
+    OnlineDocResult(Result<serde_json::Value, String>),
+    OnlineSimulateResult(Result<String, String>),
+    OnlineFileResult(Result<String, String>),
+    LogsResult(String, Result<Vec<LogEntry>, String>),
 }
 
 pub struct DrasticSmurfApp {
@@ -84,11 +109,15 @@ pub struct DrasticSmurfApp {
     pub tasks_state: TasksState,
     pub console_state: ConsoleState,
     pub discover_state: DiscoverState,
+    pub logs_state: LogsState,
     pub indices_state: IndicesState,
     pub observability_state: ObservabilityState,
     pub clusters_state: ClustersState,
     pub appearance_state: AppearanceState,
     pub pipeline_state: PipelineState,
+    pub pipeline_online_state: crate::modules::pipeline_online::OnlinePipelineState,
+    pub pipeline_sub_tab: PipelineSubTab,
+    pub pipeline_online_actions: Option<Vec<crate::modules::pipeline_online::OnlineAction>>,
     pub auto_refresh: bool,
     pub refresh_interval_secs: u64,
     pub last_refresh: Option<Instant>,
@@ -106,6 +135,7 @@ pub struct DrasticSmurfApp {
     pub cluster_histories_fetched: HashMap<String, Vec<crate::core::es_client::SnapshotInfo>>,
     pub console_send: Option<(String, String, String, Option<String>, bool)>,
     pub discover_send: Option<(String, String, String)>,
+    pub logs_send: Option<(String, LogFilters, LogFieldNames, String, usize)>,
     pub indices_refresh: Option<(String, bool)>,
     pub observability_refresh: Option<(String, String)>,
     pub clusters_import: Option<crate::core::config::AppConfig>,
@@ -116,6 +146,7 @@ pub struct DrasticSmurfApp {
     pub window_pos: Option<[f32; 2]>,
     pub toasts: Toasts,
     pub cluster_filter: String,
+    pub cluster_filter_typed_at: Option<Instant>,
     pub log_entries: Arc<RwLock<Vec<crate::ui::log_buffer::LogEntry>>>,
     pub show_log_window: bool,
     pub konami_six_count: u32,
@@ -125,6 +156,8 @@ pub struct DrasticSmurfApp {
     pub hot_threads_text: Option<String>,
     pub hot_threads_loading: bool,
     pub show_pending_cluster: Option<String>,
+    pub assistant_state: AssistantState,
+    pub assistant_dock_visible: bool,
 }
 
 impl Default for DrasticSmurfApp {
@@ -176,6 +209,7 @@ impl DrasticSmurfApp {
             tasks_state: TasksState::default(),
             console_state,
             discover_state: DiscoverState::default(),
+            logs_state: LogsState::from_settings(&config.logs),
             indices_state: IndicesState::new(),
             observability_state,
             clusters_state: ClustersState::default(),
@@ -184,6 +218,9 @@ impl DrasticSmurfApp {
                 ..Default::default()
             },
             pipeline_state: PipelineState::with_defaults(),
+            pipeline_online_state: crate::modules::pipeline_online::OnlinePipelineState::default(),
+            pipeline_sub_tab: PipelineSubTab::Sandpit,
+            pipeline_online_actions: None,
             auto_refresh: manager.auto_refresh(),
             refresh_interval_secs: manager.refresh_interval_secs(),
             last_refresh: None,
@@ -201,6 +238,7 @@ impl DrasticSmurfApp {
             cluster_histories_fetched: HashMap::new(),
             console_send: None,
             discover_send: None,
+            logs_send: None,
             indices_refresh: None,
             observability_refresh: None,
             clusters_import: None,
@@ -217,6 +255,7 @@ impl DrasticSmurfApp {
             },
             toasts: Toasts::default(),
             cluster_filter: manager.cluster_filter(),
+            cluster_filter_typed_at: None,
             log_entries,
             show_log_window: false,
             konami_six_count: 0,
@@ -230,6 +269,11 @@ impl DrasticSmurfApp {
             hot_threads_text: None,
             hot_threads_loading: false,
             show_pending_cluster: None,
+            assistant_state: AssistantState::new(
+                config.llm.clone(),
+                config.assistant_conversations.clone(),
+            ),
+            assistant_dock_visible: config.assistant_dock_visible,
         };
 
         for cluster in &clusters {
@@ -703,6 +747,18 @@ impl DrasticSmurfApp {
                         }
                     }
                 }
+                RefreshMsg::LogsResult(_name, result) => {
+                    self.logs_state.is_loading = false;
+                    match result {
+                        Ok(entries) => {
+                            self.logs_state.results = entries;
+                            self.logs_state.error = None;
+                        }
+                        Err(e) => {
+                            self.logs_state.error = Some(e);
+                        }
+                    }
+                }
                 RefreshMsg::IndicesResult(_name, indices, datastreams) => {
                     self.indices_state.update_data(indices, datastreams);
                     self.indices_state.error = None;
@@ -788,6 +844,105 @@ impl DrasticSmurfApp {
                         }
                     }
                 }
+                RefreshMsg::OnlineIndicesResult(_name, indices, datastreams) => {
+                    self.pipeline_online_state.indices = indices
+                        .into_iter()
+                        .map(|i| i.index)
+                        .collect();
+                    self.pipeline_online_state.datastreams =
+                        datastreams.into_iter().map(|d| d.name).collect();
+                    self.pipeline_online_state.indices_loading = false;
+                    // If the previously selected target is no longer in the new list,
+                    // clear it so the user can't accidentally simulate against a stale name.
+                    let target = self.pipeline_online_state.target_name.clone();
+                    if !target.is_empty() {
+                        let still_present = match self.pipeline_online_state.target_kind {
+                            crate::core::config::PipelineTargetKind::Index => self
+                                .pipeline_online_state
+                                .indices
+                                .iter()
+                                .any(|i| i == &target),
+                            crate::core::config::PipelineTargetKind::DataStream => self
+                                .pipeline_online_state
+                                .datastreams
+                                .iter()
+                                .any(|d| d == &target),
+                        };
+                        if !still_present {
+                            self.pipeline_online_state.target_name.clear();
+                            self.pipeline_online_state.target_filter.clear();
+                        }
+                    }
+                }
+                RefreshMsg::OnlinePipelinesResult(_name, ids) => {
+                    self.pipeline_online_state.pipeline_ids = ids;
+                    self.pipeline_online_state.pipelines_loading = false;
+                }
+                RefreshMsg::OnlinePipelineDefResult(_name, id, res) => match res {
+                    Ok(text) => {
+                        self.pipeline_online_state.pipeline_id = id;
+                        self.pipeline_online_state.pipeline_text = text;
+                        self.pipeline_online_state.pipeline_error = None;
+                    }
+                    Err(e) => {
+                        self.pipeline_online_state.pipeline_error = Some(e);
+                    }
+                },
+                RefreshMsg::OnlineDocResult(res) => match res {
+                    Ok(source) => {
+                        match crate::modules::pipeline_online::append_doc_source(
+                            &self.pipeline_online_state.docs_text,
+                            source,
+                        ) {
+                            Ok(new_docs) => {
+                                self.pipeline_online_state.docs_text = new_docs;
+                                self.pipeline_online_state.docs_error = None;
+                            }
+                            Err(e) => {
+                                self.pipeline_online_state.docs_error = Some(e);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        self.pipeline_online_state.docs_error = Some(e);
+                    }
+                },
+                RefreshMsg::OnlineSimulateResult(res) => {
+                    self.pipeline_online_state.is_loading = false;
+                    match res {
+                        Ok(text) => {
+                            let mut t = text;
+                            if t.len() > 100_000 {
+                                t.truncate(100_000);
+                                t.push_str("\n\n... [Response truncated for performance] ...");
+                            }
+                            self.pipeline_online_state.result_text = t;
+                            self.pipeline_online_state.pipeline_error = None;
+                            self.pipeline_online_state.docs_error = None;
+                        }
+                        Err(e) => {
+                            self.pipeline_online_state.result_text = format!("Error: {}", e);
+                            self.pipeline_online_state.pipeline_error = Some(e);
+                        }
+                    }
+                }
+                RefreshMsg::OnlineFileResult(res) => match res {
+                    Ok(text) => match crate::modules::pipeline_online::append_file_docs(
+                        &self.pipeline_online_state.docs_text,
+                        &text,
+                    ) {
+                        Ok(new_docs) => {
+                            self.pipeline_online_state.docs_text = new_docs;
+                            self.pipeline_online_state.docs_error = None;
+                        }
+                        Err(e) => {
+                            self.pipeline_online_state.docs_error = Some(e);
+                        }
+                    },
+                    Err(e) => {
+                        self.pipeline_online_state.docs_error = Some(e);
+                    }
+                },
             }
         }
     }
@@ -863,11 +1018,11 @@ impl DrasticSmurfApp {
     }
 
     fn cluster_matches_filter(&self, name: &str) -> bool {
-        if self.cluster_filter.is_empty() {
+        let f = self.cluster_manager.cluster_filter();
+        if f.is_empty() {
             return true;
         }
-        name.to_lowercase()
-            .contains(&self.cluster_filter.to_lowercase())
+        name.to_lowercase().contains(&f.to_lowercase())
     }
 
     fn get_unfiltered_cluster_names(&self) -> Vec<String> {
@@ -1012,12 +1167,12 @@ impl DrasticSmurfApp {
                     let filter_res = ui.add(
                         egui::TextEdit::singleline(&mut self.cluster_filter)
                             .hint_text("🔍 Filter clusters...")
-                            .desired_width(f32::INFINITY),
+                            .desired_width(f32::INFINITY)
+                            .id_source("cluster_filter_input"),
                     );
                     if filter_res.changed() {
-                        self.cluster_manager
-                            .set_cluster_filter(self.cluster_filter.clone());
-                        self.ensure_selected_clusters_match_filter();
+                        self.cluster_filter_typed_at = Some(Instant::now());
+                        ui.ctx().request_repaint();
                     }
                     ui.add_space(4.0);
 
@@ -1379,7 +1534,8 @@ impl DrasticSmurfApp {
                         ("Discover", Tab::Discover),
                         ("Indices", Tab::Indices),
                         ("Observability", Tab::Observability),
-                        ("Pipeline Simulator", Tab::PipelineSimulator),
+                        ("Pipelines", Tab::PipelineSimulator),
+                        ("Logs", Tab::Logs),
                         ("Settings", Tab::Settings),
                     ] {
                         let is_active = self.current_tab == tab;
@@ -2169,10 +2325,38 @@ impl DrasticSmurfApp {
                     &mut self.observability_refresh,
                 );
             }
+            Tab::Logs => {
+                let cluster_names: Vec<String> = self
+                    .cluster_manager
+                    .clusters()
+                    .iter()
+                    .filter(|c| self.cluster_matches_filter(&c.name))
+                    .map(|c| c.name.clone())
+                    .collect();
+                let mut on_search = None;
+                let mut settings_changed = false;
+                render_logs_module(
+                    ui,
+                    &mut self.logs_state,
+                    &cluster_names,
+                    &mut on_search,
+                    &mut settings_changed,
+                );
+                if let Some(search) = on_search {
+                    self.logs_send = Some(search);
+                }
+                if settings_changed {
+                    let mut config = crate::core::config::AppConfig::load().unwrap_or_default();
+                    config.logs = self.logs_state.to_settings();
+                    let _ = config.save();
+                }
+            }
             Tab::Settings => {
                 let mut theme_changed = false;
                 let mut vfx_changed = false;
                 let mut tour_triggered = false;
+                let mut llm_open_docs: Option<String> = None;
+                let prev_llm_settings = self.assistant_state.settings.clone();
 
                 egui::ScrollArea::vertical()
                     .id_salt("settings_scroll")
@@ -2186,6 +2370,32 @@ impl DrasticSmurfApp {
                             &mut vfx_changed,
                             &mut tour_triggered,
                         );
+
+                        ui.add_space(16.0);
+
+                        // AI Assistant settings card
+                        egui::Frame::new()
+                            .fill(Theme::bg_card())
+                            .corner_radius(Theme::CARD_ROUNDING)
+                            .inner_margin(Theme::CARD_PADDING)
+                            .show(ui, |ui| {
+                                ui.heading("🤖 AI Assistant");
+                                ui.add_space(4.0);
+                                ui.label(
+                                    egui::RichText::new(
+                                        "Configure the LLM provider used for the AI troubleshooting assistant. \
+                                         API keys are stored in the OS keyring. Settings auto-save.",
+                                    )
+                                    .color(Theme::text_muted())
+                                    .size(11.0),
+                                );
+                                ui.add_space(10.0);
+                                llm_assistant::render_settings_section(
+                                    ui,
+                                    &mut self.assistant_state,
+                                    &mut llm_open_docs,
+                                );
+                            });
 
                         ui.add_space(16.0);
 
@@ -2270,10 +2480,440 @@ impl DrasticSmurfApp {
                     self.toasts
                         .error(format!("Failed to save appearance settings: {}", e));
                 }
+                // Auto-save AI Assistant settings whenever they changed.
+                if self.assistant_state.settings != prev_llm_settings {
+                    if let Err(e) = self
+                        .cluster_manager
+                        .save_llm_settings(self.assistant_state.settings.clone())
+                    {
+                        self.toasts
+                            .error(format!("Failed to save AI Assistant settings: {}", e));
+                    }
+                }
+                if let Some(url) = llm_open_docs {
+                    let _ = webbrowser::open(&url);
+                }
             }
             Tab::PipelineSimulator => {
-                render_pipeline_module(ui, &mut self.pipeline_state);
+                // Sub-tab header
+                ui.horizontal(|ui| {
+                    ui.selectable_value(
+                        &mut self.pipeline_sub_tab,
+                        PipelineSubTab::Sandpit,
+                        "🧪 Pipeline Sandpit",
+                    );
+                    ui.selectable_value(
+                        &mut self.pipeline_sub_tab,
+                        PipelineSubTab::Online,
+                        "🌐 Online Pipeline Test",
+                    );
+                });
+                ui.add_space(4.0);
+                ui.separator();
+                ui.add_space(4.0);
+
+                match self.pipeline_sub_tab {
+                    PipelineSubTab::Sandpit => {
+                        render_pipeline_module(ui, &mut self.pipeline_state);
+                    }
+                    PipelineSubTab::Online => {
+                        let cluster_names: Vec<String> = self
+                            .cluster_manager
+                            .clusters()
+                            .iter()
+                            .filter(|c| self.cluster_matches_filter(&c.name))
+                            .map(|c| c.name.clone())
+                            .collect();
+                        let presets = self.cluster_manager.pipeline_test_presets();
+                        let mut on_action: Vec<crate::modules::pipeline_online::OnlineAction> =
+                            Vec::new();
+                        crate::modules::pipeline_online::render_online_pipeline_module(
+                            ui,
+                            &mut self.pipeline_online_state,
+                            &cluster_names,
+                            &presets,
+                            &mut on_action,
+                        );
+                        if !on_action.is_empty() {
+                            self.pipeline_online_actions = Some(on_action);
+                        }
+                    }
+                }
             }
+        }
+    }
+
+    fn render_assistant_dock(&mut self, ctx: &egui::Context) {
+        if !self.assistant_dock_visible {
+            return;
+        }
+
+        let mut open = true;
+        let mut new_conversation = false;
+        let mut delete_conversation: Option<String> = None;
+        let mut open_docs: Option<String> = None;
+        let mut send_request: Option<SendRequest> = None;
+        let mut run_console_action: Option<llm_assistant::ConsoleAction> = None;
+
+        let cluster_ctx = self.compute_assistant_cluster_context();
+        let available_clusters: Vec<String> = self
+            .cluster_manager
+            .clusters()
+            .iter()
+            .map(|c| c.name.clone())
+            .collect();
+
+        // Snapshot for auto-save diff.
+        let prev_settings = self.assistant_state.settings.clone();
+
+        // Constrain the window so it never grows wider than the screen (the
+        // previous setup let egui persist a user-dragged size, which could
+        // run off the left edge on smaller displays).
+        let screen = ctx.screen_rect();
+        let max_w = (screen.width() - 16.0).clamp(320.0, 460.0);
+        let max_h = (screen.height() - 72.0).max(380.0);
+
+        egui::Window::new("AI Assistant")
+            .open(&mut open)
+            .resizable(true)
+            .collapsible(false)
+            .default_size([420.0, 600.0])
+            .min_size([320.0, 380.0])
+            .max_width(max_w)
+            .max_height(max_h)
+            .anchor(egui::Align2::RIGHT_TOP, egui::Vec2::new(-8.0, 56.0))
+            .show(ctx, |ui| {
+                llm_assistant::render_assistant_panel(
+                    ui,
+                    &mut self.assistant_state,
+                    &cluster_ctx,
+                    &mut send_request,
+                    &mut open_docs,
+                    &mut new_conversation,
+                    &mut delete_conversation,
+                    &mut run_console_action,
+                    &available_clusters,
+                );
+            });
+
+        if !open {
+            self.assistant_dock_visible = false;
+            let _ = self
+                .cluster_manager
+                .set_assistant_dock_visible(false);
+        }
+
+        if self.assistant_state.close_requested {
+            self.assistant_dock_visible = false;
+            let _ = self
+                .cluster_manager
+                .set_assistant_dock_visible(false);
+            self.assistant_state.close_requested = false;
+        }
+
+        // Auto-save settings when they changed during this frame.
+        if self.assistant_state.settings != prev_settings
+            && let Err(e) = self
+                .cluster_manager
+                .save_llm_settings(self.assistant_state.settings.clone())
+        {
+            self.toasts
+                .error(format!("Failed to save assistant settings: {}", e));
+        }
+
+        if new_conversation {
+            self.assistant_state.new_conversation();
+            self.persist_assistant_conversations();
+        }
+
+        if let Some(id) = delete_conversation {
+            self.assistant_state.delete_conversation(&id);
+            self.persist_assistant_conversations();
+        }
+
+        if let Some(url) = open_docs {
+            let _ = webbrowser::open(&url);
+        }
+
+        if let Some(req) = send_request {
+            self.dispatch_assistant_send(req, cluster_ctx);
+        }
+
+        if let Some(action) = run_console_action {
+            self.run_assistant_console_action(action);
+        }
+    }
+
+    /// Dispatch an assistant-proposed console command: switch to the Console
+    /// tab, prefill the form, and execute.
+    fn run_assistant_console_action(&mut self, action: llm_assistant::ConsoleAction) {
+        self.current_tab = Tab::Console;
+        self.console_state.selected_cluster = action.cluster.clone();
+        self.console_state.method = action.method.clone();
+        self.console_state.path = action.path.clone();
+        self.console_state.body = action.body.clone().unwrap_or_default();
+        self.console_state.history_index = None;
+        self.console_state.use_kibana_host = false;
+        self.console_send = Some((
+            action.cluster,
+            action.method,
+            action.path,
+            action.body,
+            false,
+        ));
+        self.toasts.info("Running assistant-proposed command in Console");
+    }
+
+    fn render_assistant_chevron(&mut self, ctx: &egui::Context) {
+        if self.assistant_dock_visible {
+            return;
+        }
+
+        let screen_rect = ctx.screen_rect();
+        let height = 44.0;
+        let collapsed = 28.0;
+        let expanded = 140.0;
+        let id = egui::Id::new("assistant_chevron");
+
+        // Position the area at the right edge. We use a fixed-size interaction
+        // area equal to the expanded width so hover state is consistent while
+        // the visual width animates inside it (prevents jitter from the hit
+        // box jumping around).
+        let area_pos = egui::Pos2::new(
+            screen_rect.max.x - expanded,
+            screen_rect.center().y - height / 2.0,
+        );
+        let area_size = egui::Vec2::new(expanded, height);
+
+        // How long the chevron stays expanded after the cursor leaves before
+        // it starts sliding back. Gives the user a forgiveness window so a
+        // small mouse twitch doesn't immediately retract it.
+        const STAY_OPEN_SECS: f64 = 0.45;
+
+        egui::Area::new(id)
+            .fixed_pos(area_pos)
+            .interactable(true)
+            .pivot(egui::Align2::LEFT_CENTER)
+            .show(ctx, |ui| {
+                // Allocate the hit area for hover detection only. We use a
+                // purely geometric pointer test below so that the button drawn
+                // on top via `ui.put` doesn't "steal" the hover state from
+                // this rect (which used to cause flickering as the button
+                // moved in and out from under the cursor).
+                let (rect, _response) =
+                    ui.allocate_exact_size(area_size, egui::Sense::hover());
+
+                let pointer_in_area = ui.rect_contains_pointer(rect);
+
+                // Remember when the pointer last touched the chevron so we
+                // can keep it expanded for STAY_OPEN_SECS after it leaves.
+                let now = ctx.input(|i| i.time);
+                let last_hover_key = id.with("last_hover_time");
+                let last_hover = ctx.data_mut(|d| {
+                    if pointer_in_area {
+                        d.insert_temp(last_hover_key, now);
+                        now
+                    } else {
+                        d.get_temp::<f64>(last_hover_key)
+                            .unwrap_or(f64::NEG_INFINITY)
+                    }
+                });
+                let within_grace = (now - last_hover) < STAY_OPEN_SECS;
+                let keep_open = pointer_in_area || within_grace;
+
+                // Smoothly animate 0.0 (collapsed) -> 1.0 (expanded). Use a
+                // symmetric ease so the slide-out and slide-back feel
+                // identical (no overshoot bounce on retract).
+                let target = if keep_open { 1.0_f32 } else { 0.0 };
+                let progress = ctx.animate_value_with_time(
+                    id.with("chevron_progress"),
+                    target,
+                    0.22,
+                );
+                let eased = crate::ui::widgets::ease_in_out_cubic(progress);
+                let current_width =
+                    collapsed + (expanded - collapsed) * eased;
+
+                // Draw the actual button right-aligned inside the area so it
+                // always stays flush with the right edge.
+                let button_rect = egui::Rect::from_min_size(
+                    egui::Pos2::new(
+                        rect.max.x - current_width,
+                        rect.min.y,
+                    ),
+                    egui::Vec2::new(current_width, rect.height()),
+                );
+                let show_label = progress > 0.4;
+                let label = if show_label {
+                    "🤖 AI Assistant"
+                } else {
+                    "🤖"
+                };
+                let font_size = 12.0 + 4.0 * eased;
+
+                let btn = ui.put(
+                    button_rect,
+                    egui::Button::new(
+                        egui::RichText::new(label)
+                            .strong()
+                            .color(Theme::contrast_text_color(
+                                Theme::accent(),
+                            ))
+                            .size(font_size),
+                    )
+                    .fill(Theme::accent())
+                    .corner_radius(egui::CornerRadius {
+                        nw: 10,
+                        sw: 10,
+                        ne: 0,
+                        se: 0,
+                    }),
+                );
+
+                if btn.clicked() {
+                    self.assistant_dock_visible = true;
+                    let _ = self
+                        .cluster_manager
+                        .set_assistant_dock_visible(true);
+                }
+
+                // Keep painting while the animation is in flight, while the
+                // pointer is over the chevron, or while we're inside the
+                // post-hover grace window (so the delayed retract can fire
+                // without needing an external repaint).
+                let animating = (progress - target).abs() > f32::EPSILON;
+                if animating || pointer_in_area || within_grace {
+                    ctx.request_repaint();
+                }
+            });
+    }
+
+    fn compute_assistant_cluster_context(&self) -> ClusterContext {
+        let cluster_name = if !self.cluster_manager.clusters().is_empty() {
+            self.cluster_manager.clusters()[0].name.clone()
+        } else {
+            String::new()
+        };
+
+        let health = self
+            .status_state
+            .health_data
+            .iter()
+            .find(|(n, _)| n == &cluster_name)
+            .and_then(|(_, h)| h.as_ref());
+        let stats = self
+            .status_state
+            .stats_data
+            .iter()
+            .find(|(n, _)| n == &cluster_name)
+            .and_then(|(_, s)| s.as_ref());
+        let es_version = self.status_state.es_versions.get(&cluster_name).map(|s| s.as_str());
+        let error = self.status_state.errors.get(&cluster_name).map(|s| s.as_str());
+
+        build_cluster_context(
+            if cluster_name.is_empty() { None } else { Some(&cluster_name) },
+            health,
+            stats,
+            es_version,
+            error,
+            self.assistant_state.settings.max_context_chars,
+        )
+    }
+
+    fn dispatch_assistant_send(&mut self, req: SendRequest, ctx: ClusterContext) {
+        // Append user message and a placeholder assistant message to the conversation.
+        if let Some(conv) = self
+            .assistant_state
+            .conversations
+            .iter_mut()
+            .find(|c| c.id == req.conversation_id)
+        {
+            let now = chrono::Utc::now();
+            conv.messages.push(ChatMessage {
+                role: "user".into(),
+                content: req.user_text.clone(),
+                timestamp: now,
+            });
+            conv.messages.push(ChatMessage {
+                role: "assistant".into(),
+                content: String::new(),
+                timestamp: now,
+            });
+            if conv.title == "New conversation" {
+                conv.title = req
+                    .user_text
+                    .chars()
+                    .take(60)
+                    .collect::<String>();
+            }
+            conv.updated_at = now;
+        }
+
+        // Snapshot conversation for the network task.
+        let snapshot = self
+            .assistant_state
+            .conversations
+            .iter()
+            .find(|c| c.id == req.conversation_id)
+            .cloned();
+        let Some(conv) = snapshot else {
+            self.assistant_state.last_error = Some("Conversation not found".into());
+            return;
+        };
+
+        let cluster_ctx_opt = if req.include_cluster_context {
+            Some(ctx)
+        } else {
+            None
+        };
+
+        let messages = build_llm_messages(&conv, cluster_ctx_opt.as_ref(), "");
+        // The last user message was already pushed into the conversation above;
+        // build_llm_messages expects to append the user_text, but since we just
+        // pushed it, drop the trailing duplicate.
+        let mut messages = messages;
+        if messages.last().map(|m| m.role == "user").unwrap_or(false) {
+            messages.pop();
+        }
+
+        let api_key_res = crate::core::auth::get_llm_api_key(
+            &self.assistant_state.settings.provider_id,
+        );
+        let api_key = match api_key_res {
+            Ok(Some(k)) if !k.is_empty() => Some(k),
+            _ => None,
+        };
+
+        if api_key.is_none()
+            && !matches!(
+                self.assistant_state.settings.provider_id.as_str(),
+                "ollama" | "lmstudio" | "vllm" | "custom"
+            )
+        {
+            self
+                .assistant_state
+                .last_error
+                .get_or_insert_with(String::new);
+            self.assistant_state.last_error =
+                Some("No API key set. Open settings (⚙) and paste your key.".into());
+            self.assistant_state.is_streaming = false;
+            return;
+        }
+
+        let settings = self.assistant_state.settings.clone();
+        self.assistant_state.stream_rx = Some(spawn_stream(settings, api_key, messages));
+        self.assistant_state.is_streaming = true;
+        self.assistant_state.last_error = None;
+        self.persist_assistant_conversations();
+    }
+
+    fn persist_assistant_conversations(&mut self) {
+        let active = self.assistant_state.active_conversation_id.clone();
+        if let Err(e) = self.cluster_manager.save_assistant_conversations(
+            self.assistant_state.conversations.clone(),
+            active,
+        ) {
+            tracing::warn!("Failed to persist assistant conversations: {}", e);
         }
     }
 
@@ -2476,6 +3116,30 @@ impl eframe::App for DrasticSmurfApp {
         // Process async results
         self.process_refresh_results(ctx);
 
+        // Debounced cluster filter: apply only after FILTER_DEBOUNCE_MS of no typing.
+        let now = std::time::Instant::now();
+        let debounce = std::time::Duration::from_millis(
+            crate::modules::indices::FILTER_DEBOUNCE_MS,
+        );
+        if crate::modules::indices::filter_debounce_due(
+            self.cluster_filter_typed_at,
+            now,
+            debounce,
+        ) {
+            self.cluster_filter_typed_at = None;
+            self.cluster_manager
+                .set_cluster_filter(self.cluster_filter.clone());
+            self.ensure_selected_clusters_match_filter();
+        } else if let Some(remaining) =
+            crate::modules::indices::filter_debounce_remaining(
+                self.cluster_filter_typed_at,
+                now,
+                debounce,
+            )
+        {
+            ctx.request_repaint_after(remaining);
+        }
+
         // Ensure selected clusters match current filter
         self.ensure_selected_clusters_match_filter();
 
@@ -2570,6 +3234,29 @@ impl eframe::App for DrasticSmurfApp {
                     "Failed to obtain cluster client. Ensure the cluster is configured and reachable."
                         .to_string(),
                 )));
+            }
+        }
+
+        // Handle logs search
+        if let Some((cluster_name, filters, field_names, index_pattern, limit)) = self.logs_send.take() {
+            if let Some(client) = self.cluster_manager.get_client(&cluster_name) {
+                let tx = self.refresh_tx.clone();
+                let ctx = ctx.clone();
+                let name = cluster_name.clone();
+                tokio::spawn(async move {
+                    let result = client
+                        .search_logs(&index_pattern, &filters, &field_names, limit)
+                        .await
+                        .map_err(|e| e.to_string());
+                    let _ = tx.send(RefreshMsg::LogsResult(name, result));
+                    ctx.request_repaint();
+                });
+            } else {
+                let _ = self.refresh_tx.send(RefreshMsg::LogsResult(
+                    cluster_name,
+                    Err("Failed to obtain cluster client. Ensure the cluster is configured and reachable."
+                        .to_string()),
+                ));
             }
         }
 
@@ -2738,6 +3425,300 @@ impl eframe::App for DrasticSmurfApp {
             }
         }
 
+        // Handle online pipeline actions
+        if let Some(actions) = self.pipeline_online_actions.take() {
+            for action in actions {
+                match action {
+                    crate::modules::pipeline_online::OnlineAction::FetchTargets(cluster) => {
+                        self.pipeline_online_state.indices_loading = true;
+                        if let Some(client) = self.cluster_manager.get_client(&cluster) {
+                            let tx = self.refresh_tx.clone();
+                            let ctx = ctx.clone();
+                            let name = cluster.clone();
+                            tokio::spawn(async move {
+                                let indices_res = client.cat_indices().await;
+                                let datastreams_res = client.get_data_streams().await;
+                                match (indices_res, datastreams_res) {
+                                    (Ok(indices), Ok(ds_resp)) => {
+                                        let _ = tx.send(RefreshMsg::OnlineIndicesResult(
+                                            name,
+                                            indices,
+                                            ds_resp.data_streams,
+                                        ));
+                                    }
+                                    (Ok(indices), Err(_)) => {
+                                        let _ = tx.send(RefreshMsg::OnlineIndicesResult(
+                                            name,
+                                            indices,
+                                            Vec::new(),
+                                        ));
+                                    }
+                                    (Err(e), _) => {
+                                        tracing::warn!(
+                                            "Failed to fetch indices for '{}': {}",
+                                            name,
+                                            e
+                                        );
+                                        let _ = tx.send(RefreshMsg::OnlineIndicesResult(
+                                            name,
+                                            Vec::new(),
+                                            Vec::new(),
+                                        ));
+                                    }
+                                }
+                                ctx.request_repaint();
+                            });
+                        } else {
+                            self.pipeline_online_state.indices_loading = false;
+                        }
+                    }
+                    crate::modules::pipeline_online::OnlineAction::FetchPipelines(cluster) => {
+                        self.pipeline_online_state.pipelines_loading = true;
+                        if let Some(client) = self.cluster_manager.get_client(&cluster) {
+                            let tx = self.refresh_tx.clone();
+                            let ctx = ctx.clone();
+                            let name = cluster.clone();
+                            tokio::spawn(async move {
+                                let res = client.get_ingest_pipelines().await;
+                                let ids: Vec<String> = match res {
+                                    Ok(v) => v
+                                        .as_object()
+                                        .map(|m| m.keys().cloned().collect())
+                                        .unwrap_or_default(),
+                                    Err(e) => {
+                                        tracing::warn!(
+                                            "Failed to fetch ingest pipelines for '{}': {}",
+                                            name,
+                                            e
+                                        );
+                                        Vec::new()
+                                    }
+                                };
+                                let _ = tx.send(RefreshMsg::OnlinePipelinesResult(name, ids));
+                                ctx.request_repaint();
+                            });
+                        } else {
+                            self.pipeline_online_state.pipelines_loading = false;
+                        }
+                    }
+                    crate::modules::pipeline_online::OnlineAction::LoadPipelineDef(
+                        cluster,
+                        id,
+                    ) => {
+                        if let Some(client) = self.cluster_manager.get_client(&cluster) {
+                            let tx = self.refresh_tx.clone();
+                            let ctx = ctx.clone();
+                            let name = cluster.clone();
+                            let id_clone = id.clone();
+                            tokio::spawn(async move {
+                                let res = client.get_ingest_pipeline(&id_clone).await;
+                                let result = match res {
+                                    Ok(v) => {
+                                        // The response is `{ "<id>": { ... def ... } }`.
+                                        // Extract the inner definition and pretty-print.
+                                        let def = v
+                                            .as_object()
+                                            .and_then(|m| m.values().next())
+                                            .cloned()
+                                            .unwrap_or(Value::Null);
+                                        serde_json::to_string_pretty(&def)
+                                            .map_err(|e| e.to_string())
+                                    }
+                                    Err(e) => Err(e.to_string()),
+                                };
+                                let _ = tx.send(RefreshMsg::OnlinePipelineDefResult(
+                                    name,
+                                    id_clone,
+                                    result,
+                                ));
+                                ctx.request_repaint();
+                            });
+                        }
+                    }
+                    crate::modules::pipeline_online::OnlineAction::FetchDoc(
+                        cluster,
+                        index,
+                        id,
+                    ) => {
+                        if let Some(client) = self.cluster_manager.get_client(&cluster) {
+                            let tx = self.refresh_tx.clone();
+                            let ctx = ctx.clone();
+                            tokio::spawn(async move {
+                                let path = format!("/{}/_doc/{}", index, id);
+                                let res = client
+                                    .execute(reqwest::Method::GET, &path, None)
+                                    .await;
+                                let result = match res {
+                                    Ok(v) => {
+                                        let source = v
+                                            .get("_source")
+                                            .cloned()
+                                            .unwrap_or(Value::Null);
+                                        Ok(source)
+                                    }
+                                    Err(e) => Err(e.to_string()),
+                                };
+                                let _ = tx.send(RefreshMsg::OnlineDocResult(result));
+                                ctx.request_repaint();
+                            });
+                        }
+                    }
+                    crate::modules::pipeline_online::OnlineAction::PickFile => {
+                        let tx = self.refresh_tx.clone();
+                        let ctx = ctx.clone();
+                        tokio::spawn(async move {
+                            let file = rfd::AsyncFileDialog::new()
+                                .add_filter("JSON", &["json", "ndjson", "txt"])
+                                .pick_file()
+                                .await;
+                            if let Some(handle) = file {
+                                let bytes = handle.read().await;
+                                let text = String::from_utf8_lossy(&bytes).to_string();
+                                let _ = tx.send(RefreshMsg::OnlineFileResult(Ok(text)));
+                            }
+                            ctx.request_repaint();
+                        });
+                    }
+                    crate::modules::pipeline_online::OnlineAction::Simulate {
+                        cluster,
+                        target,
+                        mode,
+                        pipeline_id,
+                        pipeline_text,
+                        docs_text,
+                    } => {
+                        match crate::modules::pipeline_online::build_simulate_body(
+                            &docs_text,
+                            &mode,
+                            &pipeline_id,
+                            &pipeline_text,
+                        ) {
+                            Ok(body) => {
+                                if let Some(client) = self.cluster_manager.get_client(&cluster) {
+                                    let tx = self.refresh_tx.clone();
+                                    let ctx = ctx.clone();
+                                    tokio::spawn(async move {
+                                        let res = client.simulate_ingest(&target, body).await;
+                                        let result = match res {
+                                            Ok(v) => {
+                                                serde_json::to_string_pretty(&v)
+                                                    .map_err(|e| e.to_string())
+                                            }
+                                            Err(e) => Err(e.to_string()),
+                                        };
+                                        let _ = tx.send(RefreshMsg::OnlineSimulateResult(result));
+                                        ctx.request_repaint();
+                                    });
+                                } else {
+                                    self.pipeline_online_state.is_loading = false;
+                                    self.pipeline_online_state.pipeline_error = Some(
+                                        "Failed to obtain cluster client".to_string(),
+                                    );
+                                }
+                            }
+                            Err(e) => {
+                                self.pipeline_online_state.is_loading = false;
+                                if mode == crate::core::config::PipelineMode::Loaded {
+                                    self.pipeline_online_state.pipeline_error = Some(e);
+                                } else {
+                                    self.pipeline_online_state.docs_error = Some(e);
+                                }
+                            }
+                        }
+                    }
+                    crate::modules::pipeline_online::OnlineAction::SavePreset(name) => {
+                        let preset =
+                            crate::modules::pipeline_online::collect_preset(
+                                &self.pipeline_online_state,
+                                name,
+                            );
+                        let mut presets = self.cluster_manager.pipeline_test_presets();
+                        if let Some(idx) = presets.iter().position(|p| p.name == preset.name) {
+                            presets[idx] = preset.clone();
+                        } else {
+                            presets.push(preset.clone());
+                        }
+                        if let Err(e) = self.cluster_manager.save_pipeline_test_presets(presets) {
+                            self.toasts
+                                .error(format!("Failed to save preset: {}", e));
+                        } else {
+                            self.toasts
+                                .info(format!("Saved preset '{}'", preset.name));
+                        }
+                    }
+                    crate::modules::pipeline_online::OnlineAction::LoadPreset(name) => {
+                        let presets = self.cluster_manager.pipeline_test_presets();
+                        if let Some(preset) = presets.into_iter().find(|p| p.name == name) {
+                            let cluster = preset.cluster.clone();
+                            crate::modules::pipeline_online::apply_preset(
+                                &mut self.pipeline_online_state,
+                                &preset,
+                            );
+                            // Trigger fetches for the loaded cluster.
+                            self.pipeline_online_state.indices_loading = true;
+                            self.pipeline_online_state.pipelines_loading = true;
+                            if let Some(client) = self.cluster_manager.get_client(&cluster) {
+                                let tx = self.refresh_tx.clone();
+                                let ctx = ctx.clone();
+                                let name_clone = cluster.clone();
+                                tokio::spawn(async move {
+                                    let indices_res = client.cat_indices().await;
+                                    let ds_res = client.get_data_streams().await;
+                                    let pipelines_res = client.get_ingest_pipelines().await;
+                                    match (indices_res, ds_res) {
+                                        (Ok(indices), Ok(ds)) => {
+                                            let _ = tx.send(RefreshMsg::OnlineIndicesResult(
+                                                name_clone.clone(),
+                                                indices,
+                                                ds.data_streams,
+                                            ));
+                                        }
+                                        (Ok(indices), Err(_)) => {
+                                            let _ = tx.send(RefreshMsg::OnlineIndicesResult(
+                                                name_clone.clone(),
+                                                indices,
+                                                Vec::new(),
+                                            ));
+                                        }
+                                        _ => {
+                                            let _ = tx.send(RefreshMsg::OnlineIndicesResult(
+                                                name_clone.clone(),
+                                                Vec::new(),
+                                                Vec::new(),
+                                            ));
+                                        }
+                                    }
+                                    let ids = match pipelines_res {
+                                        Ok(v) => v
+                                            .as_object()
+                                            .map(|m| m.keys().cloned().collect())
+                                            .unwrap_or_default(),
+                                        Err(_) => Vec::new(),
+                                    };
+                                    let _ = tx.send(RefreshMsg::OnlinePipelinesResult(
+                                        name_clone,
+                                        ids,
+                                    ));
+                                    ctx.request_repaint();
+                                });
+                            }
+                            self.toasts.info(format!("Loaded preset '{}'", name));
+                        }
+                    }
+                    crate::modules::pipeline_online::OnlineAction::DeletePreset(name) => {
+                        let mut presets = self.cluster_manager.pipeline_test_presets();
+                        presets.retain(|p| p.name != name);
+                        if let Err(e) = self.cluster_manager.save_pipeline_test_presets(presets) {
+                            self.toasts
+                                .error(format!("Failed to delete preset: {}", e));
+                        } else {
+                            self.toasts.info(format!("Deleted preset '{}'", name));
+                        }
+                    }
+                }
+            }
+        }
+
         // Auto refresh
         if self.auto_refresh {
             if self.snapshot_manual_refresh {
@@ -2806,6 +3787,10 @@ impl eframe::App for DrasticSmurfApp {
                 self.render_tabs(ui);
                 self.render_content(ui);
             });
+
+        // AI Assistant side dock
+        self.render_assistant_dock(ctx);
+        self.render_assistant_chevron(ctx);
 
         // Dialogs
         self.render_add_cluster_dialog(ctx);
@@ -2978,7 +3963,8 @@ impl eframe::App for DrasticSmurfApp {
                                                 // Column 6: Shards
                                                 row.col(|ui| {
                                                     if let Some(ref shards) = snap.shards {
-                                                        let color = if shards.failed > 0 {
+                                                        let failed = shards.failed.unwrap_or(0);
+                                                        let color = if failed > 0 {
                                                             Theme::danger()
                                                         } else {
                                                             Theme::snapshot_success()
@@ -2986,7 +3972,8 @@ impl eframe::App for DrasticSmurfApp {
                                                         ui.label(
                                                             egui::RichText::new(format!(
                                                                 "S: {} / F: {}",
-                                                                shards.successful, shards.failed
+                                                                shards.successful.unwrap_or(0),
+                                                                failed
                                                             ))
                                                             .size(10.0)
                                                             .color(color)
@@ -3340,6 +4327,17 @@ impl eframe::App for DrasticSmurfApp {
 
         // Render toasts on top of everything
         self.toasts.render(ctx);
+
+        // Workaround for Linux IME bug: egui enables the OS input method editor
+        // whenever a TextEdit has focus. On Linux (especially Wayland/Flatpak),
+        // the IME intercepts keyboard input and gets stuck after the first
+        // character, making all text fields unusable. By clearing the IME
+        // output, we force egui-winit to keep IME disabled, so text input
+        // falls back to direct keyboard events which work reliably.
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            ctx.output_mut(|o| o.ime = None);
+        }
     }
 
     #[cfg(target_os = "windows")]

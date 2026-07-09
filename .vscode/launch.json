@@ -5,29 +5,19 @@
             "type": "lldb",
             "request": "launch",
             "name": "Debug drastic-smurf",
-            "cargo": {
-                "args": ["build", "--bin=drastic-smurf", "--package=drastic-smurf"],
-                "filter": {
-                    "name": "drastic-smurf",
-                    "kind": "bin"
-                }
-            },
+            "program": "${workspaceFolder}/target/debug/drastic-smurf",
             "args": [],
-            "cwd": "${workspaceFolder}"
+            "cwd": "${workspaceFolder}",
+            "preLaunchTask": "Build Linux (Debug)"
         },
         {
             "type": "lldb",
             "request": "launch",
             "name": "Release drastic-smurf",
-            "cargo": {
-                "args": ["build", "--release", "--bin=drastic-smurf", "--package=drastic-smurf"],
-                "filter": {
-                    "name": "drastic-smurf",
-                    "kind": "bin"
-                }
-            },
+            "program": "${workspaceFolder}/target/release/drastic-smurf",
             "args": [],
-            "cwd": "${workspaceFolder}"
+            "cwd": "${workspaceFolder}",
+            "preLaunchTask": "Build Linux (Release)"
         },
         {
             "type": "lldb",

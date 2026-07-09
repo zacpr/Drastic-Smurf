@@ -847,6 +847,123 @@ pub fn open_link(_ctx: &egui::Context, url: &str) {
     }
 }
 
+/// ease_out_back: quick start with a small overshoot, then a soft settle.
+/// Returns a value in roughly `[0.0, ~1.1]` for `t` in `[0.0, 1.0]`.
+#[allow(dead_code)]
+pub fn ease_out_back(t: f32) -> f32 {
+    let t = t.clamp(0.0, 1.0);
+    let c1 = 1.70158_f32;
+    let c3 = c1 + 1.0;
+    let u = t - 1.0;
+    1.0 + c3 * u * u * u + c1 * u * u
+}
+
+/// ease_in_out_cubic for smooth two-direction transitions.
+#[allow(dead_code)]
+pub fn ease_in_out_cubic(t: f32) -> f32 {
+    let t = t.clamp(0.0, 1.0);
+    if t < 0.5 {
+        4.0 * t * t * t
+    } else {
+        let u = -2.0 * t + 2.0;
+        1.0 - u * u * u / 2.0
+    }
+}
+
+/// A clickable button that opens a popup containing a filterable, scrollable list of options.
+pub fn filterable_select(
+    ui: &mut Ui,
+    id_salt: impl std::hash::Hash,
+    selected: &mut String,
+    filter: &mut String,
+    options: &[String],
+    placeholder: &str,
+) -> bool {
+    let mut changed = false;
+    let popup_id = ui.id().with(id_salt);
+
+    let display = if selected.is_empty() {
+        placeholder.to_string()
+    } else {
+        selected.clone()
+    };
+
+    let button_text = egui::RichText::new(format!("▾ {}", display))
+        .color(if selected.is_empty() {
+            Theme::text_muted()
+        } else {
+            Theme::text_primary()
+        });
+
+    let button = egui::Button::new(button_text)
+        .fill(Theme::bg_input())
+        .stroke(egui::Stroke::new(1.0, Theme::border()));
+
+    let response = ui.add_sized([ui.available_width(), 24.0], button);
+
+    if response.clicked() {
+        ui.memory_mut(|mem| mem.toggle_popup(popup_id));
+    }
+
+    let _is_open = ui.memory(|mem| mem.is_popup_open(popup_id));
+
+    egui::popup_below_widget(
+        ui,
+        popup_id,
+        &response,
+        egui::PopupCloseBehavior::CloseOnClickOutside,
+        |ui| {
+            ui.set_min_width(response.rect.width().max(200.0));
+            let search = ui.add(
+                egui::TextEdit::singleline(filter)
+                    .hint_text("🔍 Filter...")
+                    .desired_width(ui.available_width()),
+            );
+            search.request_focus();
+
+            ui.add_space(4.0);
+
+            let lower_filter = filter.to_lowercase();
+            let mut visible: Vec<&String> = options
+                .iter()
+                .filter(|o| lower_filter.is_empty() || o.to_lowercase().contains(&lower_filter))
+                .collect();
+            visible.sort();
+
+            egui::ScrollArea::vertical()
+                .max_height(220.0)
+                .id_salt(("filterable_select_scroll", popup_id))
+                .show(ui, |ui| {
+                    if visible.is_empty() {
+                        ui.label(
+                            egui::RichText::new("No matches")
+                                .color(Theme::text_muted())
+                                .size(11.0),
+                        );
+                    } else {
+                        for opt in visible {
+                            let is_sel = opt == selected;
+                            if ui
+                                .selectable_label(is_sel, opt)
+                                .clicked()
+                            {
+                                *selected = opt.clone();
+                                filter.clear();
+                                changed = true;
+                                ui.memory_mut(|mem| mem.close_popup());
+                            }
+                        }
+                    }
+                });
+        },
+    );
+
+    // Sync is_open with actual state
+    ui.memory(|mem| mem.is_popup_open(popup_id));
+
+    changed
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -880,5 +997,41 @@ mod tests {
         assert_eq!(human_docs(0), "0");
         assert_eq!(human_docs(500), "500");
         assert_eq!(human_docs(1500), "1.5K (1500)");
+    }
+
+    #[test]
+    fn ease_out_back_endpoints() {
+        let p0 = ease_out_back(0.0);
+        let p1 = ease_out_back(1.0);
+        assert!(p0.abs() < 0.001, "start should be ~0.0, got {}", p0);
+        assert!((p1 - 1.0).abs() < 0.001, "end should be ~1.0, got {}", p1);
+    }
+
+    #[test]
+    fn ease_out_back_overshoots() {
+        // ease_out_back should reach a value slightly above 1.0 somewhere
+        // before settling back to 1.0 at t=1.
+        let samples: [f32; 6] = [0.3, 0.5, 0.6, 0.7, 0.8, 0.9];
+        let max = samples
+            .iter()
+            .map(|t| ease_out_back(*t))
+            .fold(0.0_f32, f32::max);
+        assert!(max > 1.0, "expected overshoot above 1.0, got max={}", max);
+    }
+
+    #[test]
+    fn ease_out_back_clamps_out_of_range() {
+        let before = ease_out_back(-0.5);
+        let after = ease_out_back(1.5);
+        assert!(before <= 0.0);
+        assert!(after >= 1.0);
+    }
+
+    #[test]
+    fn ease_in_out_cubic_endpoints() {
+        let p0 = ease_in_out_cubic(0.0);
+        let p1 = ease_in_out_cubic(1.0);
+        assert!(p0.abs() < 0.001);
+        assert!((p1 - 1.0).abs() < 0.001);
     }
 }

@@ -13,6 +13,30 @@ fn memory_store() -> std::sync::MutexGuard<'static, Option<HashMap<String, Strin
     MEMORY_KEYRING.lock().unwrap_or_else(|e| e.into_inner())
 }
 
+fn mem_key(keyring_id: &str) -> String {
+    format!("__mem__::{}", keyring_id)
+}
+
+fn mem_get(keyring_id: &str) -> Option<String> {
+    let guard = memory_store();
+    guard
+        .as_ref()
+        .and_then(|m| m.get(&mem_key(keyring_id)).cloned())
+}
+
+fn mem_set(keyring_id: &str, value: &str) {
+    let mut guard = memory_store();
+    let map = guard.get_or_insert_with(HashMap::new);
+    map.insert(mem_key(keyring_id), value.to_string());
+}
+
+fn mem_delete(keyring_id: &str) {
+    let mut guard = memory_store();
+    if let Some(map) = guard.as_mut() {
+        map.remove(&mem_key(keyring_id));
+    }
+}
+
 pub fn set_password(cluster_name: &str, password: &str) -> Result<()> {
     tracing::info!(
         "set_password called for '{}' ({} chars)",
@@ -27,19 +51,14 @@ pub fn set_password(cluster_name: &str, password: &str) -> Result<()> {
                 cluster_name,
                 err
             );
-            let mut guard = memory_store();
-            let map = guard.get_or_insert_with(HashMap::new);
-            map.insert(cluster_name.to_string(), password.to_string());
+            mem_set(&format!("cluster:{}", cluster_name), password);
             return Ok(());
         }
     };
     match entry.set_password(password) {
         Ok(()) => {
             tracing::info!("Password saved to keyring for '{}'", cluster_name);
-            let mut guard = memory_store();
-            if let Some(map) = guard.as_mut() {
-                map.insert(cluster_name.to_string(), password.to_string());
-            }
+            mem_set(&format!("cluster:{}", cluster_name), password);
             Ok(())
         }
         Err(err) => {
@@ -48,9 +67,7 @@ pub fn set_password(cluster_name: &str, password: &str) -> Result<()> {
                 cluster_name,
                 err
             );
-            let mut guard = memory_store();
-            let map = guard.get_or_insert_with(HashMap::new);
-            map.insert(cluster_name.to_string(), password.to_string());
+            mem_set(&format!("cluster:{}", cluster_name), password);
             Ok(())
         }
     }
@@ -65,8 +82,7 @@ pub fn get_password(cluster_name: &str) -> Result<Option<String>> {
                 cluster_name,
                 err
             );
-            let guard = memory_store();
-            return Ok(guard.as_ref().and_then(|m| m.get(cluster_name).cloned()));
+            return Ok(mem_get(&format!("cluster:{}", cluster_name)));
         }
     };
     match entry.get_password() {
@@ -83,8 +99,7 @@ pub fn get_password(cluster_name: &str) -> Result<Option<String>> {
                 "get_password for '{}': NoEntry in keyring, checking memory fallback",
                 cluster_name
             );
-            let guard = memory_store();
-            let result = guard.as_ref().and_then(|m| m.get(cluster_name).cloned());
+            let result = mem_get(&format!("cluster:{}", cluster_name));
             if let Some(ref pw) = result {
                 tracing::info!(
                     "get_password for '{}': found in memory fallback ({} chars)",
@@ -102,8 +117,7 @@ pub fn get_password(cluster_name: &str) -> Result<Option<String>> {
                 cluster_name,
                 err
             );
-            let guard = memory_store();
-            Ok(guard.as_ref().and_then(|m| m.get(cluster_name).cloned()))
+            Ok(mem_get(&format!("cluster:{}", cluster_name)))
         }
     }
 }
@@ -117,10 +131,7 @@ pub fn delete_password(cluster_name: &str) -> Result<()> {
             cluster_name
         );
     }
-    let mut guard = memory_store();
-    if let Some(map) = guard.as_mut() {
-        map.remove(cluster_name);
-    }
+    mem_delete(&format!("cluster:{}", cluster_name));
     Ok(())
 }
 
@@ -141,4 +152,68 @@ pub fn get_api_token(token_name: &str) -> Result<Option<String>> {
         Err(keyring::Error::NoEntry) => Ok(None),
         Err(e) => Err(e).context("Failed to retrieve API token from keyring"),
     }
+}
+
+// --- LLM provider API keys -----------------------------------------------
+
+fn llm_key_id(provider_id: &str) -> String {
+    format!("llm:{}", provider_id)
+}
+
+pub fn set_llm_api_key(provider_id: &str, key: &str) -> Result<()> {
+    let id = llm_key_id(provider_id);
+    match Entry::new(APP_NAME, &id) {
+        Ok(entry) => match entry.set_password(key) {
+            Ok(()) => {
+                mem_set(&id, key);
+                Ok(())
+            }
+            Err(err) => {
+                tracing::warn!(
+                    "Keyring set failed for LLM provider '{}': {}. Using memory fallback.",
+                    provider_id,
+                    err
+                );
+                mem_set(&id, key);
+                Ok(())
+            }
+        },
+        Err(err) => {
+            tracing::warn!(
+                "Keyring Entry::new failed for LLM provider '{}': {}. Using memory fallback.",
+                provider_id,
+                err
+            );
+            mem_set(&id, key);
+            Ok(())
+        }
+    }
+}
+
+pub fn get_llm_api_key(provider_id: &str) -> Result<Option<String>> {
+    let id = llm_key_id(provider_id);
+    match Entry::new(APP_NAME, &id) {
+        Ok(entry) => match entry.get_password() {
+            Ok(k) => Ok(Some(k)),
+            Err(keyring::Error::NoEntry) => Ok(mem_get(&id)),
+            Err(e) => Err(e).context("Failed to retrieve LLM API key from keyring"),
+        },
+        Err(err) => {
+            tracing::warn!(
+                "Keyring Entry::new failed for LLM provider '{}': {}. Trying memory fallback.",
+                provider_id,
+                err
+            );
+            Ok(mem_get(&id))
+        }
+    }
+}
+
+pub fn delete_llm_api_key(provider_id: &str) -> Result<()> {
+    let id = llm_key_id(provider_id);
+    if let Ok(entry) = Entry::new(APP_NAME, &id) {
+        let _ = entry.delete_credential();
+    }
+    mem_delete(&id);
+    Ok(())
 }

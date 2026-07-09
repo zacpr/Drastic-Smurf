@@ -418,125 +418,130 @@ pub fn render_discover_module(
             .inner_margin(Theme::CARD_PADDING)
             .stroke(Stroke::new(1.0, Theme::accent()))
             .show(ui, |ui| {
-                ui.horizontal_top(|ui| {
-                    // Left Column: Presets
-                    ui.vertical(|ui| {
-                        ui.label(
-                            egui::RichText::new("Quick Presets")
-                                .strong()
-                                .color(Theme::accent()),
-                        );
-                        ui.add_space(6.0);
+                // Allow the picker to scroll horizontally if it still overflows,
+                // and wrap columns on narrow windows so it remains usable.
+                egui::ScrollArea::horizontal().show(ui, |ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        // Left Column: Presets
+                        ui.vertical(|ui| {
+                            ui.set_min_width(120.0);
+                            ui.label(
+                                egui::RichText::new("Quick Presets")
+                                    .strong()
+                                    .color(Theme::accent()),
+                            );
+                            ui.add_space(6.0);
 
-                        let presets = [
-                            TimeframePreset::Last30m,
-                            TimeframePreset::Last1h,
-                            TimeframePreset::Last6h,
-                            TimeframePreset::Last12h,
-                            TimeframePreset::Last24h,
-                            TimeframePreset::Last72h,
-                        ];
+                            let presets = [
+                                TimeframePreset::Last30m,
+                                TimeframePreset::Last1h,
+                                TimeframePreset::Last6h,
+                                TimeframePreset::Last12h,
+                                TimeframePreset::Last24h,
+                                TimeframePreset::Last72h,
+                            ];
 
-                        for p in presets {
-                            let is_active = state.time_preset == p;
-                            let mut btn = egui::Button::new(p.label());
-                            if is_active {
-                                btn = btn.fill(Theme::accent());
+                            for p in presets {
+                                let is_active = state.time_preset == p;
+                                let mut btn = egui::Button::new(p.label());
+                                if is_active {
+                                    btn = btn.fill(Theme::accent());
+                                }
+                                if ui.add_sized([120.0, 20.0], btn).clicked() {
+                                    state.time_preset = p;
+                                    state.show_time_selector_popup = false;
+                                    trigger_search = true;
+                                }
+                                ui.add_space(4.0);
                             }
-                            if ui.add_sized([120.0, 20.0], btn).clicked() {
-                                state.time_preset = p;
-                                state.show_time_selector_popup = false;
-                                trigger_search = true;
-                            }
-                            ui.add_space(4.0);
-                        }
-                    });
-
-                    ui.add_space(16.0);
-                    ui.separator();
-                    ui.add_space(16.0);
-
-                    // Middle Column: From Date/Time
-                    ui.vertical(|ui| {
-                        ui.label(
-                            egui::RichText::new("From Date & Time")
-                                .strong()
-                                .color(Theme::accent()),
-                        );
-                        ui.add_space(6.0);
-
-                        draw_calendar_picker(
-                            ui,
-                            &mut state.custom_from_year,
-                            &mut state.custom_from_month,
-                            &mut state.custom_from_day,
-                            "calendar_from",
-                        );
-
-                        ui.add_space(6.0);
-                        ui.horizontal(|ui| {
-                            ui.label("Time:");
-                            ui.add(
-                                egui::DragValue::new(&mut state.custom_from_hour)
-                                    .range(0..=23)
-                                    .suffix("h"),
-                            );
-                            ui.label(":");
-                            ui.add(
-                                egui::DragValue::new(&mut state.custom_from_minute)
-                                    .range(0..=59)
-                                    .suffix("m"),
-                            );
-                            ui.label(":");
-                            ui.add(
-                                egui::DragValue::new(&mut state.custom_from_second)
-                                    .range(0..=59)
-                                    .suffix("s"),
-                            );
                         });
-                    });
 
-                    ui.add_space(16.0);
-                    ui.separator();
-                    ui.add_space(16.0);
+                        ui.add_space(16.0);
+                        ui.separator();
+                        ui.add_space(16.0);
 
-                    // Right Column: To Date/Time
-                    ui.vertical(|ui| {
-                        ui.label(
-                            egui::RichText::new("To Date & Time")
-                                .strong()
-                                .color(Theme::accent()),
-                        );
-                        ui.add_space(6.0);
-
-                        draw_calendar_picker(
-                            ui,
-                            &mut state.custom_to_year,
-                            &mut state.custom_to_month,
-                            &mut state.custom_to_day,
-                            "calendar_to",
-                        );
-
-                        ui.add_space(6.0);
-                        ui.horizontal(|ui| {
-                            ui.label("Time:");
-                            ui.add(
-                                egui::DragValue::new(&mut state.custom_to_hour)
-                                    .range(0..=23)
-                                    .suffix("h"),
+                        // Middle Column: From Date/Time
+                        ui.vertical(|ui| {
+                            ui.label(
+                                egui::RichText::new("From Date & Time")
+                                    .strong()
+                                    .color(Theme::accent()),
                             );
-                            ui.label(":");
-                            ui.add(
-                                egui::DragValue::new(&mut state.custom_to_minute)
-                                    .range(0..=59)
-                                    .suffix("m"),
+                            ui.add_space(6.0);
+
+                            draw_calendar_picker(
+                                ui,
+                                &mut state.custom_from_year,
+                                &mut state.custom_from_month,
+                                &mut state.custom_from_day,
+                                "calendar_from",
                             );
-                            ui.label(":");
-                            ui.add(
-                                egui::DragValue::new(&mut state.custom_to_second)
-                                    .range(0..=59)
-                                    .suffix("s"),
+
+                            ui.add_space(6.0);
+                            ui.horizontal(|ui| {
+                                ui.label("Time:");
+                                ui.add(
+                                    egui::DragValue::new(&mut state.custom_from_hour)
+                                        .range(0..=23)
+                                        .suffix("h"),
+                                );
+                                ui.label(":");
+                                ui.add(
+                                    egui::DragValue::new(&mut state.custom_from_minute)
+                                        .range(0..=59)
+                                        .suffix("m"),
+                                );
+                                ui.label(":");
+                                ui.add(
+                                    egui::DragValue::new(&mut state.custom_from_second)
+                                        .range(0..=59)
+                                        .suffix("s"),
+                                );
+                            });
+                        });
+
+                        ui.add_space(16.0);
+                        ui.separator();
+                        ui.add_space(16.0);
+
+                        // Right Column: To Date/Time
+                        ui.vertical(|ui| {
+                            ui.label(
+                                egui::RichText::new("To Date & Time")
+                                    .strong()
+                                    .color(Theme::accent()),
                             );
+                            ui.add_space(6.0);
+
+                            draw_calendar_picker(
+                                ui,
+                                &mut state.custom_to_year,
+                                &mut state.custom_to_month,
+                                &mut state.custom_to_day,
+                                "calendar_to",
+                            );
+
+                            ui.add_space(6.0);
+                            ui.horizontal(|ui| {
+                                ui.label("Time:");
+                                ui.add(
+                                    egui::DragValue::new(&mut state.custom_to_hour)
+                                        .range(0..=23)
+                                        .suffix("h"),
+                                );
+                                ui.label(":");
+                                ui.add(
+                                    egui::DragValue::new(&mut state.custom_to_minute)
+                                        .range(0..=59)
+                                        .suffix("m"),
+                                );
+                                ui.label(":");
+                                ui.add(
+                                    egui::DragValue::new(&mut state.custom_to_second)
+                                        .range(0..=59)
+                                        .suffix("s"),
+                                );
+                            });
                         });
                     });
                 });

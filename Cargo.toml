@@ -13,7 +13,7 @@ egui = "0.31"
 egui_extras = { version = "0.31", features = ["image"] }
 tokio = { version = "1.44", features = ["rt-multi-thread", "sync", "time", "macros", "process"] }
 libc = "0.2"
-reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+reqwest = { version = "0.12", features = ["json", "rustls-tls", "stream"], default-features = false }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 chrono = { version = "0.4", features = ["serde"] }
@@ -25,6 +25,8 @@ poll-promise = { version = "0.3", features = ["tokio"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 webbrowser = "1.2.1"
+rfd = "0.15"
+futures-util = "0.3"
 [target.'cfg(target_os = "linux")'.dependencies]
 keyring = { version = "3.6", features = ["sync-secret-service"] }
 eframe = { version = "0.31", features = ["default"] }

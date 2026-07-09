@@ -5,6 +5,7 @@ use std::time::Duration;
 use anyhow::{Context, Result};
 use reqwest::{Client, ClientBuilder, RequestBuilder, StatusCode};
 use serde::de::DeserializeOwned;
+use serde_json::json;
 
 use crate::core::auth;
 use crate::core::config::{CaCert, ClusterConfig};
@@ -154,7 +155,19 @@ impl EsClient {
         method: &reqwest::Method,
         url: &str,
     ) -> Result<T, EsError> {
+        self.exec_with_timeout::<T>(req, method, url, None).await
+    }
+
+    async fn exec_with_timeout<T: DeserializeOwned>(
+        &self,
+        req: RequestBuilder,
+        method: &reqwest::Method,
+        url: &str,
+        timeout: Option<std::time::Duration>,
+    ) -> Result<T, EsError> {
         tracing::info!("[{}] {} {}", self.config.name, method, url);
+
+        let req = if let Some(t) = timeout { req.timeout(t) } else { req };
 
         let start = std::time::Instant::now();
         let resp = req.send().await.map_err(|e| {
@@ -205,14 +218,31 @@ impl EsClient {
             elapsed_millis(elapsed),
         );
 
-        resp.json().await.map_err(|e| {
+        let body = resp.text().await.map_err(|e| {
             tracing::error!(
-                "[{}] {} {} — Parse error after {}: {}",
+                "[{}] {} {} — Read error after {}: {}",
                 self.config.name,
                 method,
                 url,
                 elapsed_millis(elapsed),
                 e
+            );
+            EsError::Request(e.to_string())
+        })?;
+
+        if !body.is_empty() {
+            tracing::debug!("[{}] Response body: {}", self.config.name, truncate(&body, 2000));
+        }
+
+        serde_json::from_str(&body).map_err(|e| {
+            tracing::error!(
+                "[{}] {} {} — Parse error after {}: {} (body: {})",
+                self.config.name,
+                method,
+                url,
+                elapsed_millis(elapsed),
+                e,
+                truncate(&body, 1000)
             );
             EsError::Parse(e.to_string())
         })
@@ -311,7 +341,14 @@ impl EsClient {
 
     pub async fn snapshot_status_all(&self) -> Result<SnapshotStatusResponse, EsError> {
         let (req, method, url) = self.request(reqwest::Method::GET, "/_snapshot/_status");
-        self.exec(req, &method, &url).await
+        // Snapshot status can be slow for large S3 repos; give it more time.
+        self.exec_with_timeout(
+            req,
+            &method,
+            &url,
+            Some(std::time::Duration::from_secs(180)),
+        )
+        .await
     }
 
     pub async fn snapshot_status(
@@ -321,7 +358,87 @@ impl EsClient {
     ) -> Result<SnapshotStatusResponse, EsError> {
         let path = format!("/_snapshot/{}/{}/_status", repo, snapshot);
         let (req, method, url) = self.request(reqwest::Method::GET, &path);
-        self.exec(req, &method, &url).await
+        // Per-snapshot status may need to read a lot of metadata from the repo.
+        self.exec_with_timeout(
+            req,
+            &method,
+            &url,
+            Some(std::time::Duration::from_secs(180)),
+        )
+        .await
+    }
+
+    pub async fn search_logs(
+        &self,
+        index_pattern: &str,
+        filters: &LogFilters,
+        fields: &LogFieldNames,
+        limit: usize,
+    ) -> Result<Vec<LogEntry>, EsError> {
+        let path = format!("/{}/_search", index_pattern.trim_start_matches('/'));
+        let mut must: Vec<serde_json::Value> = Vec::new();
+        let mut filter: Vec<serde_json::Value> = Vec::new();
+
+        if !filters.query.trim().is_empty() {
+            must.push(json!({ "query_string": { "query": filters.query.trim() } }));
+        }
+        if !filters.app.trim().is_empty() {
+            filter.push(json!({
+                "wildcard": { fields.app.trim(): format!("*{}*", filters.app.trim()) }
+            }));
+        }
+        if !filters.hostname.trim().is_empty() {
+            filter.push(json!({
+                "wildcard": { fields.hostname.trim(): format!("*{}*", filters.hostname.trim()) }
+            }));
+        }
+        if !filters.severity.trim().is_empty() {
+            filter.push(json!({
+                "term": { fields.severity.trim(): filters.severity.trim() }
+            }));
+        }
+
+        let body = json!({
+            "query": {
+                "bool": {
+                    "must": must,
+                    "filter": filter,
+                }
+            },
+            "sort": [{ fields.timestamp.trim(): "desc" }],
+            "size": limit,
+        });
+
+        let body_str = body.to_string();
+        let (mut req, method, url) = self.request(reqwest::Method::POST, &path);
+        req = req.body(body_str).header("Content-Type", "application/json");
+
+        let value: serde_json::Value = self.exec(req, &method, &url).await?;
+        let hits = value
+            .get("hits")
+            .and_then(|h| h.get("hits"))
+            .and_then(|h| h.as_array())
+            .cloned()
+            .unwrap_or_default();
+
+        let mut entries = Vec::with_capacity(hits.len());
+        for hit in hits {
+            let source = hit.get("_source").cloned().unwrap_or_default();
+            let as_str = |path: &str| {
+                get_dot_path(&source, path)
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
+            };
+            entries.push(LogEntry {
+                timestamp: as_str(&fields.timestamp),
+                message: as_str(&fields.message),
+                app: as_str(&fields.app),
+                hostname: as_str(&fields.hostname),
+                severity: as_str(&fields.severity),
+                raw_source: source,
+            });
+        }
+        Ok(entries)
     }
 
     pub async fn slm_policy(&self, policy: &str) -> Result<SlmPolicyResponse, EsError> {
@@ -432,6 +549,31 @@ impl EsClient {
 
     pub async fn cluster_stats(&self) -> Result<ClusterStats, EsError> {
         let (req, method, url) = self.request(reqwest::Method::GET, "/_cluster/stats");
+        self.exec(req, &method, &url).await
+    }
+
+    pub async fn get_ingest_pipelines(&self) -> Result<serde_json::Value, EsError> {
+        let (req, method, url) = self.request(reqwest::Method::GET, "/_ingest/pipeline");
+        self.exec(req, &method, &url).await
+    }
+
+    pub async fn get_ingest_pipeline(&self, id: &str) -> Result<serde_json::Value, EsError> {
+        let path = format!("/_ingest/pipeline/{}", id);
+        let (req, method, url) = self.request(reqwest::Method::GET, &path);
+        self.exec(req, &method, &url).await
+    }
+
+    pub async fn simulate_ingest(
+        &self,
+        target: &str,
+        body: serde_json::Value,
+    ) -> Result<serde_json::Value, EsError> {
+        let path = format!("/_ingest/{}/_simulate", target);
+        let body_str = body.to_string();
+        let (req, method, url) = self.request(reqwest::Method::POST, &path);
+        let req = req
+            .header("Content-Type", "application/json")
+            .body(body_str);
         self.exec(req, &method, &url).await
     }
 
@@ -565,7 +707,7 @@ pub struct SnapshotInfo {
     pub snapshot: String,
     pub uuid: String,
     #[serde(rename = "repository")]
-    pub repository: String,
+    pub repository: Option<String>,
     pub state: String,
     #[serde(rename = "start_time")]
     pub start_time: Option<String>,
@@ -587,9 +729,9 @@ pub struct SnapshotInfo {
 #[derive(Debug, Clone, Default, serde::Deserialize, serde::Serialize)]
 
 pub struct ShardStats {
-    pub total: u32,
-    pub failed: u32,
-    pub successful: u32,
+    pub total: Option<u32>,
+    pub failed: Option<u32>,
+    pub successful: Option<u32>,
 }
 
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize, Default)]
@@ -602,51 +744,51 @@ pub struct SnapshotStatusResponse {
 
 pub struct SnapshotStatusInfo {
     pub snapshot: String,
-    pub repository: String,
+    pub repository: Option<String>,
     pub uuid: String,
     pub state: String,
     #[serde(rename = "include_global_state")]
-    pub include_global_state: bool,
+    pub include_global_state: Option<bool>,
     pub shards_stats: Option<ShardsStatsDetail>,
     pub stats: Option<SnapshotStatsDetail>,
     pub indices: Option<serde_json::Value>,
 }
 
-#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, Clone, Default, serde::Deserialize, serde::Serialize)]
 
 pub struct ShardsStatsDetail {
-    pub initializing: u32,
-    pub started: u32,
-    pub finalizing: u32,
-    pub done: u32,
-    pub failed: u32,
-    pub total: u32,
+    pub initializing: Option<u32>,
+    pub started: Option<u32>,
+    pub finalizing: Option<u32>,
+    pub done: Option<u32>,
+    pub failed: Option<u32>,
+    pub total: Option<u32>,
 }
 
-#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, Clone, Default, serde::Deserialize, serde::Serialize)]
 
 pub struct SnapshotStatsDetail {
     #[serde(rename = "number_of_files")]
-    pub number_of_files: u32,
+    pub number_of_files: Option<u32>,
     #[serde(rename = "processed_files")]
-    pub processed_files: u32,
+    pub processed_files: Option<u32>,
     #[serde(rename = "total_size_in_bytes")]
-    pub total_size_in_bytes: u64,
+    pub total_size_in_bytes: Option<u64>,
     #[serde(rename = "processed_size_in_bytes")]
-    pub processed_size_in_bytes: u64,
+    pub processed_size_in_bytes: Option<u64>,
     #[serde(rename = "number_of_chunks")]
     pub number_of_chunks: Option<u32>,
     #[serde(rename = "incremental")]
     pub incremental: Option<IncrementalStats>,
 }
 
-#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, Clone, Default, serde::Deserialize, serde::Serialize)]
 
 pub struct IncrementalStats {
     #[serde(rename = "file_count")]
-    pub file_count: u32,
+    pub file_count: Option<u32>,
     #[serde(rename = "size_in_bytes")]
-    pub size_in_bytes: u64,
+    pub size_in_bytes: Option<u64>,
 }
 
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
@@ -688,9 +830,10 @@ pub struct SlmPolicyConfig {
 
 pub struct SlmExecution {
     pub snapshot_name: Option<String>,
-    pub time: Option<String>,
-    #[serde(rename = "time_in_millis")]
-    pub time_in_millis: Option<i64>,
+    #[serde(rename = "start_time")]
+    pub start_time: Option<i64>,
+    #[serde(rename = "time")]
+    pub time: Option<i64>,
     pub details: Option<String>,
 }
 
@@ -712,6 +855,44 @@ pub struct SlmStats {
     pub total_snapshots_failed: Option<u64>,
     pub total_snapshots_deleted: Option<u64>,
     pub total_snapshot_deletion_failures: Option<u64>,
+}
+
+/// Field names to extract from ECS-style log documents.
+#[derive(Debug, Clone, Default)]
+pub struct LogFieldNames {
+    pub timestamp: String,
+    pub message: String,
+    pub app: String,
+    pub hostname: String,
+    pub severity: String,
+}
+
+/// Simple filter values for the Logs tab.
+#[derive(Debug, Clone, Default)]
+pub struct LogFilters {
+    pub app: String,
+    pub hostname: String,
+    pub severity: String,
+    pub query: String,
+}
+
+/// A single log row, with commonly-used fields extracted and the raw source kept for expansion.
+#[derive(Debug, Clone, Default)]
+pub struct LogEntry {
+    pub timestamp: Option<String>,
+    pub message: Option<String>,
+    pub app: Option<String>,
+    pub hostname: Option<String>,
+    pub severity: Option<String>,
+    pub raw_source: serde_json::Value,
+}
+
+fn get_dot_path<'a>(value: &'a serde_json::Value, path: &str) -> Option<&'a serde_json::Value> {
+    let mut current = value;
+    for part in path.split('.') {
+        current = current.get(part)?;
+    }
+    Some(current)
 }
 
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]

@@ -27,6 +27,11 @@ pub struct ClusterManager {
     vfx: Arc<Mutex<crate::core::config::VfxSettings>>,
     timezone_clocks: Arc<Mutex<Vec<crate::core::config::TimezoneClockConfig>>>,
     cluster_filter: Arc<Mutex<String>>,
+    pipeline_test_presets: Arc<Mutex<Vec<crate::core::config::PipelineTestPreset>>>,
+    llm: Arc<Mutex<crate::core::config::LlmSettings>>,
+    assistant_dock_visible: Arc<Mutex<bool>>,
+    assistant_conversations: Arc<Mutex<Vec<crate::core::config::ChatConversation>>>,
+    assistant_active_conversation_id: Arc<Mutex<Option<String>>>,
     dirty: Arc<AtomicBool>,
     save_after: Arc<Mutex<Option<Instant>>>,
 }
@@ -50,6 +55,11 @@ impl ClusterManager {
             vfx: Arc::new(Mutex::new(crate::core::config::VfxSettings::default())),
             timezone_clocks: Arc::new(Mutex::new(crate::core::config::default_timezone_clocks())),
             cluster_filter: Arc::new(Mutex::new(String::new())),
+            pipeline_test_presets: Arc::new(Mutex::new(Vec::new())),
+            llm: Arc::new(Mutex::new(crate::core::config::LlmSettings::default())),
+            assistant_dock_visible: Arc::new(Mutex::new(false)),
+            assistant_conversations: Arc::new(Mutex::new(Vec::new())),
+            assistant_active_conversation_id: Arc::new(Mutex::new(None)),
             dirty: Arc::new(AtomicBool::new(false)),
             save_after: Arc::new(Mutex::new(None)),
         }
@@ -89,6 +99,26 @@ impl ClusterManager {
             let mut cf = self.cluster_filter.lock().unwrap();
             *cf = config.cluster_filter;
         }
+        {
+            let mut p = self.pipeline_test_presets.lock().unwrap();
+            *p = config.pipeline_test_presets;
+        }
+        {
+            let mut l = self.llm.lock().unwrap();
+            *l = config.llm;
+        }
+        {
+            let mut v = self.assistant_dock_visible.lock().unwrap();
+            *v = config.assistant_dock_visible;
+        }
+        {
+            let mut c = self.assistant_conversations.lock().unwrap();
+            *c = config.assistant_conversations;
+        }
+        {
+            let mut id = self.assistant_active_conversation_id.lock().unwrap();
+            *id = config.assistant_active_conversation_id;
+        }
 
         let clusters = self.clusters.lock().unwrap();
         let mut clients = self.clients.lock().unwrap();
@@ -119,6 +149,12 @@ impl ClusterManager {
         let vfx = self.vfx.lock().unwrap().clone();
         let timezone_clocks = self.timezone_clocks.lock().unwrap().clone();
         let cluster_filter = self.cluster_filter.lock().unwrap().clone();
+        let pipeline_test_presets = self.pipeline_test_presets.lock().unwrap().clone();
+        let llm = self.llm.lock().unwrap().clone();
+        let assistant_dock_visible = *self.assistant_dock_visible.lock().unwrap();
+        let assistant_conversations = self.assistant_conversations.lock().unwrap().clone();
+        let assistant_active_conversation_id =
+            self.assistant_active_conversation_id.lock().unwrap().clone();
 
         let mut config = crate::core::config::AppConfig::load().unwrap_or_default();
         config.clusters = clusters.clone();
@@ -129,6 +165,11 @@ impl ClusterManager {
         config.vfx = vfx;
         config.timezone_clocks = timezone_clocks;
         config.cluster_filter = cluster_filter;
+        config.pipeline_test_presets = pipeline_test_presets;
+        config.llm = llm;
+        config.assistant_dock_visible = assistant_dock_visible;
+        config.assistant_conversations = assistant_conversations;
+        config.assistant_active_conversation_id = assistant_active_conversation_id;
 
         config.save()?;
         Ok(())
@@ -361,6 +402,69 @@ impl ClusterManager {
     pub fn set_cluster_filter(&self, value: String) {
         *self.cluster_filter.lock().unwrap() = value;
         self.mark_dirty();
+    }
+
+    pub fn pipeline_test_presets(&self) -> Vec<crate::core::config::PipelineTestPreset> {
+        self.pipeline_test_presets.lock().unwrap().clone()
+    }
+
+    pub fn save_pipeline_test_presets(
+        &self,
+        presets: Vec<crate::core::config::PipelineTestPreset>,
+    ) -> anyhow::Result<()> {
+        {
+            let mut p = self.pipeline_test_presets.lock().unwrap();
+            *p = presets;
+        }
+        self.mark_dirty();
+        Ok(())
+    }
+
+    #[allow(dead_code)]
+    pub fn llm_settings(&self) -> crate::core::config::LlmSettings {
+        self.llm.lock().unwrap().clone()
+    }
+
+    pub fn save_llm_settings(&self, settings: crate::core::config::LlmSettings) -> anyhow::Result<()> {
+        {
+            let mut l = self.llm.lock().unwrap();
+            *l = settings;
+        }
+        self.mark_dirty();
+        Ok(())
+    }
+
+    #[allow(dead_code)]
+    pub fn assistant_dock_visible(&self) -> bool {
+        *self.assistant_dock_visible.lock().unwrap()
+    }
+
+    pub fn set_assistant_dock_visible(&self, value: bool) -> anyhow::Result<()> {
+        *self.assistant_dock_visible.lock().unwrap() = value;
+        self.mark_dirty();
+        Ok(())
+    }
+
+    #[allow(dead_code)]
+    pub fn assistant_conversations(&self) -> Vec<crate::core::config::ChatConversation> {
+        self.assistant_conversations.lock().unwrap().clone()
+    }
+
+    pub fn save_assistant_conversations(
+        &self,
+        convs: Vec<crate::core::config::ChatConversation>,
+        active_id: Option<String>,
+    ) -> anyhow::Result<()> {
+        {
+            let mut c = self.assistant_conversations.lock().unwrap();
+            *c = convs;
+        }
+        {
+            let mut id = self.assistant_active_conversation_id.lock().unwrap();
+            *id = active_id;
+        }
+        self.mark_dirty();
+        Ok(())
     }
 
     pub fn refresh_interval_secs(&self) -> u64 {

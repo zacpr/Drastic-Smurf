@@ -321,16 +321,18 @@ pub async fn fetch_cluster_snapshot(
                                 let total_bytes = stats
                                     .incremental
                                     .as_ref()
-                                    .map(|i| i.size_in_bytes)
-                                    .unwrap_or(stats.total_size_in_bytes);
-                                let processed_bytes = stats.processed_size_in_bytes;
-                                let total_files = stats.number_of_files;
-                                let processed_files = stats.processed_files;
+                                    .and_then(|i| i.size_in_bytes)
+                                    .unwrap_or(stats.total_size_in_bytes.unwrap_or(0));
+                                let processed_bytes = stats.processed_size_in_bytes.unwrap_or(0);
+                                let total_files = stats.number_of_files.unwrap_or(0);
+                                let processed_files = stats.processed_files.unwrap_or(0);
                                 let progress = if total_bytes > 0 {
                                     (processed_bytes as f64 / total_bytes as f64 * 100.0) as f32
                                 } else if let Some(shards) = &detail.shards_stats {
-                                    if shards.total > 0 {
-                                        (shards.done as f64 / shards.total as f64 * 100.0) as f32
+                                    if shards.total.unwrap_or(0) > 0 {
+                                        (shards.done.unwrap_or(0) as f64
+                                            / shards.total.unwrap_or(0) as f64
+                                            * 100.0) as f32
                                     } else {
                                         0.0
                                     }
@@ -348,16 +350,16 @@ pub async fn fetch_cluster_snapshot(
                                         .start_time_in_millis
                                         .and_then(chrono::DateTime::from_timestamp_millis),
                                     has_byte_stats: stats.incremental.is_some()
-                                        || stats.total_size_in_bytes > 0,
+                                        || stats.total_size_in_bytes.unwrap_or(0) > 0,
                                     processed_shards: detail
                                         .shards_stats
                                         .as_ref()
-                                        .map(|s| s.done)
+                                        .and_then(|s| s.done)
                                         .unwrap_or(0),
                                     total_shards: detail
                                         .shards_stats
                                         .as_ref()
-                                        .map(|s| s.total)
+                                        .and_then(|s| s.total)
                                         .unwrap_or(0),
                                     ..Default::default()
                                 });
@@ -372,8 +374,16 @@ pub async fn fetch_cluster_snapshot(
                     }
                 } else {
                     // Completed snapshot: construct stats using metadata from _snapshot list
-                    let total_shards = info.shards.as_ref().map(|s| s.total).unwrap_or(0);
-                    let successful_shards = info.shards.as_ref().map(|s| s.successful).unwrap_or(0);
+                    let total_shards = info
+                        .shards
+                        .as_ref()
+                        .and_then(|s| s.total)
+                        .unwrap_or(0);
+                    let successful_shards = info
+                        .shards
+                        .as_ref()
+                        .and_then(|s| s.successful)
+                        .unwrap_or(0);
 
                     // For completed backups, try to call status API to retrieve the exact size & file count!
                     let mut loaded_detail_stats = false;
@@ -384,16 +394,16 @@ pub async fn fetch_cluster_snapshot(
                                 let total_bytes = stats
                                     .incremental
                                     .as_ref()
-                                    .map(|i| i.size_in_bytes)
-                                    .unwrap_or(stats.total_size_in_bytes);
-                                let processed_bytes = stats.processed_size_in_bytes;
+                                    .and_then(|i| i.size_in_bytes)
+                                    .unwrap_or(stats.total_size_in_bytes.unwrap_or(0));
+                                let processed_bytes = stats.processed_size_in_bytes.unwrap_or(0);
 
                                 b_status.snapshot_stats = Some(SnapshotStats {
                                     progress_pct: 100.0,
                                     processed_bytes,
                                     total_bytes,
-                                    processed_files: stats.processed_files,
-                                    total_files: stats.number_of_files,
+                                    processed_files: stats.processed_files.unwrap_or(0),
+                                    total_files: stats.number_of_files.unwrap_or(0),
                                     start_time: info
                                         .start_time_in_millis
                                         .and_then(chrono::DateTime::from_timestamp_millis),
@@ -465,8 +475,16 @@ pub async fn fetch_cluster_snapshot(
                 .find(|(name, _)| name == &config.slm_policy)
                 .map(|(_, d)| d)
             {
-                status.slm_last_run = detail.last_success.as_ref().and_then(|s| s.time.clone());
-                status.slm_next_run = detail.next_execution.clone();
+                status.slm_last_run = detail
+                    .last_success
+                    .as_ref()
+                    .and_then(|s| s.time)
+                    .and_then(chrono::DateTime::from_timestamp_millis)
+                    .map(|dt| dt.format("%Y-%m-%d %H:%M UTC").to_string());
+                status.slm_next_run = detail
+                    .next_execution_millis
+                    .and_then(chrono::DateTime::from_timestamp_millis)
+                    .map(|dt| dt.format("%Y-%m-%d %H:%M UTC").to_string());
                 status.slm_in_progress = detail
                     .stats
                     .as_ref()
@@ -476,8 +494,16 @@ pub async fn fetch_cluster_snapshot(
             }
         } else if !status.slm_policies.is_empty() {
             let detail = &status.slm_policies[0].1;
-            status.slm_last_run = detail.last_success.as_ref().and_then(|s| s.time.clone());
-            status.slm_next_run = detail.next_execution.clone();
+            status.slm_last_run = detail
+                .last_success
+                .as_ref()
+                .and_then(|s| s.time)
+                .and_then(chrono::DateTime::from_timestamp_millis)
+                .map(|dt| dt.format("%Y-%m-%d %H:%M UTC").to_string());
+            status.slm_next_run = detail
+                .next_execution_millis
+                .and_then(chrono::DateTime::from_timestamp_millis)
+                .map(|dt| dt.format("%Y-%m-%d %H:%M UTC").to_string());
             status.slm_in_progress = detail
                 .stats
                 .as_ref()
@@ -889,7 +915,11 @@ fn render_item_card(
 
                     if stats.total_shards > 0 {
                         let shards_val = if let Some(ref shards) = b.snapshot_info.shards {
-                            format!("{}/{}", shards.successful, shards.total)
+                            format!(
+                                "{}/{}",
+                                shards.successful.unwrap_or(0),
+                                shards.total.unwrap_or(0)
+                            )
                         } else {
                             format!("{}/{}", stats.processed_shards, stats.total_shards)
                         };

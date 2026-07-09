@@ -36,6 +36,8 @@ pub struct IndicesState {
     pub selected_cluster: String,
     pub active_sub_tab: IndicesSubTab,
     pub filter: String,
+    pub filter_typed_at: Option<std::time::Instant>,
+    pub applied_filter: String,
     pub indices: Vec<CatIndex>,
     pub datastreams: Vec<DataStream>,
     pub is_loading: bool,
@@ -57,6 +59,8 @@ impl IndicesState {
             selected_cluster: String::new(),
             active_sub_tab: IndicesSubTab::Indices,
             filter: String::new(),
+            filter_typed_at: None,
+            applied_filter: String::new(),
             indices: Vec::new(),
             datastreams: Vec::new(),
             is_loading: false,
@@ -105,6 +109,32 @@ impl IndicesState {
     }
 }
 
+/// Default debounce window for text-input filters.
+pub const FILTER_DEBOUNCE_MS: u64 = 300;
+
+/// Returns true if the pending filter input has aged past the debounce window
+/// and should be applied now. Pure: takes `now` and `debounce` so it can be
+/// exercised without sleeping or rendering.
+pub fn filter_debounce_due(
+    typed_at: Option<std::time::Instant>,
+    now: std::time::Instant,
+    debounce: std::time::Duration,
+) -> bool {
+    typed_at.is_some_and(|t| now.saturating_duration_since(t) >= debounce)
+}
+
+/// Returns the duration until the debounce fires, or `None` if no input is pending.
+pub fn filter_debounce_remaining(
+    typed_at: Option<std::time::Instant>,
+    now: std::time::Instant,
+    debounce: std::time::Duration,
+) -> Option<std::time::Duration> {
+    typed_at.and_then(|t| {
+        let elapsed = now.saturating_duration_since(t);
+        debounce.checked_sub(elapsed)
+    })
+}
+
 pub fn render_indices_module(
     ui: &mut Ui,
     state: &mut IndicesState,
@@ -112,6 +142,20 @@ pub fn render_indices_module(
     on_refresh: &mut Option<(String, bool)>, // (cluster_name, is_datastream)
     on_fetch_detail: &mut Option<(String, bool)>, // (target_name, is_datastream)
 ) {
+    // Apply debounced filter
+    let now = std::time::Instant::now();
+    let debounce = std::time::Duration::from_millis(FILTER_DEBOUNCE_MS);
+    if filter_debounce_due(state.filter_typed_at, now, debounce) {
+        state.filter_typed_at = None;
+        if state.applied_filter != state.filter {
+            state.applied_filter = state.filter.clone();
+        }
+    } else if let Some(remaining) =
+        filter_debounce_remaining(state.filter_typed_at, now, debounce)
+    {
+        ui.ctx().request_repaint_after(remaining);
+    }
+
     ui.heading("Datastreams & Indices");
     ui.add_space(8.0);
 
@@ -188,9 +232,19 @@ pub fn render_indices_module(
     // Search and filter textbox + "Filter Selected" toggle button
     ui.horizontal(|ui| {
         ui.label("🔍 Filter:");
-        ui.text_edit_singleline(&mut state.filter);
+        let filter_resp = ui.add(
+            egui::TextEdit::singleline(&mut state.filter)
+                .id_source("indices_filter_input")
+                .desired_width(220.0),
+        );
+        if filter_resp.changed() {
+            state.filter_typed_at = Some(std::time::Instant::now());
+            ui.ctx().request_repaint();
+        }
         if !state.filter.is_empty() && ui.small_button("Clear").clicked() {
             state.filter.clear();
+            state.applied_filter.clear();
+            state.filter_typed_at = None;
         }
 
         ui.add_space(8.0);
@@ -260,11 +314,11 @@ fn render_indices_table(
         .indices
         .iter()
         .filter(|idx| {
-            state.filter.is_empty()
+            state.applied_filter.is_empty()
                 || idx
                     .index
                     .to_lowercase()
-                    .contains(&state.filter.to_lowercase())
+                    .contains(&state.applied_filter.to_lowercase())
         })
         .cloned()
         .collect();
@@ -539,11 +593,11 @@ fn render_datastreams_table(
         .datastreams
         .iter()
         .filter(|ds| {
-            state.filter.is_empty()
+            state.applied_filter.is_empty()
                 || ds
                     .name
                     .to_lowercase()
-                    .contains(&state.filter.to_lowercase())
+                    .contains(&state.applied_filter.to_lowercase())
         })
         .cloned()
         .collect();
@@ -915,5 +969,75 @@ mod tests {
 
         assert_eq!(*state.previous_doc_counts.get("logs-1").unwrap(), 100);
         assert_eq!(*state.previous_sizes.get("logs-1").unwrap(), 1024);
+    }
+
+    #[test]
+    fn test_filter_debounce_no_pending_input() {
+        let now = std::time::Instant::now();
+        let debounce = std::time::Duration::from_millis(FILTER_DEBOUNCE_MS);
+        // No pending input -> never due, no remaining.
+        assert!(!filter_debounce_due(None, now, debounce));
+        assert_eq!(filter_debounce_remaining(None, now, debounce), None);
+    }
+
+    #[test]
+    fn test_filter_debounce_within_window() {
+        let typed_at = std::time::Instant::now();
+        // Sample "now" slightly after typing began, but well within the window.
+        let now = typed_at + std::time::Duration::from_millis(50);
+        let debounce = std::time::Duration::from_millis(FILTER_DEBOUNCE_MS);
+        assert!(!filter_debounce_due(Some(typed_at), now, debounce));
+        let remaining = filter_debounce_remaining(Some(typed_at), now, debounce);
+        assert_eq!(remaining, Some(std::time::Duration::from_millis(250)));
+    }
+
+    #[test]
+    fn test_filter_debounce_at_boundary() {
+        let typed_at = std::time::Instant::now();
+        // Exactly at the boundary -> due. Remaining is either None or zero,
+        // either way there is no meaningful wait left.
+        let now = typed_at + std::time::Duration::from_millis(FILTER_DEBOUNCE_MS);
+        let debounce = std::time::Duration::from_millis(FILTER_DEBOUNCE_MS);
+        assert!(filter_debounce_due(Some(typed_at), now, debounce));
+        let remaining = filter_debounce_remaining(Some(typed_at), now, debounce);
+        let is_zero_or_none = match remaining {
+            None => true,
+            Some(d) => d.is_zero(),
+        };
+        assert!(is_zero_or_none, "expected None or zero, got {:?}", remaining);
+    }
+
+    #[test]
+    fn test_filter_debounce_past_window() {
+        let typed_at = std::time::Instant::now();
+        // Well past the window -> due, no remaining time.
+        let now = typed_at + std::time::Duration::from_millis(500);
+        let debounce = std::time::Duration::from_millis(FILTER_DEBOUNCE_MS);
+        assert!(filter_debounce_due(Some(typed_at), now, debounce));
+        assert_eq!(filter_debounce_remaining(Some(typed_at), now, debounce), None);
+    }
+
+    #[test]
+    fn test_filter_debounce_simulated_typing_burst() {
+        // Simulate a user typing 5 characters at 50ms intervals.
+        // After each keystroke we update `typed_at`. The filter must NOT be
+        // applied until 300ms have passed since the LAST keystroke.
+        let debounce = std::time::Duration::from_millis(FILTER_DEBOUNCE_MS);
+        let mut typed_at = std::time::Instant::now();
+        for i in 1..=5 {
+            std::thread::sleep(std::time::Duration::from_millis(50));
+            typed_at = std::time::Instant::now();
+            // Immediately after each keystroke (sleep 0) -> still pending.
+            let just_typed = typed_at;
+            assert!(
+                !filter_debounce_due(Some(just_typed), just_typed, debounce),
+                "filter should not be due right after keystroke {}",
+                i
+            );
+        }
+        // Wait past the debounce window since the last keystroke.
+        std::thread::sleep(std::time::Duration::from_millis(FILTER_DEBOUNCE_MS + 50));
+        let now = std::time::Instant::now();
+        assert!(filter_debounce_due(Some(typed_at), now, debounce));
     }
 }

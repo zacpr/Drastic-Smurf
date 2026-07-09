@@ -1,0 +1,5 @@
+{
+    "workbench.preferredLightColorTheme": "Light+",
+    "workbench.preferredDarkColorTheme": "Visual Studio Dark",
+    "lldb.cargo": "/home/zac@ashurtech.net/.cargo/bin/cargo"
+}

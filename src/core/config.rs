@@ -71,11 +71,263 @@ fn default_parallax() -> f32 {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, Default)]
+pub enum PipelineTargetKind {
+    #[default]
+    Index,
+    DataStream,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, Default)]
+pub enum PipelineMode {
+    #[default]
+    Default,
+    Loaded,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct PipelineTestPreset {
+    pub name: String,
+    pub cluster: String,
+    pub target_kind: PipelineTargetKind,
+    pub target_name: String,
+    pub pipeline_mode: PipelineMode,
+    pub pipeline_id: String,
+    pub pipeline_text: String,
+    pub docs_text: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, Default)]
 pub enum CaCert {
     #[default]
     System,
     Bundled,
     Custom(PathBuf),
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum LlmProviderKind {
+    /// Any OpenAI-compatible chat completions endpoint
+    /// (OpenAI, Azure OpenAI, Ollama, LM Studio, vLLM, OpenRouter, etc.)
+    OpenAiCompatible,
+    /// GitHub Copilot Chat - OpenAI-compatible but needs GitHub token + Copilot headers
+    GitHubCopilot,
+}
+
+impl Default for LlmProviderKind {
+    fn default() -> Self {
+        LlmProviderKind::OpenAiCompatible
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LlmProviderPreset {
+    pub id: String,
+    pub label: String,
+    pub kind: LlmProviderKind,
+    pub default_base_url: String,
+    pub default_model: String,
+    pub models: Vec<String>,
+    pub api_key_hint: String,
+    pub docs_url: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LlmSettings {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub provider_id: String,
+    #[serde(default)]
+    pub base_url: String,
+    #[serde(default = "default_llm_model")]
+    pub model: String,
+    #[serde(default = "default_llm_temperature")]
+    pub temperature: f32,
+    #[serde(default = "default_llm_max_context_chars")]
+    pub max_context_chars: usize,
+    #[serde(default = "default_true")]
+    pub auto_cluster_context: bool,
+    #[serde(default)]
+    pub extra_headers: Vec<(String, String)>,
+}
+
+fn default_llm_model() -> String {
+    "gpt-4o-mini".to_string()
+}
+fn default_llm_temperature() -> f32 {
+    0.3
+}
+fn default_llm_max_context_chars() -> usize {
+    4000
+}
+
+impl Default for LlmSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            provider_id: "openai".to_string(),
+            base_url: "https://api.openai.com/v1".to_string(),
+            model: default_llm_model(),
+            temperature: default_llm_temperature(),
+            max_context_chars: default_llm_max_context_chars(),
+            auto_cluster_context: true,
+            extra_headers: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LogSettings {
+    pub index_pattern: String,
+    pub timestamp_field: String,
+    pub message_field: String,
+    pub app_field: String,
+    pub hostname_field: String,
+    pub severity_field: String,
+    pub limit: usize,
+}
+
+impl Default for LogSettings {
+    fn default() -> Self {
+        Self {
+            index_pattern: "logs-elasticsearch-*,logs-kibana-*".to_string(),
+            timestamp_field: "@timestamp".to_string(),
+            message_field: "message".to_string(),
+            app_field: "service.name".to_string(),
+            hostname_field: "host.name".to_string(),
+            severity_field: "log.level".to_string(),
+            limit: 1000,
+        }
+    }
+}
+
+pub fn default_llm_providers() -> Vec<LlmProviderPreset> {
+    vec![
+        LlmProviderPreset {
+            id: "openai".to_string(),
+            label: "OpenAI".to_string(),
+            kind: LlmProviderKind::OpenAiCompatible,
+            default_base_url: "https://api.openai.com/v1".to_string(),
+            default_model: "gpt-4o-mini".to_string(),
+            models: vec![
+                "gpt-4o".to_string(),
+                "gpt-4o-mini".to_string(),
+                "gpt-4-turbo".to_string(),
+                "o3-mini".to_string(),
+                "o1".to_string(),
+            ],
+            api_key_hint: "sk-...".to_string(),
+            docs_url: "https://platform.openai.com/api-keys".to_string(),
+        },
+        LlmProviderPreset {
+            id: "github_copilot".to_string(),
+            label: "GitHub Copilot".to_string(),
+            kind: LlmProviderKind::GitHubCopilot,
+            default_base_url: "https://api.githubcopilot.com".to_string(),
+            default_model: "gpt-4o".to_string(),
+            models: vec![
+                "gpt-4o".to_string(),
+                "gpt-4o-mini".to_string(),
+                "o1-preview".to_string(),
+                "claude-3.5-sonnet".to_string(),
+                "gemini-2.0-flash".to_string(),
+            ],
+            api_key_hint: "ghu_... (GitHub PAT with 'Copilot Chat' scope)".to_string(),
+            docs_url: "https://github.com/settings/personal-access-tokens".to_string(),
+        },
+        LlmProviderPreset {
+            id: "azure_openai".to_string(),
+            label: "Azure OpenAI".to_string(),
+            kind: LlmProviderKind::OpenAiCompatible,
+            default_base_url: "https://YOUR_RESOURCE.openai.azure.com/openai/deployments/YOUR_DEPLOYMENT".to_string(),
+            default_model: "gpt-4o".to_string(),
+            models: vec![
+                "gpt-4o".to_string(),
+                "gpt-4o-mini".to_string(),
+                "gpt-4-turbo".to_string(),
+            ],
+            api_key_hint: "Azure OpenAI API key (set api-key header in extra headers)".to_string(),
+            docs_url: "https://oai.azure.com/portal/".to_string(),
+        },
+        LlmProviderPreset {
+            id: "openrouter".to_string(),
+            label: "OpenRouter".to_string(),
+            kind: LlmProviderKind::OpenAiCompatible,
+            default_base_url: "https://openrouter.ai/api/v1".to_string(),
+            default_model: "openai/gpt-4o-mini".to_string(),
+            models: vec![
+                "openai/gpt-4o-mini".to_string(),
+                "anthropic/claude-3.5-sonnet".to_string(),
+                "google/gemini-2.0-flash-exp:free".to_string(),
+                "meta-llama/llama-3.3-70b-instruct:free".to_string(),
+            ],
+            api_key_hint: "sk-or-...".to_string(),
+            docs_url: "https://openrouter.ai/keys".to_string(),
+        },
+        LlmProviderPreset {
+            id: "ollama".to_string(),
+            label: "Ollama (local)".to_string(),
+            kind: LlmProviderKind::OpenAiCompatible,
+            default_base_url: "http://localhost:11434/v1".to_string(),
+            default_model: "llama3.2".to_string(),
+            models: vec![
+                "llama3.2".to_string(),
+                "llama3.1".to_string(),
+                "qwen2.5".to_string(),
+                "mistral".to_string(),
+                "codellama".to_string(),
+                "deepseek-coder-v2".to_string(),
+            ],
+            api_key_hint: "(any string - ignored by Ollama)".to_string(),
+            docs_url: "https://ollama.com/".to_string(),
+        },
+        LlmProviderPreset {
+            id: "lmstudio".to_string(),
+            label: "LM Studio (local)".to_string(),
+            kind: LlmProviderKind::OpenAiCompatible,
+            default_base_url: "http://localhost:1234/v1".to_string(),
+            default_model: "local-model".to_string(),
+            models: vec!["local-model".to_string()],
+            api_key_hint: "(any string - ignored by LM Studio)".to_string(),
+            docs_url: "https://lmstudio.ai/".to_string(),
+        },
+        LlmProviderPreset {
+            id: "vllm".to_string(),
+            label: "vLLM (self-hosted)".to_string(),
+            kind: LlmProviderKind::OpenAiCompatible,
+            default_base_url: "http://localhost:8000/v1".to_string(),
+            default_model: "meta-llama/Llama-3-8B-Instruct".to_string(),
+            models: vec!["meta-llama/Llama-3-8B-Instruct".to_string()],
+            api_key_hint: "(empty if no auth configured)".to_string(),
+            docs_url: "https://docs.vllm.ai/".to_string(),
+        },
+        LlmProviderPreset {
+            id: "custom".to_string(),
+            label: "Custom OpenAI-compatible endpoint".to_string(),
+            kind: LlmProviderKind::OpenAiCompatible,
+            default_base_url: "https://your-endpoint.example.com/v1".to_string(),
+            default_model: "model-name".to_string(),
+            models: vec![],
+            api_key_hint: "API key (or empty)".to_string(),
+            docs_url: "".to_string(),
+        },
+    ]
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ChatMessage {
+    pub role: String,
+    pub content: String,
+    pub timestamp: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ChatConversation {
+    pub id: String,
+    pub title: String,
+    pub messages: Vec<ChatMessage>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -280,6 +532,18 @@ pub struct AppConfig {
     pub pinned_monitor_ids: Vec<String>,
     #[serde(default)]
     pub pinned_monitor_layouts: HashMap<String, PinnedMonitorLayout>,
+    #[serde(default)]
+    pub pipeline_test_presets: Vec<PipelineTestPreset>,
+    #[serde(default)]
+    pub llm: LlmSettings,
+    #[serde(default)]
+    pub assistant_dock_visible: bool,
+    #[serde(default)]
+    pub assistant_conversations: Vec<ChatConversation>,
+    #[serde(default)]
+    pub assistant_active_conversation_id: Option<String>,
+    #[serde(default)]
+    pub logs: LogSettings,
 }
 
 fn default_refresh_interval_secs() -> u64 {
