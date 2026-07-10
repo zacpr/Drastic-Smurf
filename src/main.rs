@@ -7,6 +7,13 @@ mod ui;
 
 #[tokio::main]
 async fn main() -> eframe::Result<()> {
+    #[cfg(target_os = "linux")]
+    {
+        if let Err(e) = gtk::init() {
+            eprintln!("Failed to initialize GTK: {:?}", e);
+        }
+    }
+
     let log_entries = crate::ui::log_buffer::init_logging();
 
     let config = crate::core::config::AppConfig::load().unwrap_or_default();

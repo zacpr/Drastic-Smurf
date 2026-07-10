@@ -22,6 +22,7 @@ use crate::modules::llm_assistant::{
 };
 use crate::core::config::ChatMessage;
 use crate::modules::observability::{ObservabilityState, render_observability_module};
+use crate::modules::painless::{PainlessState, render_painless_module};
 use crate::modules::pipeline::{PipelineState, render_pipeline_module};
 use crate::modules::snapshot::{
     ClusterSnapshotStatus, SnapshotHistory, fetch_cluster_snapshot, render_snapshot_module,
@@ -45,6 +46,7 @@ pub enum Tab {
     Observability,
     PipelineSimulator,
     Logs,
+    PainlessPlayground,
     Settings,
 }
 
@@ -97,6 +99,7 @@ pub enum RefreshMsg {
     OnlineSimulateResult(Result<String, String>),
     OnlineFileResult(Result<String, String>),
     LogsResult(String, Result<Vec<LogEntry>, String>),
+    PainlessResult(Result<String, String>),
 }
 
 pub struct DrasticSmurfApp {
@@ -118,6 +121,7 @@ pub struct DrasticSmurfApp {
     pub pipeline_online_state: crate::modules::pipeline_online::OnlinePipelineState,
     pub pipeline_sub_tab: PipelineSubTab,
     pub pipeline_online_actions: Option<Vec<crate::modules::pipeline_online::OnlineAction>>,
+    pub painless_state: PainlessState,
     pub auto_refresh: bool,
     pub refresh_interval_secs: u64,
     pub last_refresh: Option<Instant>,
@@ -136,6 +140,7 @@ pub struct DrasticSmurfApp {
     pub console_send: Option<(String, String, String, Option<String>, bool)>,
     pub discover_send: Option<(String, String, String)>,
     pub logs_send: Option<(String, LogFilters, LogFieldNames, String, usize)>,
+    pub painless_send: Option<(String, String)>,
     pub indices_refresh: Option<(String, bool)>,
     pub observability_refresh: Option<(String, String)>,
     pub clusters_import: Option<crate::core::config::AppConfig>,
@@ -158,6 +163,53 @@ pub struct DrasticSmurfApp {
     pub show_pending_cluster: Option<String>,
     pub assistant_state: AssistantState,
     pub assistant_dock_visible: bool,
+    pub should_close: bool,
+    _tray_icon: Option<tray_icon::TrayIcon>,
+    tray_show_id: Option<tray_icon::menu::MenuId>,
+    tray_quit_id: Option<tray_icon::menu::MenuId>,
+}
+
+fn load_tray_icon() -> Option<(tray_icon::TrayIcon, tray_icon::menu::MenuId, tray_icon::menu::MenuId)> {
+    let icon_bytes = include_bytes!("../drastic.png");
+    let image = match image::load_from_memory(icon_bytes) {
+        Ok(img) => img.into_rgba8(),
+        Err(e) => {
+            tracing::warn!("Failed to load tray icon image: {}", e);
+            return None;
+        }
+    };
+    let (width, height) = image.dimensions();
+    let rgba = image.into_raw();
+    let icon = match tray_icon::Icon::from_rgba(rgba, width, height) {
+        Ok(ic) => ic,
+        Err(e) => {
+            tracing::warn!("Failed to build tray icon: {}", e);
+            return None;
+        }
+    };
+
+    let tray_menu = tray_icon::menu::Menu::new();
+    let show_item = tray_icon::menu::MenuItem::new("Show Window", true, None);
+    let quit_item = tray_icon::menu::MenuItem::new("Quit", true, None);
+    let show_id = show_item.id().clone();
+    let quit_id = quit_item.id().clone();
+
+    if let Err(e) = tray_menu.append_items(&[&show_item, &quit_item]) {
+        tracing::warn!("Failed to setup tray menu items: {}", e);
+    }
+
+    match tray_icon::TrayIconBuilder::new()
+        .with_menu(Box::new(tray_menu))
+        .with_tooltip("Drastic Smurf")
+        .with_icon(icon)
+        .build()
+    {
+        Ok(tray) => Some((tray, show_id, quit_id)),
+        Err(e) => {
+            tracing::warn!("Failed to initialize tray icon builder: {}", e);
+            None
+        }
+    }
 }
 
 impl Default for DrasticSmurfApp {
@@ -182,6 +234,11 @@ impl DrasticSmurfApp {
             console_state.selected_cluster = first.clone();
         }
 
+        let mut painless_state = PainlessState::default();
+        if let Some(first) = cluster_names.first() {
+            painless_state.selected_cluster = first.clone();
+        }
+
         let mut config = crate::core::config::AppConfig::load().unwrap_or_default();
         crate::ui::theme::Theme::set(config.theme.clone());
 
@@ -194,6 +251,11 @@ impl DrasticSmurfApp {
         let mut observability_state = ObservabilityState::new();
         observability_state.pinned_monitor_ids = config.pinned_monitor_ids.clone();
         observability_state.pinned_monitor_layouts = config.pinned_monitor_layouts.clone();
+
+        let (tray, show_id, quit_id) = match load_tray_icon() {
+            Some((t, s, q)) => (Some(t), Some(s), Some(q)),
+            None => (None, None, None),
+        };
 
         let mut app = Self {
             cluster_manager: manager.clone(),
@@ -221,6 +283,7 @@ impl DrasticSmurfApp {
             pipeline_online_state: crate::modules::pipeline_online::OnlinePipelineState::default(),
             pipeline_sub_tab: PipelineSubTab::Sandpit,
             pipeline_online_actions: None,
+            painless_state,
             auto_refresh: manager.auto_refresh(),
             refresh_interval_secs: manager.refresh_interval_secs(),
             last_refresh: None,
@@ -239,6 +302,7 @@ impl DrasticSmurfApp {
             console_send: None,
             discover_send: None,
             logs_send: None,
+            painless_send: None,
             indices_refresh: None,
             observability_refresh: None,
             clusters_import: None,
@@ -274,6 +338,10 @@ impl DrasticSmurfApp {
                 config.assistant_conversations.clone(),
             ),
             assistant_dock_visible: config.assistant_dock_visible,
+            should_close: false,
+            _tray_icon: tray,
+            tray_show_id: show_id,
+            tray_quit_id: quit_id,
         };
 
         for cluster in &clusters {
@@ -943,6 +1011,27 @@ impl DrasticSmurfApp {
                         self.pipeline_online_state.docs_error = Some(e);
                     }
                 },
+                RefreshMsg::PainlessResult(result) => {
+                    let mut text = match result {
+                        Ok(val) => {
+                            if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&val) {
+                                serde_json::to_string_pretty(&parsed).unwrap_or(val)
+                            } else {
+                                val
+                            }
+                        }
+                        Err(e) => format!("Error: {}", e),
+                    };
+                    self.painless_state.full_response = Some(text.clone());
+
+                    if text.len() > 100_000 {
+                        text.truncate(100_000);
+                        text.push_str("\n\n... [Response truncated for performance. Use 'Copy Response' to get the full payload] ...");
+                    }
+
+                    self.painless_state.response = text;
+                    self.painless_state.is_loading = false;
+                }
             }
         }
     }
@@ -1536,6 +1625,7 @@ impl DrasticSmurfApp {
                         ("Observability", Tab::Observability),
                         ("Pipelines", Tab::PipelineSimulator),
                         ("Logs", Tab::Logs),
+                        ("Painless Playground", Tab::PainlessPlayground),
                         ("Settings", Tab::Settings),
                     ] {
                         let is_active = self.current_tab == tab;
@@ -2540,6 +2630,11 @@ impl DrasticSmurfApp {
                     }
                 }
             }
+            Tab::PainlessPlayground => {
+                let clusters = self.cluster_manager.clusters();
+                let cluster_names: Vec<String> = clusters.iter().map(|c| c.name.clone()).collect();
+                render_painless_module(ui, &mut self.painless_state, &cluster_names, &mut self.painless_send);
+            }
         }
     }
 
@@ -3110,6 +3205,32 @@ impl DrasticSmurfApp {
 
 impl eframe::App for DrasticSmurfApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Intercept close events to minimize/hide to tray
+        if ctx.input(|i| i.viewport().close_requested()) && !self.should_close {
+            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
+        }
+
+        // Poll tray icon click events
+        while let Ok(event) = tray_icon::TrayIconEvent::receiver().try_recv() {
+            if let tray_icon::TrayIconEvent::Click { button: tray_icon::MouseButton::Left, .. } = event {
+                ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
+                ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+            }
+        }
+
+        // Poll tray menu events
+        while let Ok(event) = tray_icon::menu::MenuEvent::receiver().try_recv() {
+            if self.tray_show_id.as_ref() == Some(&event.id) {
+                ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
+                ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+            }
+            if self.tray_quit_id.as_ref() == Some(&event.id) {
+                self.should_close = true;
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            }
+        }
+
         // Apply theme to egui context
         ctx.set_visuals(self.theme.to_egui_visuals());
 
@@ -3257,6 +3378,29 @@ impl eframe::App for DrasticSmurfApp {
                     Err("Failed to obtain cluster client. Ensure the cluster is configured and reachable."
                         .to_string()),
                 ));
+            }
+        }
+
+        // Handle painless send
+        if let Some((cluster_name, body)) = self.painless_send.take() {
+            if let Some(client) = self.cluster_manager.get_client(&cluster_name) {
+                let tx = self.refresh_tx.clone();
+                let ctx = ctx.clone();
+                tokio::spawn(async move {
+                    let method = reqwest::Method::POST;
+                    let path = "/_scripts/painless/_execute";
+                    let result = client
+                        .execute_raw(method, path, Some(body))
+                        .await
+                        .map_err(|e| e.to_string());
+                    let _ = tx.send(RefreshMsg::PainlessResult(result));
+                    ctx.request_repaint();
+                });
+            } else {
+                let _ = self.refresh_tx.send(RefreshMsg::PainlessResult(Err(
+                    "Failed to obtain cluster client. Ensure the cluster is configured and reachable."
+                        .to_string(),
+                )));
             }
         }
 

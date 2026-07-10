@@ -29,6 +29,8 @@ v# AGENTS.md — DRASTIC SMURF
 | **Observability Monitors** | ✅ Functional | Kibana Synthetics / Uptime monitors explorer with space-selection support, multi-region status, sparkline history latency, and a customizable Pinned Dashboard. |
 | **World Clocks** | ✅ Functional | Collapsible Sidebar World Timezones displaying ISO 8601 local, UTC, Sydney (APAC), Germany (EMEA), Chicago (AMER), and custom offsets. Supports labels modification, clipboard copy buttons, toggles, deletion, and full Settings Tab persistence. |
 | **AI Assistant** | ✅ Functional | Side-dock chat panel for troubleshooting Elasticsearch and API usage. Streams from any OpenAI-compatible `/chat/completions` endpoint (OpenAI, Azure OpenAI, GitHub Copilot, Ollama, LM Studio, vLLM, OpenRouter, etc.). API keys stored in OS keyring, conversation history persisted in `config.json`, concise auto-injected cluster context (health/version/nodes/JVM/errors). SSE streaming with token-by-token UI updates and cancel support. |
+| **Painless Playground** | ✅ Functional | Elasticsearch Painless script editor featuring preset templates (Math, Score, Filter, String manipulation), live JSON parameters validation, and full mock context indexing setup. |
+
 
 ---
 
@@ -54,6 +56,7 @@ src/
 │   ├── indices.rs      # Datastreams & Indices explorer tab
 │   ├── llm_assistant.rs # AI Assistant side-dock panel
 │   ├── observability.rs # Kibana Synthetics Monitors tab
+│   ├── painless.rs     # Painless Script Playground tab
 │   ├── snapshot.rs     # Snapshot Monitoring tab
 │   ├── status.rs       # Cluster Status tab
 │   ├── tasks.rs        # Task Monitoring tab

@@ -7,6 +7,7 @@ pub mod indices;
 pub mod llm_assistant;
 pub mod logs;
 pub mod observability;
+pub mod painless;
 pub mod pipeline;
 pub mod pipeline_engine;
 pub mod pipeline_online;

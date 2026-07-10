@@ -27,9 +27,13 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 webbrowser = "1.2.1"
 rfd = "0.15"
 futures-util = "0.3"
+tray-icon = "0.19"
+image = { version = "0.25", default-features = false, features = ["png"] }
+
 [target.'cfg(target_os = "linux")'.dependencies]
 keyring = { version = "3.6", features = ["sync-secret-service"] }
 eframe = { version = "0.31", features = ["default"] }
+gtk = "0.18"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 keyring = { version = "3.6", features = ["windows-native"] }
