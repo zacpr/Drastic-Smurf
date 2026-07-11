@@ -29,6 +29,7 @@ rfd = "0.15"
 futures-util = "0.3"
 tray-icon = "0.19"
 image = { version = "0.25", default-features = false, features = ["png"] }
+slint = "1.17.1"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 keyring = { version = "3.6", features = ["sync-secret-service"] }
@@ -52,6 +53,9 @@ lto = true
 [profile.dist]
 inherits = "release"
 lto = "thin"
+
+[build-dependencies]
+slint-build = "1.17.1"
 
 [package.metadata.deb]
 name = "drastic-smurf"

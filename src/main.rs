@@ -4,9 +4,18 @@ mod app;
 mod core;
 mod modules;
 mod ui;
+mod ui_slint;
 
 #[tokio::main]
 async fn main() -> eframe::Result<()> {
+    if std::env::args().any(|a| a == "--slint") {
+        if let Err(e) = crate::ui_slint::run() {
+            eprintln!("Slint UI error: {:?}", e);
+            std::process::exit(1);
+        }
+        return Ok(());
+    }
+
     #[cfg(target_os = "linux")]
     {
         if let Err(e) = gtk::init() {

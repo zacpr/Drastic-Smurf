@@ -1,0 +1,355 @@
+import { CheckBox, LineEdit, ScrollView, Palette } from "std-widgets.slint";
+
+export struct ClusterAlert {
+    name: string,
+    message: string,
+}
+
+export struct ClusterItem {
+    name: string,
+    checked: bool,
+}
+
+export enum NavItem {
+    dashboard,
+    status,
+    observability,
+    tasks,
+    snapshot,
+    discover,
+    indices,
+    console,
+    pipeline-simulator,
+    settings,
+}
+
+component AlertBar inherits Rectangle {
+    in property <bool> alerting: false;
+    in property <[ClusterAlert]> alerts: [];
+
+    height: alerting ? 64px : 32px;
+    background: alerting ? #4a1f1f : #1f2e22;
+    animate height { duration: 150ms; easing: ease-in-out; }
+
+    if !alerting: HorizontalLayout {
+        alignment: center;
+        Text {
+            text: "✓ All clusters healthy";
+            color: #7fdc9a;
+            font-size: 13px;
+            vertical-alignment: center;
+        }
+    }
+
+    if alerting: HorizontalLayout {
+        padding: 8px;
+        spacing: 12px;
+
+        // Mascot placeholder: swap for a real <image> per status once assets exist.
+        Rectangle {
+            width: 40px;
+            height: 40px;
+            border-radius: 20px;
+            border-width: 3px;
+            border-color: #ff6b6b;
+            background: #3a2222;
+            Text {
+                text: "!";
+                color: #ff6b6b;
+                font-size: 20px;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+
+        ScrollView {
+            HorizontalLayout {
+                spacing: 8px;
+                for alert in alerts: Rectangle {
+                    width: 220px;
+                    border-radius: 6px;
+                    background: #522;
+                    border-width: 1px;
+                    border-color: #ff6b6b;
+                    VerticalLayout {
+                        padding: 6px;
+                        Text { text: alert.name; color: white; font-weight: 700; font-size: 13px; }
+                        Text { text: alert.message; color: #ffb3b3; font-size: 11px; wrap: word-wrap; }
+                    }
+                }
+            }
+        }
+    }
+}
+
+component FocusedClusters inherits VerticalLayout {
+    in-out property <bool> collapsed: true;
+    in property <[ClusterItem]> clusters: [];
+    in property <string> filter-text: "";
+    in property <int> checked-count: 0;
+    callback toggle-collapsed();
+    callback filter-changed(string);
+    callback cluster-toggled(string, bool);
+
+    spacing: 4px;
+    vertical-stretch: 0;
+
+    Rectangle {
+        height: 28px;
+        TouchArea {
+            clicked => { toggle-collapsed(); }
+        }
+        HorizontalLayout {
+            padding-left: 8px;
+            padding-right: 8px;
+            Text {
+                text: collapsed ? "▸" : "▾";
+                color: #999;
+                vertical-alignment: center;
+                width: 16px;
+            }
+            Text {
+                text: "Focused clusters (" + checked-count + " of " + clusters.length + ")";
+                color: #ccc;
+                font-size: 12px;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+            }
+        }
+    }
+
+    if !collapsed: VerticalLayout {
+        padding-left: 8px;
+        padding-right: 8px;
+        spacing: 6px;
+
+        LineEdit {
+            placeholder-text: "Filter clusters...";
+            text: filter-text;
+            edited(text) => { filter-changed(text); }
+        }
+
+        Rectangle {
+            height: min(180px, clusters.length * 28px);
+            clip: true;
+
+            ScrollView {
+                VerticalLayout {
+                    for c in clusters: HorizontalLayout {
+                        height: 26px;
+                        spacing: 6px;
+                        CheckBox {
+                            checked: c.checked;
+                            toggled => { cluster-toggled(c.name, self.checked); }
+                        }
+                        Text {
+                            text: c.name;
+                            vertical-alignment: center;
+                            color: #ddd;
+                            font-size: 12px;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+component NavButton inherits Rectangle {
+    in property <string> label;
+    in property <bool> selected: false;
+    callback clicked();
+
+    height: 30px;
+    background: selected ? #2d3f52 : transparent;
+    border-radius: 4px;
+
+    TouchArea {
+        clicked => { root.clicked(); }
+    }
+
+    Text {
+        text: root.label;
+        color: selected ? #7fc7ff : #ccc;
+        font-size: 13px;
+        vertical-alignment: center;
+        horizontal-alignment: left;
+        x: 12px;
+    }
+}
+
+component NavGroup inherits VerticalLayout {
+    in property <string> title;
+    spacing: 2px;
+    vertical-stretch: 0;
+
+    Text {
+        text: title;
+        color: #777;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 1px;
+    }
+}
+
+component Sidebar inherits Rectangle {
+    in property <[ClusterItem]> clusters: [];
+    in-out property <bool> focused-collapsed: true;
+    in property <string> cluster-filter-text: "";
+    in property <int> focused-checked-count: 0;
+    in property <NavItem> selected-nav: NavItem.dashboard;
+
+    callback nav-selected(NavItem);
+    callback cluster-toggled(string, bool);
+    callback filter-changed(string);
+
+    width: 230px;
+    background: #181c22;
+
+    VerticalLayout {
+        padding: 10px;
+        spacing: 10px;
+
+        NavButton {
+            label: "Dashboard";
+            selected: root.selected-nav == NavItem.dashboard;
+            clicked => { root.nav-selected(NavItem.dashboard); }
+        }
+
+        Rectangle { height: 1px; background: #2a2f38; }
+
+        FocusedClusters {
+            clusters: root.clusters;
+            collapsed <=> root.focused-collapsed;
+            filter-text: root.cluster-filter-text;
+            checked-count: root.focused-checked-count;
+            cluster-toggled(name, checked) => { root.cluster-toggled(name, checked); }
+            filter-changed(text) => { root.filter-changed(text); }
+        }
+
+        Rectangle { height: 1px; background: #2a2f38; }
+
+        NavGroup {
+            title: "MONITOR";
+            NavButton {
+                label: "Status";
+                selected: root.selected-nav == NavItem.status;
+                clicked => { root.nav-selected(NavItem.status); }
+            }
+            NavButton {
+                label: "Observability";
+                selected: root.selected-nav == NavItem.observability;
+                clicked => { root.nav-selected(NavItem.observability); }
+            }
+        }
+
+        NavGroup {
+            title: "OPERATE";
+            NavButton {
+                label: "Tasks";
+                selected: root.selected-nav == NavItem.tasks;
+                clicked => { root.nav-selected(NavItem.tasks); }
+            }
+            NavButton {
+                label: "Snapshot";
+                selected: root.selected-nav == NavItem.snapshot;
+                clicked => { root.nav-selected(NavItem.snapshot); }
+            }
+        }
+
+        NavGroup {
+            title: "EXPLORE";
+            NavButton {
+                label: "Discover";
+                selected: root.selected-nav == NavItem.discover;
+                clicked => { root.nav-selected(NavItem.discover); }
+            }
+            NavButton {
+                label: "Indices";
+                selected: root.selected-nav == NavItem.indices;
+                clicked => { root.nav-selected(NavItem.indices); }
+            }
+            NavButton {
+                label: "Console";
+                selected: root.selected-nav == NavItem.console;
+                clicked => { root.nav-selected(NavItem.console); }
+            }
+            NavButton {
+                label: "Pipeline Simulator";
+                selected: root.selected-nav == NavItem.pipeline-simulator;
+                clicked => { root.nav-selected(NavItem.pipeline-simulator); }
+            }
+        }
+
+        Rectangle { vertical-stretch: 1; }
+
+        Rectangle { height: 1px; background: #2a2f38; }
+
+        HorizontalLayout {
+            height: 30px;
+            spacing: 8px;
+            Rectangle {
+                width: 24px;
+                height: 24px;
+                border-radius: 4px;
+                Text { text: "◷"; font-size: 14px; horizontal-alignment: center; vertical-alignment: center; }
+            }
+            Rectangle { horizontal-stretch: 1; }
+            NavButton {
+                width: 90px;
+                label: "Settings";
+                selected: root.selected-nav == NavItem.settings;
+                clicked => { root.nav-selected(NavItem.settings); }
+            }
+        }
+    }
+}
+
+export component AppShell inherits Window {
+    title: "DRASTIC SMURF";
+    width: 1280px;
+    height: 800px;
+    background: #10131a;
+
+    in property <bool> alerting: false;
+    in property <[ClusterAlert]> alerts: [];
+    in property <[ClusterItem]> clusters: [];
+    in-out property <bool> focused-collapsed: true;
+    in property <string> cluster-filter-text: "";
+    in property <int> focused-checked-count: 0;
+    in-out property <NavItem> selected-nav: NavItem.dashboard;
+
+    callback cluster-toggled(string, bool);
+    callback filter-changed(string);
+
+    VerticalLayout {
+        AlertBar {
+            alerting: root.alerting;
+            alerts: root.alerts;
+        }
+
+        HorizontalLayout {
+            Sidebar {
+                clusters: root.clusters;
+                focused-collapsed <=> root.focused-collapsed;
+                cluster-filter-text: root.cluster-filter-text;
+                focused-checked-count: root.focused-checked-count;
+                selected-nav <=> root.selected-nav;
+                cluster-toggled(name, checked) => { root.cluster-toggled(name, checked); }
+                filter-changed(text) => { root.filter-changed(text); }
+            }
+
+            Rectangle {
+                background: #14181f;
+                horizontal-stretch: 1;
+                Text {
+                    text: "Content area";
+                    color: #666;
+                    font-size: 16px;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+        }
+    }
+}
