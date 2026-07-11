@@ -1,4 +1,5 @@
 import { CheckBox, LineEdit, ScrollView, Palette } from "std-widgets.slint";
+import { ClusterCard, DashboardOverview } from "dashboard.slint";
 
 export struct ClusterAlert {
     name: string,
@@ -320,6 +321,8 @@ export component AppShell inherits Window {
     in property <string> cluster-filter-text: "";
     in property <int> focused-checked-count: 0;
     in-out property <NavItem> selected-nav: NavItem.dashboard;
+    in property <[ClusterCard]> dashboard-cards: [];
+    in property <int> dashboard-hidden-count: 0;
 
     callback cluster-toggled(string, bool);
     callback filter-changed(string);
@@ -341,7 +344,14 @@ export component AppShell inherits Window {
                 filter-changed(text) => { root.filter-changed(text); }
             }
 
-            Rectangle {
+            if root.selected-nav == NavItem.dashboard: DashboardOverview {
+                horizontal-stretch: 1;
+                cards: root.dashboard-cards;
+                hidden-count: root.dashboard-hidden-count;
+                expand-focused-clusters => { root.focused-collapsed = false; }
+            }
+
+            if root.selected-nav != NavItem.dashboard: Rectangle {
                 background: #14181f;
                 horizontal-stretch: 1;
                 Text {

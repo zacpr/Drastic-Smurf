@@ -1,0 +1,165 @@
+import { ScrollView } from "std-widgets.slint";
+
+export struct ClusterCard {
+    name: string,
+    host: string,
+    connected: bool,
+    status: string,
+    error: string,
+    nodes: int,
+    active-shards: int,
+    unassigned-shards: int,
+    indices-count: int,
+    docs-human: string,
+    store-human: string,
+    heap-human: string,
+    heap-ratio: float,
+}
+
+// Fixed-position gradient (green -> amber -> red) revealed by a mask, rather
+// than a gradient stretched to the bar's own width. A near-empty bar must
+// read as calm/green — stretching the full spectrum into a short width would
+// misleadingly show a sliver of red at low usage.
+export component UsageBar inherits Rectangle {
+    in property <float> ratio: 0.0;
+    height: 6px;
+    border-radius: 3px;
+    background: #262b33;
+    clip: true;
+
+    Rectangle {
+        x: 0;
+        width: parent.width;
+        height: parent.height;
+        background: @linear-gradient(90deg, #3ddc84 0%, #f5c542 55%, #ff5c5c 100%);
+    }
+
+    Rectangle {
+        x: parent.width * max(0.0, min(1.0, root.ratio));
+        width: parent.width * (1.0 - max(0.0, min(1.0, root.ratio)));
+        height: parent.height;
+        background: #262b33;
+    }
+}
+
+component DashboardCard inherits Rectangle {
+    in property <ClusterCard> data;
+
+    background: #181c22;
+    border-radius: 8px;
+    border-width: 1px;
+    border-color: #2a2f38;
+
+    VerticalLayout {
+        padding: 14px;
+        spacing: 8px;
+
+        HorizontalLayout {
+            spacing: 8px;
+
+            Rectangle {
+                width: 10px;
+                height: 10px;
+                border-radius: 5px;
+                y: 4px;
+                background: !data.connected ? #555 : data.status == "green" ? #3ddc84 : data.status == "yellow" ? #f5c542 : data.status == "red" ? #ff5c5c : #555;
+            }
+
+            VerticalLayout {
+                spacing: 2px;
+                Text { text: data.name; font-weight: 700; font-size: 15px; color: white; }
+                Text { text: data.host; font-size: 10px; color: #7a828e; }
+            }
+
+            Rectangle { horizontal-stretch: 1; }
+
+            Rectangle {
+                border-radius: 4px;
+                background: !data.connected ? #3a2222 : data.status == "green" ? #1f3a28 : data.status == "yellow" ? #3a3320 : data.status == "red" ? #3a2222 : #262b33;
+                height: 22px;
+                HorizontalLayout {
+                    padding-left: 8px;
+                    padding-right: 8px;
+                    Text {
+                        text: data.connected ? data.status : "Offline";
+                        color: !data.connected ? #ff9a9a : data.status == "green" ? #7fdc9a : data.status == "yellow" ? #f5d97f : data.status == "red" ? #ff9a9a : #ccc;
+                        font-size: 11px;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+        }
+
+        if data.error != "": Text {
+            text: data.error;
+            color: #ff9a9a;
+            font-size: 11px;
+            wrap: word-wrap;
+        }
+
+        if data.error == "" && data.connected: VerticalLayout {
+            spacing: 6px;
+
+            HorizontalLayout {
+                spacing: 14px;
+                Text { text: "Nodes: " + data.nodes; font-size: 11px; color: #ddd; }
+                Text { text: "Shards: " + data.active-shards; font-size: 11px; color: #ddd; }
+                if data.unassigned-shards > 0: Text {
+                    text: data.unassigned-shards + " unassigned";
+                    font-size: 11px;
+                    color: #ff9a9a;
+                    font-weight: 700;
+                }
+            }
+
+            HorizontalLayout {
+                spacing: 14px;
+                Text { text: "Indices: " + data.indices-count; font-size: 11px; color: #aaa; }
+                Text { text: "Docs: " + data.docs-human; font-size: 11px; color: #aaa; }
+                Text { text: "Size: " + data.store-human; font-size: 11px; color: #aaa; }
+            }
+
+            Text { text: "JVM Heap: " + data.heap-human; font-size: 10px; color: #7a828e; }
+            UsageBar { ratio: data.heap-ratio; }
+        }
+
+        if data.error == "" && !data.connected: Text {
+            text: "No status data loaded yet.";
+            color: #7a828e;
+            font-size: 11px;
+        }
+    }
+}
+
+export component DashboardOverview inherits Rectangle {
+    in property <[ClusterCard]> cards: [];
+    in property <int> hidden-count: 0;
+    callback expand-focused-clusters();
+
+    background: #14181f;
+
+    VerticalLayout {
+        padding: 20px;
+        spacing: 12px;
+
+        Text { text: "Cluster Dashboard"; font-size: 20px; font-weight: 700; color: white; }
+
+        if hidden-count > 0: Rectangle {
+            height: 22px;
+            TouchArea { clicked => { root.expand-focused-clusters(); } }
+            Text {
+                text: hidden-count + " hidden — see focused clusters";
+                color: #7fc7ff;
+                font-size: 12px;
+                vertical-alignment: center;
+            }
+        }
+
+        ScrollView {
+            VerticalLayout {
+                spacing: 12px;
+                for card in cards: DashboardCard { data: card; }
+            }
+        }
+    }
+}
