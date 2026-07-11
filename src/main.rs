@@ -8,6 +8,8 @@ mod ui_slint;
 
 #[tokio::main]
 async fn main() -> eframe::Result<()> {
+    let log_entries = crate::ui::log_buffer::init_logging();
+
     if std::env::args().any(|a| a == "--slint") {
         if let Err(e) = crate::ui_slint::run() {
             eprintln!("Slint UI error: {:?}", e);
@@ -22,8 +24,6 @@ async fn main() -> eframe::Result<()> {
             eprintln!("Failed to initialize GTK: {:?}", e);
         }
     }
-
-    let log_entries = crate::ui::log_buffer::init_logging();
 
     let config = crate::core::config::AppConfig::load().unwrap_or_default();
 

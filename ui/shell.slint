@@ -8,6 +8,7 @@ export struct ClusterAlert {
 export struct ClusterItem {
     name: string,
     checked: bool,
+    visible: bool,
 }
 
 export enum NavItem {
@@ -136,7 +137,8 @@ component FocusedClusters inherits VerticalLayout {
             ScrollView {
                 VerticalLayout {
                     for c in clusters: HorizontalLayout {
-                        height: 26px;
+                        visible: c.visible;
+                        height: c.visible ? 26px : 0px;
                         spacing: 6px;
                         CheckBox {
                             checked: c.checked;
