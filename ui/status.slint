@@ -1,0 +1,228 @@
+import { ScrollView } from "std-widgets.slint";
+import { ScreenHeader } from "common.slint";
+import { UsageBar } from "dashboard.slint";
+
+export struct NodeRow {
+    name: string,
+    role: string,
+    ip: string,
+    is-master: bool,
+    cpu-ratio: float,
+    cpu-label: string,
+    ram-ratio: float,
+    ram-label: string,
+    heap-ratio: float,
+    heap-label: string,
+}
+
+export struct AllocationRow {
+    node: string,
+    shards: string,
+    disk-avail: string,
+    disk-total: string,
+    disk-ratio: float,
+    disk-label: string,
+    unassigned: bool,
+}
+
+component MetricCard inherits Rectangle {
+    in property <string> label;
+    in property <string> value;
+    in property <string> sub;
+    in property <color> sub-color: #7a828e;
+
+    horizontal-stretch: 1;
+    background: #181c22;
+    border-radius: 8px;
+    border-width: 1px;
+    border-color: #2a2f38;
+
+    VerticalLayout {
+        padding: 12px;
+        spacing: 4px;
+        Text { text: root.label; color: #7a828e; font-size: 10.5px; }
+        Text { text: root.value; color: white; font-weight: 700; font-size: 22px; }
+        Text { text: root.sub; color: root.sub-color; font-size: 10px; }
+    }
+}
+
+export component StatusScreen inherits Rectangle {
+    in property <[string]> cluster-options: [];
+    in-out property <string> active-cluster: "";
+    callback active-cluster-changed(string);
+
+    in property <bool> connected: false;
+    in property <string> error: "";
+    in property <string> status: "";
+    in property <string> es-version: "";
+    in property <string> kibana-version: "";
+    in property <int> nodes: 0;
+    in property <int> data-nodes: 0;
+    in property <int> active-shards: 0;
+    in property <int> primary-shards: 0;
+    in property <int> unassigned-shards: 0;
+    in property <string> docs-human: "";
+    in property <string> store-human: "";
+    in property <[NodeRow]> node-rows: [];
+    in property <[AllocationRow]> allocation-rows: [];
+
+    background: #14181f;
+
+    VerticalLayout {
+        ScreenHeader {
+            breadcrumb: "Status";
+            cluster-options: root.cluster-options;
+            active-cluster <=> root.active-cluster;
+            active-cluster-changed(v) => { root.active-cluster-changed(v); }
+        }
+
+        if !root.connected && root.error == "": VerticalLayout {
+            padding: 20px;
+            Text { text: "Loading cluster status..."; color: #7a828e; font-size: 13px; }
+        }
+
+        if root.error != "": VerticalLayout {
+            padding: 20px;
+            Text { text: "Error communicating with cluster:"; color: #ff9a9a; font-size: 13px; font-weight: 700; }
+            Text { text: root.error; color: #ff9a9a; font-size: 12px; wrap: word-wrap; }
+        }
+
+        if root.connected && root.error == "": ScrollView {
+            VerticalLayout {
+                padding: 20px;
+                spacing: 16px;
+
+                Rectangle {
+                    background: #181c22;
+                    border-radius: 8px;
+                    border-width: 1px;
+                    border-color: #2a2f38;
+                    VerticalLayout {
+                        padding: 14px;
+                        spacing: 6px;
+                        HorizontalLayout {
+                            spacing: 8px;
+                            Text { text: root.active-cluster; color: white; font-weight: 700; font-size: 16px; vertical-alignment: center; }
+                            Rectangle { horizontal-stretch: 1; }
+                            Rectangle {
+                                border-radius: 4px;
+                                background: root.status == "green" ? #1f3a28 : root.status == "yellow" ? #3a3320 : root.status == "red" ? #3a2222 : #262b33;
+                                height: 22px;
+                                HorizontalLayout {
+                                    padding-left: 8px;
+                                    padding-right: 8px;
+                                    Text {
+                                        text: root.status;
+                                        color: root.status == "green" ? #7fdc9a : root.status == "yellow" ? #f5d97f : root.status == "red" ? #ff9a9a : #ccc;
+                                        font-size: 11px;
+                                        vertical-alignment: center;
+                                    }
+                                }
+                            }
+                        }
+                        HorizontalLayout {
+                            spacing: 10px;
+                            if root.es-version != "": Text { text: "ES v" + root.es-version; color: #aaa; font-size: 11px; }
+                            if root.kibana-version != "": Text { text: "Kibana v" + root.kibana-version; color: #aaa; font-size: 11px; }
+                        }
+                    }
+                }
+
+                HorizontalLayout {
+                    spacing: 12px;
+                    MetricCard { label: "Total Nodes"; value: root.nodes; sub: "Data nodes: " + root.data-nodes; }
+                    MetricCard {
+                        label: "Active / Primary Shards";
+                        value: root.active-shards + " / " + root.primary-shards;
+                        sub: root.unassigned-shards > 0 ? root.unassigned-shards + " unassigned" : "All shards assigned";
+                        sub-color: root.unassigned-shards > 0 ? #ff9a9a : #7fdc9a;
+                    }
+                    MetricCard { label: "Documents"; value: root.docs-human; sub: ""; }
+                    MetricCard { label: "Store Size"; value: root.store-human; sub: ""; }
+                }
+
+                Text { text: "Node List"; color: #ddd; font-weight: 700; font-size: 13px; }
+                Rectangle {
+                    background: #181c22;
+                    border-radius: 8px;
+                    border-width: 1px;
+                    border-color: #2a2f38;
+                    VerticalLayout {
+                        padding: 10px;
+                        spacing: 6px;
+                        if node-rows.length == 0: Text { text: "No node data."; color: #7a828e; font-size: 11px; }
+                        for n in node-rows: HorizontalLayout {
+                            height: 30px;
+                            spacing: 10px;
+                            Text { width: 140px; text: n.name; color: white; font-size: 11.5px; vertical-alignment: center; overflow: elide; }
+                            Text { width: 70px; text: n.role; color: #aaa; font-size: 10.5px; vertical-alignment: center; }
+                            VerticalLayout {
+                                width: 70px;
+                                alignment: center;
+                                Text { text: "CPU " + n.cpu-label; color: #999; font-size: 9px; }
+                                UsageBar { ratio: n.cpu-ratio; }
+                            }
+                            VerticalLayout {
+                                width: 70px;
+                                alignment: center;
+                                Text { text: "RAM " + n.ram-label; color: #999; font-size: 9px; }
+                                UsageBar { ratio: n.ram-ratio; }
+                            }
+                            VerticalLayout {
+                                width: 70px;
+                                alignment: center;
+                                Text { text: "Heap " + n.heap-label; color: #999; font-size: 9px; }
+                                UsageBar { ratio: n.heap-ratio; }
+                            }
+                            Text { width: 110px; text: n.ip; color: #888; font-size: 10px; vertical-alignment: center; }
+                            Rectangle { horizontal-stretch: 1; }
+                            if n.is-master: Rectangle {
+                                border-radius: 4px;
+                                background: #3a3320;
+                                height: 20px;
+                                HorizontalLayout {
+                                    padding-left: 6px;
+                                    padding-right: 6px;
+                                    Text { text: "Master"; color: #f5d97f; font-size: 9.5px; vertical-alignment: center; }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Text { text: "Shard Allocation & Disk"; color: #ddd; font-weight: 700; font-size: 13px; }
+                Rectangle {
+                    background: #181c22;
+                    border-radius: 8px;
+                    border-width: 1px;
+                    border-color: #2a2f38;
+                    VerticalLayout {
+                        padding: 10px;
+                        spacing: 6px;
+                        if allocation-rows.length == 0: Text { text: "No allocation data."; color: #7a828e; font-size: 11px; }
+                        for a in allocation-rows: HorizontalLayout {
+                            height: 26px;
+                            spacing: 10px;
+                            Text {
+                                width: 140px;
+                                text: a.node;
+                                color: a.unassigned ? #ff9a9a : white;
+                                font-weight: a.unassigned ? 700 : 400;
+                                font-size: 11.5px;
+                                vertical-alignment: center;
+                            }
+                            Text { width: 60px; text: a.shards; color: #aaa; font-size: 10.5px; vertical-alignment: center; }
+                            Text { width: 150px; text: a.disk-avail + " / " + a.disk-total; color: #999; font-size: 10.5px; vertical-alignment: center; }
+                            Text { width: 50px; text: a.disk-label; color: #999; font-size: 10.5px; vertical-alignment: center; }
+                            VerticalLayout {
+                                horizontal-stretch: 1;
+                                alignment: center;
+                                UsageBar { ratio: a.disk-ratio; }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

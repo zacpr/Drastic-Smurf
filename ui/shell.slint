@@ -1,6 +1,7 @@
 import { CheckBox, LineEdit, ScrollView, Palette } from "std-widgets.slint";
 import { ClusterCard, DashboardOverview } from "dashboard.slint";
 import { PresetCategory, VariablePair, HistoryEntry, SavedQueryItem, PresetItem, ConsoleScreen } from "console.slint";
+import { NodeRow, AllocationRow, StatusScreen } from "status.slint";
 
 export struct ClusterAlert {
     name: string,
@@ -341,6 +342,24 @@ export component AppShell inherits Window {
     in property <bool> console-is-loading: false;
     in-out property <bool> console-use-kibana: false;
 
+    in-out property <string> status-active-cluster: "";
+    in property <bool> status-connected: false;
+    in property <string> status-error: "";
+    in property <string> status-status: "";
+    in property <string> status-es-version: "";
+    in property <string> status-kibana-version: "";
+    in property <int> status-nodes: 0;
+    in property <int> status-data-nodes: 0;
+    in property <int> status-active-shards: 0;
+    in property <int> status-primary-shards: 0;
+    in property <int> status-unassigned-shards: 0;
+    in property <string> status-docs-human: "";
+    in property <string> status-store-human: "";
+    in property <[NodeRow]> status-node-rows: [];
+    in property <[AllocationRow]> status-allocation-rows: [];
+
+    callback status-active-cluster-changed(string);
+
     callback cluster-toggled(string, bool);
     callback filter-changed(string);
     callback console-active-cluster-changed(string);
@@ -419,7 +438,28 @@ export component AppShell inherits Window {
                 send-clicked => { root.console-send-clicked(); }
             }
 
-            if root.selected-nav != NavItem.dashboard && root.selected-nav != NavItem.console: Rectangle {
+            if root.selected-nav == NavItem.status: StatusScreen {
+                horizontal-stretch: 1;
+                cluster-options: root.focused-cluster-names;
+                active-cluster <=> root.status-active-cluster;
+                connected: root.status-connected;
+                error: root.status-error;
+                status: root.status-status;
+                es-version: root.status-es-version;
+                kibana-version: root.status-kibana-version;
+                nodes: root.status-nodes;
+                data-nodes: root.status-data-nodes;
+                active-shards: root.status-active-shards;
+                primary-shards: root.status-primary-shards;
+                unassigned-shards: root.status-unassigned-shards;
+                docs-human: root.status-docs-human;
+                store-human: root.status-store-human;
+                node-rows: root.status-node-rows;
+                allocation-rows: root.status-allocation-rows;
+                active-cluster-changed(v) => { root.status-active-cluster-changed(v); }
+            }
+
+            if root.selected-nav != NavItem.dashboard && root.selected-nav != NavItem.console && root.selected-nav != NavItem.status: Rectangle {
                 background: #14181f;
                 horizontal-stretch: 1;
                 Text {

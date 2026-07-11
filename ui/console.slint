@@ -1,4 +1,5 @@
 import { ComboBox, LineEdit, TextEdit, ScrollView, CheckBox } from "std-widgets.slint";
+import { ScreenHeader } from "common.slint";
 
 export struct PresetItem {
     name: string,
@@ -28,46 +29,6 @@ export struct SavedQueryItem {
     name: string,
     method: string,
     path: string,
-}
-
-component ScreenHeader inherits Rectangle {
-    in property <string> breadcrumb;
-    in property <[string]> cluster-options: [];
-    in-out property <string> active-cluster: "";
-    callback active-cluster-changed(string);
-
-    height: 40px;
-    background: #181c22;
-
-    Rectangle {
-        y: parent.height - 1px;
-        height: 1px;
-        background: #2a2f38;
-    }
-
-    HorizontalLayout {
-        padding-left: 16px;
-        padding-right: 16px;
-        Text {
-            text: root.breadcrumb;
-            color: #ccc;
-            font-size: 13px;
-            vertical-alignment: center;
-        }
-        Rectangle { horizontal-stretch: 1; }
-        Text {
-            text: "Active cluster:";
-            color: #7a828e;
-            font-size: 12px;
-            vertical-alignment: center;
-        }
-        ComboBox {
-            width: 200px;
-            model: root.cluster-options;
-            current-value: root.active-cluster;
-            selected(value) => { root.active-cluster-changed(value); }
-        }
-    }
 }
 
 component WorkspaceTabButton inherits Rectangle {

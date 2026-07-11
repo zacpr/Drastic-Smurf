@@ -11,6 +11,7 @@ use crate::ui::widgets::{human_bytes, human_docs};
 slint::include_modules!();
 
 mod console;
+mod status;
 
 /// Result of one cluster's health+stats fetch, sent back from a tokio task
 /// to the Slint UI thread. Kept as plain owned data (Send) because Slint
@@ -82,6 +83,7 @@ pub fn run() -> Result<(), slint::PlatformError> {
     app.set_alerting(false);
 
     console::wire(&app, &manager, &clusters);
+    status::wire(&app, &manager, &clusters);
 
     // Checkbox toggle: keep the sidebar list, the dashboard's checked-only
     // view, the Console's focused-cluster dropdown, and the "N hidden" count
@@ -141,12 +143,13 @@ pub fn run() -> Result<(), slint::PlatformError> {
         let cluster_name = cluster.name.clone();
 
         tokio::spawn(async move {
-            let health = client.cluster_health().await.map_err(|e| e.to_string());
-            let stats = client.cluster_stats().await.map_err(|e| e.to_string());
+            // Concurrent, not sequential: chaining two 10s-timeout calls
+            // would take up to 20s to surface a fully unreachable cluster.
+            let (health, stats) = tokio::join!(client.cluster_health(), client.cluster_stats());
             let _ = tx.send(FetchResult {
                 cluster_name,
-                health,
-                stats,
+                health: health.map_err(|e| e.to_string()),
+                stats: stats.map_err(|e| e.to_string()),
             });
         });
     }
