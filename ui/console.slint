@@ -1,0 +1,501 @@
+import { ComboBox, LineEdit, TextEdit, ScrollView, CheckBox } from "std-widgets.slint";
+
+export struct PresetItem {
+    name: string,
+    method: string,
+    path: string,
+    body: string,
+    use-kibana: bool,
+}
+
+export struct PresetCategory {
+    name: string,
+    expanded: bool,
+    items: [PresetItem],
+}
+
+export struct VariablePair {
+    key: string,
+    value: string,
+}
+
+export struct HistoryEntry {
+    method: string,
+    path: string,
+}
+
+export struct SavedQueryItem {
+    name: string,
+    method: string,
+    path: string,
+}
+
+component ScreenHeader inherits Rectangle {
+    in property <string> breadcrumb;
+    in property <[string]> cluster-options: [];
+    in-out property <string> active-cluster: "";
+    callback active-cluster-changed(string);
+
+    height: 40px;
+    background: #181c22;
+
+    Rectangle {
+        y: parent.height - 1px;
+        height: 1px;
+        background: #2a2f38;
+    }
+
+    HorizontalLayout {
+        padding-left: 16px;
+        padding-right: 16px;
+        Text {
+            text: root.breadcrumb;
+            color: #ccc;
+            font-size: 13px;
+            vertical-alignment: center;
+        }
+        Rectangle { horizontal-stretch: 1; }
+        Text {
+            text: "Active cluster:";
+            color: #7a828e;
+            font-size: 12px;
+            vertical-alignment: center;
+        }
+        ComboBox {
+            width: 200px;
+            model: root.cluster-options;
+            current-value: root.active-cluster;
+            selected(value) => { root.active-cluster-changed(value); }
+        }
+    }
+}
+
+component WorkspaceTabButton inherits Rectangle {
+    in property <string> label;
+    in property <bool> selected: false;
+    callback clicked();
+
+    height: 26px;
+    background: selected ? #2d3f52 : transparent;
+    border-radius: 4px;
+
+    TouchArea { clicked => { root.clicked(); } }
+    Text {
+        text: root.label;
+        color: selected ? #7fc7ff : #ccc;
+        font-size: 11px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+component PresetsPanel inherits VerticalLayout {
+    in property <[PresetCategory]> categories: [];
+    callback category-toggled(string);
+    callback preset-selected(PresetItem);
+
+    spacing: 2px;
+
+    ScrollView {
+        VerticalLayout {
+            spacing: 2px;
+            for cat in categories: VerticalLayout {
+                spacing: 2px;
+
+                Rectangle {
+                    height: 24px;
+                    TouchArea { clicked => { root.category-toggled(cat.name); } }
+                    HorizontalLayout {
+                        spacing: 6px;
+                        Text {
+                            text: cat.expanded ? "▾" : "▸";
+                            color: #999;
+                            width: 12px;
+                            vertical-alignment: center;
+                        }
+                        Text {
+                            text: cat.name;
+                            color: #aaa;
+                            font-weight: 700;
+                            font-size: 11px;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+
+                Rectangle {
+                    visible: cat.expanded;
+                    height: cat.expanded ? cat.items.length * 24px : 0px;
+                    clip: true;
+
+                    VerticalLayout {
+                        for item in cat.items: Rectangle {
+                            height: 24px;
+                            background: preset-area.has-hover ? #20262f : transparent;
+                            border-radius: 4px;
+                            preset-area := TouchArea {
+                                clicked => { root.preset-selected(item); }
+                            }
+                            HorizontalLayout {
+                                padding-left: 18px;
+                                Text {
+                                    text: (item.use-kibana ? "K  " : "") + item.name;
+                                    color: #ccc;
+                                    font-size: 11.5px;
+                                    vertical-alignment: center;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+component VariablesPanel inherits VerticalLayout {
+    in property <[VariablePair]> variables: [];
+    callback variable-changed(int, string, string);
+    callback variable-added();
+    callback variable-removed(int);
+
+    spacing: 6px;
+
+    HorizontalLayout {
+        Text { text: "Variables"; color: #ddd; font-weight: 700; font-size: 12px; vertical-alignment: center; }
+        Rectangle { horizontal-stretch: 1; }
+        Rectangle {
+            width: 46px;
+            height: 20px;
+            border-radius: 4px;
+            background: #2d3f52;
+            TouchArea { clicked => { root.variable-added(); } }
+            Text { text: "+ Add"; color: #7fc7ff; font-size: 10px; horizontal-alignment: center; vertical-alignment: center; }
+        }
+    }
+
+    ScrollView {
+        VerticalLayout {
+            spacing: 4px;
+            for v[i] in variables: HorizontalLayout {
+                spacing: 4px;
+                height: 26px;
+                LineEdit {
+                    width: 70px;
+                    placeholder-text: "key";
+                    text: v.key;
+                    edited(t) => { root.variable-changed(i, t, v.value); }
+                }
+                Text { text: "="; color: #7a828e; vertical-alignment: center; }
+                LineEdit {
+                    placeholder-text: "value";
+                    text: v.value;
+                    edited(t) => { root.variable-changed(i, v.key, t); }
+                }
+                Rectangle {
+                    width: 20px;
+                    Text {
+                        text: "✕";
+                        color: #ff9a9a;
+                        font-size: 11px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                    TouchArea { clicked => { root.variable-removed(i); } }
+                }
+            }
+        }
+    }
+}
+
+component HistoryPanel inherits VerticalLayout {
+    in property <[HistoryEntry]> history: [];
+    callback history-selected(int);
+    callback history-cleared();
+
+    spacing: 6px;
+
+    HorizontalLayout {
+        Text { text: "History"; color: #ddd; font-weight: 700; font-size: 12px; vertical-alignment: center; }
+        Rectangle { horizontal-stretch: 1; }
+        Rectangle {
+            width: 46px;
+            height: 20px;
+            border-radius: 4px;
+            background: #2a2f38;
+            TouchArea { clicked => { root.history-cleared(); } }
+            Text { text: "Clear"; color: #ccc; font-size: 10px; horizontal-alignment: center; vertical-alignment: center; }
+        }
+    }
+
+    if history.length == 0: Text { text: "No request history."; color: #7a828e; font-size: 11px; }
+
+    ScrollView {
+        VerticalLayout {
+            spacing: 2px;
+            for h[i] in history: Rectangle {
+                height: 22px;
+                background: hist-area.has-hover ? #20262f : transparent;
+                border-radius: 4px;
+                hist-area := TouchArea { clicked => { root.history-selected(i); } }
+                Text {
+                    text: h.method + " " + h.path;
+                    color: #ccc;
+                    font-size: 11px;
+                    vertical-alignment: center;
+                    x: 6px;
+                }
+            }
+        }
+    }
+}
+
+component CustomPanel inherits VerticalLayout {
+    in property <[SavedQueryItem]> saved: [];
+    in property <bool> show-save-dialog: false;
+    in property <string> save-name: "";
+    callback saved-selected(int);
+    callback saved-deleted(int);
+    callback save-dialog-opened();
+    callback save-name-changed(string);
+    callback save-confirmed();
+    callback save-cancelled();
+
+    spacing: 6px;
+
+    HorizontalLayout {
+        Text { text: "Custom"; color: #ddd; font-weight: 700; font-size: 12px; vertical-alignment: center; }
+        Rectangle { horizontal-stretch: 1; }
+        Rectangle {
+            width: 76px;
+            height: 20px;
+            border-radius: 4px;
+            background: #2d3f52;
+            TouchArea { clicked => { root.save-dialog-opened(); } }
+            Text { text: "+ Save current"; color: #7fc7ff; font-size: 9.5px; horizontal-alignment: center; vertical-alignment: center; }
+        }
+    }
+
+    if show-save-dialog: HorizontalLayout {
+        spacing: 4px;
+        LineEdit {
+            placeholder-text: "Query name";
+            text: save-name;
+            edited(t) => { root.save-name-changed(t); }
+        }
+        Rectangle {
+            width: 40px;
+            background: #2d3f52;
+            border-radius: 4px;
+            TouchArea { clicked => { root.save-confirmed(); } }
+            Text { text: "Save"; color: #7fc7ff; font-size: 10px; horizontal-alignment: center; vertical-alignment: center; }
+        }
+        Rectangle {
+            width: 40px;
+            background: #2a2f38;
+            border-radius: 4px;
+            TouchArea { clicked => { root.save-cancelled(); } }
+            Text { text: "Cancel"; color: #ccc; font-size: 10px; horizontal-alignment: center; vertical-alignment: center; }
+        }
+    }
+
+    if saved.length == 0: Text { text: "No saved queries."; color: #7a828e; font-size: 11px; }
+
+    ScrollView {
+        VerticalLayout {
+            spacing: 2px;
+            for q[i] in saved: HorizontalLayout {
+                height: 22px;
+                spacing: 4px;
+                Rectangle {
+                    horizontal-stretch: 1;
+                    background: saved-area.has-hover ? #20262f : transparent;
+                    border-radius: 4px;
+                    saved-area := TouchArea { clicked => { root.saved-selected(i); } }
+                    Text {
+                        text: q.name + " (" + q.method + " " + q.path + ")";
+                        color: #ccc;
+                        font-size: 11px;
+                        vertical-alignment: center;
+                        x: 6px;
+                    }
+                }
+                Rectangle {
+                    width: 18px;
+                    Text { text: "🗑"; font-size: 10px; horizontal-alignment: center; vertical-alignment: center; }
+                    TouchArea { clicked => { root.saved-deleted(i); } }
+                }
+            }
+        }
+    }
+}
+
+export component ConsoleScreen inherits Rectangle {
+    in property <[string]> cluster-options: [];
+    in-out property <string> active-cluster: "";
+
+    in property <int> workspace-tab: 0;
+    in property <[PresetCategory]> preset-categories: [];
+    in property <[VariablePair]> variables: [];
+    in property <[HistoryEntry]> history: [];
+    in property <[SavedQueryItem]> saved-queries: [];
+    in property <bool> show-save-dialog: false;
+    in property <string> save-name: "";
+
+    in-out property <string> method: "GET";
+    in-out property <string> path: "";
+    in-out property <string> body: "";
+    in property <string> response: "";
+    in property <bool> is-loading: false;
+    in-out property <bool> use-kibana: false;
+
+    callback active-cluster-changed(string);
+    callback workspace-tab-changed(int);
+    callback category-toggled(string);
+    callback preset-selected(PresetItem);
+    callback variable-changed(int, string, string);
+    callback variable-added();
+    callback variable-removed(int);
+    callback history-selected(int);
+    callback history-cleared();
+    callback saved-selected(int);
+    callback saved-deleted(int);
+    callback save-dialog-opened();
+    callback save-name-changed(string);
+    callback save-confirmed();
+    callback save-cancelled();
+    callback send-clicked();
+
+    background: #14181f;
+
+    VerticalLayout {
+        ScreenHeader {
+            breadcrumb: "Console";
+            cluster-options: root.cluster-options;
+            active-cluster <=> root.active-cluster;
+            active-cluster-changed(v) => { root.active-cluster-changed(v); }
+        }
+
+        HorizontalLayout {
+            padding: 16px;
+            spacing: 16px;
+
+            // Workspace panel
+            Rectangle {
+                width: 280px;
+                background: #181c22;
+                border-radius: 8px;
+                border-width: 1px;
+                border-color: #2a2f38;
+
+                VerticalLayout {
+                    padding: 10px;
+                    spacing: 8px;
+
+                    HorizontalLayout {
+                        spacing: 4px;
+                        WorkspaceTabButton { label: "Presets"; selected: root.workspace-tab == 0; clicked => { root.workspace-tab-changed(0); } }
+                        WorkspaceTabButton { label: "Variables"; selected: root.workspace-tab == 1; clicked => { root.workspace-tab-changed(1); } }
+                        WorkspaceTabButton { label: "History"; selected: root.workspace-tab == 2; clicked => { root.workspace-tab-changed(2); } }
+                        WorkspaceTabButton { label: "Custom"; selected: root.workspace-tab == 3; clicked => { root.workspace-tab-changed(3); } }
+                    }
+
+                    Rectangle { height: 1px; background: #2a2f38; }
+
+                    if root.workspace-tab == 0: PresetsPanel {
+                        categories: root.preset-categories;
+                        category-toggled(name) => { root.category-toggled(name); }
+                        preset-selected(item) => { root.preset-selected(item); }
+                    }
+                    if root.workspace-tab == 1: VariablesPanel {
+                        variables: root.variables;
+                        variable-changed(i, k, v) => { root.variable-changed(i, k, v); }
+                        variable-added => { root.variable-added(); }
+                        variable-removed(i) => { root.variable-removed(i); }
+                    }
+                    if root.workspace-tab == 2: HistoryPanel {
+                        history: root.history;
+                        history-selected(i) => { root.history-selected(i); }
+                        history-cleared => { root.history-cleared(); }
+                    }
+                    if root.workspace-tab == 3: CustomPanel {
+                        saved: root.saved-queries;
+                        show-save-dialog: root.show-save-dialog;
+                        save-name: root.save-name;
+                        saved-selected(i) => { root.saved-selected(i); }
+                        saved-deleted(i) => { root.saved-deleted(i); }
+                        save-dialog-opened => { root.save-dialog-opened(); }
+                        save-name-changed(t) => { root.save-name-changed(t); }
+                        save-confirmed => { root.save-confirmed(); }
+                        save-cancelled => { root.save-cancelled(); }
+                    }
+                }
+            }
+
+            // Editor + response
+            Rectangle {
+                horizontal-stretch: 1;
+                background: #181c22;
+                border-radius: 8px;
+                border-width: 1px;
+                border-color: #2a2f38;
+
+                VerticalLayout {
+                    padding: 12px;
+                    spacing: 8px;
+
+                    HorizontalLayout {
+                        spacing: 8px;
+                        ComboBox {
+                            width: 90px;
+                            model: ["GET", "POST", "PUT", "DELETE", "HEAD"];
+                            current-value: root.method;
+                            selected(v) => { root.method = v; }
+                        }
+                        LineEdit {
+                            horizontal-stretch: 1;
+                            text: root.path;
+                            edited(t) => { root.path = t; }
+                        }
+                        CheckBox {
+                            text: "Kibana";
+                            checked: root.use-kibana;
+                            toggled => { root.use-kibana = self.checked; }
+                        }
+                        Rectangle {
+                            width: 70px;
+                            background: #2d3f52;
+                            border-radius: 4px;
+                            TouchArea { clicked => { root.send-clicked(); } }
+                            Text {
+                                text: root.is-loading ? "..." : "⚡ Send";
+                                color: #7fc7ff;
+                                font-size: 11px;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+
+                    Text { text: "Body:"; color: #7a828e; font-size: 10px; }
+                    TextEdit {
+                        vertical-stretch: 1;
+                        text: root.body;
+                        font-family: "monospace";
+                        font-size: 12px;
+                        edited(t) => { root.body = t; }
+                    }
+
+                    Text { text: "Response:"; color: #7a828e; font-size: 10px; }
+                    TextEdit {
+                        vertical-stretch: 1;
+                        text: root.response;
+                        read-only: true;
+                        font-family: "monospace";
+                        font-size: 12px;
+                    }
+                }
+            }
+        }
+    }
+}

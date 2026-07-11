@@ -55,7 +55,7 @@ pub struct ConsolePreset {
     pub use_kibana: bool,
 }
 
-const PRESETS: &[ConsolePreset] = &[
+pub const PRESETS: &[ConsolePreset] = &[
     // --- Cluster Status & Info ---
     ConsolePreset {
         category: "Cluster Status & Info",

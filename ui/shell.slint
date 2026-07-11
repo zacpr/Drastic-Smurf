@@ -1,5 +1,6 @@
 import { CheckBox, LineEdit, ScrollView, Palette } from "std-widgets.slint";
 import { ClusterCard, DashboardOverview } from "dashboard.slint";
+import { PresetCategory, VariablePair, HistoryEntry, SavedQueryItem, PresetItem, ConsoleScreen } from "console.slint";
 
 export struct ClusterAlert {
     name: string,
@@ -324,8 +325,40 @@ export component AppShell inherits Window {
     in property <[ClusterCard]> dashboard-cards: [];
     in property <int> dashboard-hidden-count: 0;
 
+    in property <[string]> focused-cluster-names: [];
+    in-out property <string> console-active-cluster: "";
+    in property <int> console-workspace-tab: 0;
+    in property <[PresetCategory]> console-preset-categories: [];
+    in property <[VariablePair]> console-variables: [];
+    in property <[HistoryEntry]> console-history: [];
+    in property <[SavedQueryItem]> console-saved-queries: [];
+    in property <bool> console-show-save-dialog: false;
+    in property <string> console-save-name: "";
+    in-out property <string> console-method: "GET";
+    in-out property <string> console-path: "";
+    in-out property <string> console-body: "";
+    in property <string> console-response: "";
+    in property <bool> console-is-loading: false;
+    in-out property <bool> console-use-kibana: false;
+
     callback cluster-toggled(string, bool);
     callback filter-changed(string);
+    callback console-active-cluster-changed(string);
+    callback console-workspace-tab-changed(int);
+    callback console-category-toggled(string);
+    callback console-preset-selected(PresetItem);
+    callback console-variable-changed(int, string, string);
+    callback console-variable-added();
+    callback console-variable-removed(int);
+    callback console-history-selected(int);
+    callback console-history-cleared();
+    callback console-saved-selected(int);
+    callback console-saved-deleted(int);
+    callback console-save-dialog-opened();
+    callback console-save-name-changed(string);
+    callback console-save-confirmed();
+    callback console-save-cancelled();
+    callback console-send-clicked();
 
     VerticalLayout {
         AlertBar {
@@ -351,7 +384,42 @@ export component AppShell inherits Window {
                 expand-focused-clusters => { root.focused-collapsed = false; }
             }
 
-            if root.selected-nav != NavItem.dashboard: Rectangle {
+            if root.selected-nav == NavItem.console: ConsoleScreen {
+                horizontal-stretch: 1;
+                cluster-options: root.focused-cluster-names;
+                active-cluster <=> root.console-active-cluster;
+                workspace-tab: root.console-workspace-tab;
+                preset-categories: root.console-preset-categories;
+                variables: root.console-variables;
+                history: root.console-history;
+                saved-queries: root.console-saved-queries;
+                show-save-dialog: root.console-show-save-dialog;
+                save-name: root.console-save-name;
+                method <=> root.console-method;
+                path <=> root.console-path;
+                body <=> root.console-body;
+                response: root.console-response;
+                is-loading: root.console-is-loading;
+                use-kibana <=> root.console-use-kibana;
+                active-cluster-changed(v) => { root.console-active-cluster-changed(v); }
+                workspace-tab-changed(t) => { root.console-workspace-tab-changed(t); }
+                category-toggled(name) => { root.console-category-toggled(name); }
+                preset-selected(item) => { root.console-preset-selected(item); }
+                variable-changed(i, k, v) => { root.console-variable-changed(i, k, v); }
+                variable-added => { root.console-variable-added(); }
+                variable-removed(i) => { root.console-variable-removed(i); }
+                history-selected(i) => { root.console-history-selected(i); }
+                history-cleared => { root.console-history-cleared(); }
+                saved-selected(i) => { root.console-saved-selected(i); }
+                saved-deleted(i) => { root.console-saved-deleted(i); }
+                save-dialog-opened => { root.console-save-dialog-opened(); }
+                save-name-changed(t) => { root.console-save-name-changed(t); }
+                save-confirmed => { root.console-save-confirmed(); }
+                save-cancelled => { root.console-save-cancelled(); }
+                send-clicked => { root.console-send-clicked(); }
+            }
+
+            if root.selected-nav != NavItem.dashboard && root.selected-nav != NavItem.console: Rectangle {
                 background: #14181f;
                 horizontal-stretch: 1;
                 Text {

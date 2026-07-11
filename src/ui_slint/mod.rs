@@ -10,6 +10,8 @@ use crate::ui::widgets::{human_bytes, human_docs};
 
 slint::include_modules!();
 
+mod console;
+
 /// Result of one cluster's health+stats fetch, sent back from a tokio task
 /// to the Slint UI thread. Kept as plain owned data (Send) because Slint
 /// models (VecModel, ModelRc, ...) are not Send and can't be captured into a
@@ -79,8 +81,11 @@ pub fn run() -> Result<(), slint::PlatformError> {
     app.set_alerts(ModelRc::from(alerts.clone()));
     app.set_alerting(false);
 
+    console::wire(&app, &manager, &clusters);
+
     // Checkbox toggle: keep the sidebar list, the dashboard's checked-only
-    // view, and the "N hidden" count in sync.
+    // view, the Console's focused-cluster dropdown, and the "N hidden" count
+    // in sync.
     let clusters_for_toggle = clusters.clone();
     let dashboard_master_for_toggle = dashboard_master.clone();
     let dashboard_view_for_toggle = dashboard_view.clone();
@@ -102,6 +107,12 @@ pub fn run() -> Result<(), slint::PlatformError> {
         if let Some(app) = app_weak.upgrade() {
             app.set_focused_checked_count(count_checked(&clusters_for_toggle));
             app.set_dashboard_hidden_count(hidden);
+            let focused_names: Vec<slint::SharedString> = (0..clusters_for_toggle.row_count())
+                .filter_map(|i| clusters_for_toggle.row_data(i))
+                .filter(|c| c.checked)
+                .map(|c| c.name)
+                .collect();
+            app.set_focused_cluster_names(ModelRc::from(Rc::new(VecModel::from(focused_names))));
         }
     });
 
