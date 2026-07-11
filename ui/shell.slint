@@ -2,6 +2,7 @@ import { CheckBox, LineEdit, ScrollView, Palette } from "std-widgets.slint";
 import { ClusterCard, DashboardOverview } from "dashboard.slint";
 import { PresetCategory, VariablePair, HistoryEntry, SavedQueryItem, PresetItem, ConsoleScreen } from "console.slint";
 import { NodeRow, AllocationRow, StatusScreen } from "status.slint";
+import { MonitorRow, ObservabilityScreen } from "observability.slint";
 
 export struct ClusterAlert {
     name: string,
@@ -360,6 +361,23 @@ export component AppShell inherits Window {
 
     callback status-active-cluster-changed(string);
 
+    in-out property <string> obs-active-cluster: "";
+    in-out property <string> obs-space-id: "default";
+    in property <int> obs-workspace-tab: 0;
+    in property <string> obs-filter-text: "";
+    in property <bool> obs-is-loading: false;
+    in property <string> obs-error: "";
+    in property <[MonitorRow]> obs-monitors: [];
+    in property <[MonitorRow]> obs-pinned-monitors: [];
+
+    callback obs-active-cluster-changed(string);
+    callback obs-space-changed(string);
+    callback obs-space-apply();
+    callback obs-workspace-tab-changed(int);
+    callback obs-filter-changed(string);
+    callback obs-refresh-clicked();
+    callback obs-pin-toggled(string, bool);
+
     callback cluster-toggled(string, bool);
     callback filter-changed(string);
     callback console-active-cluster-changed(string);
@@ -459,7 +477,27 @@ export component AppShell inherits Window {
                 active-cluster-changed(v) => { root.status-active-cluster-changed(v); }
             }
 
-            if root.selected-nav != NavItem.dashboard && root.selected-nav != NavItem.console && root.selected-nav != NavItem.status: Rectangle {
+            if root.selected-nav == NavItem.observability: ObservabilityScreen {
+                horizontal-stretch: 1;
+                cluster-options: root.focused-cluster-names;
+                active-cluster <=> root.obs-active-cluster;
+                space-id <=> root.obs-space-id;
+                workspace-tab: root.obs-workspace-tab;
+                filter-text: root.obs-filter-text;
+                is-loading: root.obs-is-loading;
+                error: root.obs-error;
+                monitors: root.obs-monitors;
+                pinned-monitors: root.obs-pinned-monitors;
+                active-cluster-changed(v) => { root.obs-active-cluster-changed(v); }
+                space-changed(t) => { root.obs-space-changed(t); }
+                space-apply => { root.obs-space-apply(); }
+                workspace-tab-changed(t) => { root.obs-workspace-tab-changed(t); }
+                filter-changed(t) => { root.obs-filter-changed(t); }
+                refresh-clicked => { root.obs-refresh-clicked(); }
+                pin-toggled(id, p) => { root.obs-pin-toggled(id, p); }
+            }
+
+            if root.selected-nav != NavItem.dashboard && root.selected-nav != NavItem.console && root.selected-nav != NavItem.status && root.selected-nav != NavItem.observability: Rectangle {
                 background: #14181f;
                 horizontal-stretch: 1;
                 Text {

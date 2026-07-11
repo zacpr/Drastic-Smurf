@@ -11,6 +11,7 @@ use crate::ui::widgets::{human_bytes, human_docs};
 slint::include_modules!();
 
 mod console;
+mod observability;
 mod status;
 
 /// Result of one cluster's health+stats fetch, sent back from a tokio task
@@ -84,6 +85,7 @@ pub fn run() -> Result<(), slint::PlatformError> {
 
     console::wire(&app, &manager, &clusters);
     status::wire(&app, &manager, &clusters);
+    observability::wire(&app, &manager, &clusters);
 
     // Checkbox toggle: keep the sidebar list, the dashboard's checked-only
     // view, the Console's focused-cluster dropdown, and the "N hidden" count

@@ -76,8 +76,7 @@ fn spawn_fetch(manager: &ClusterManager, cluster_name: &str, tx: mpsc::Sender<St
         .clusters()
         .into_iter()
         .find(|c| c.name == cluster_name)
-        .map(|c| c.kibana_host)
-        .filter(|h| !h.is_empty());
+        .map(|c| c.resolve_kibana_host());
     let cluster_name = cluster_name.to_string();
 
     tokio::spawn(async move {

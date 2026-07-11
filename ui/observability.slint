@@ -1,0 +1,197 @@
+import { LineEdit, ScrollView, CheckBox } from "std-widgets.slint";
+import { ScreenHeader } from "common.slint";
+
+export struct MonitorRow {
+    id: string,
+    name: string,
+    url: string,
+    monitor-type: string,
+    status: string,
+    latency-label: string,
+    locations: string,
+    pinned: bool,
+}
+
+component TabButton inherits Rectangle {
+    in property <string> label;
+    in property <bool> selected: false;
+    callback clicked();
+
+    height: 26px;
+    background: selected ? #2d3f52 : transparent;
+    border-radius: 4px;
+
+    TouchArea { clicked => { root.clicked(); } }
+    Text {
+        text: root.label;
+        color: selected ? #7fc7ff : #ccc;
+        font-size: 11.5px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+component MonitorCard inherits Rectangle {
+    in property <MonitorRow> m;
+
+    background: #181c22;
+    border-radius: 8px;
+    border-width: 1px;
+    border-color: #2a2f38;
+
+    VerticalLayout {
+        padding: 12px;
+        spacing: 6px;
+
+        HorizontalLayout {
+            spacing: 6px;
+            Rectangle {
+                width: 8px;
+                height: 8px;
+                border-radius: 4px;
+                y: 5px;
+                background: m.status == "up" ? #3ddc84 : #ff5c5c;
+            }
+            Text { text: m.name; color: white; font-weight: 700; font-size: 12.5px; overflow: elide; }
+        }
+        Text { text: m.url; color: #7a828e; font-size: 9.5px; overflow: elide; }
+
+        HorizontalLayout {
+            spacing: 16px;
+            VerticalLayout {
+                Text { text: "Latency"; color: #7a828e; font-size: 9px; }
+                Text { text: m.latency-label; color: m.status == "up" ? white : #ff9a9a; font-weight: 700; font-size: 13px; }
+            }
+            VerticalLayout {
+                Text { text: "Locations"; color: #7a828e; font-size: 9px; }
+                Text { text: m.locations; color: #ccc; font-size: 10px; wrap: word-wrap; }
+            }
+        }
+    }
+}
+
+export component ObservabilityScreen inherits Rectangle {
+    in property <[string]> cluster-options: [];
+    in-out property <string> active-cluster: "";
+    callback active-cluster-changed(string);
+
+    in-out property <string> space-id: "default";
+    in property <int> workspace-tab: 0;
+    in property <string> filter-text: "";
+    in property <bool> is-loading: false;
+    in property <string> error: "";
+    in property <[MonitorRow]> monitors: [];
+    in property <[MonitorRow]> pinned-monitors: [];
+
+    callback space-changed(string);
+    callback space-apply();
+    callback workspace-tab-changed(int);
+    callback filter-changed(string);
+    callback refresh-clicked();
+    callback pin-toggled(string, bool);
+
+    background: #14181f;
+
+    VerticalLayout {
+        ScreenHeader {
+            breadcrumb: "Observability";
+            cluster-options: root.cluster-options;
+            active-cluster <=> root.active-cluster;
+            active-cluster-changed(v) => { root.active-cluster-changed(v); }
+        }
+
+        VerticalLayout {
+            padding: 16px;
+            spacing: 12px;
+
+            HorizontalLayout {
+                spacing: 10px;
+                Text { text: "Kibana Space:"; color: #aaa; font-size: 11.5px; vertical-alignment: center; }
+                LineEdit {
+                    width: 120px;
+                    text: root.space-id;
+                    edited(t) => { root.space-changed(t); }
+                }
+                Rectangle {
+                    width: 56px;
+                    background: #2a2f38;
+                    border-radius: 4px;
+                    TouchArea { clicked => { root.space-apply(); } }
+                    Text { text: "Apply"; color: #ccc; font-size: 10.5px; horizontal-alignment: center; vertical-alignment: center; }
+                }
+
+                Rectangle { width: 16px; }
+
+                TabButton { label: "Pinned Dashboard"; selected: root.workspace-tab == 0; clicked => { root.workspace-tab-changed(0); } }
+                TabButton { label: "Browse Monitors"; selected: root.workspace-tab == 1; clicked => { root.workspace-tab-changed(1); } }
+
+                Rectangle { horizontal-stretch: 1; }
+
+                Rectangle {
+                    width: 70px;
+                    background: #2d3f52;
+                    border-radius: 4px;
+                    TouchArea { clicked => { root.refresh-clicked(); } }
+                    Text { text: root.is-loading ? "..." : "↻ Refresh"; color: #7fc7ff; font-size: 10.5px; horizontal-alignment: center; vertical-alignment: center; }
+                }
+            }
+
+            if root.error != "": Text {
+                text: "Kibana link error: " + root.error;
+                color: #ff9a9a;
+                font-size: 11px;
+                wrap: word-wrap;
+            }
+
+            LineEdit {
+                placeholder-text: "Filter monitors...";
+                text: root.filter-text;
+                edited(t) => { root.filter-changed(t); }
+            }
+
+            if root.workspace-tab == 1: ScrollView {
+                VerticalLayout {
+                    spacing: 2px;
+                    if monitors.length == 0: Text { text: "No monitors found."; color: #7a828e; font-size: 11px; }
+                    for m in monitors: HorizontalLayout {
+                        height: 30px;
+                        spacing: 10px;
+                        CheckBox {
+                            checked: m.pinned;
+                            toggled => { root.pin-toggled(m.id, self.checked); }
+                        }
+                        VerticalLayout {
+                            width: 260px;
+                            alignment: center;
+                            Text { text: m.name; color: white; font-size: 11.5px; overflow: elide; }
+                            Text { text: m.url; color: #7a828e; font-size: 9.5px; overflow: elide; }
+                        }
+                        Rectangle {
+                            width: 50px;
+                            height: 20px;
+                            border-radius: 4px;
+                            background: m.status == "up" ? #1f3a28 : #3a2222;
+                            Text {
+                                text: m.status == "up" ? "UP" : "DOWN";
+                                color: m.status == "up" ? #7fdc9a : #ff9a9a;
+                                font-size: 9.5px;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                        }
+                        Text { width: 60px; text: m.monitor-type; color: #999; font-size: 10px; vertical-alignment: center; }
+                        Text { width: 70px; text: m.latency-label; color: #ccc; font-size: 10.5px; vertical-alignment: center; }
+                    }
+                }
+            }
+
+            if root.workspace-tab == 0: ScrollView {
+                VerticalLayout {
+                    spacing: 12px;
+                    if pinned-monitors.length == 0: Text { text: "No pinned monitors. Pin some from Browse Monitors."; color: #7a828e; font-size: 12px; }
+                    for m in pinned-monitors: MonitorCard { m: m; }
+                }
+            }
+        }
+    }
+}

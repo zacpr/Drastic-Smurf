@@ -401,6 +401,26 @@ impl ClusterConfig {
             ..Default::default()
         }
     }
+
+    /// Resolves the Kibana host to use for this cluster: the explicitly
+    /// configured `kibana_host` if set, otherwise a same-host guess (
+    /// `elastic` -> `kibana` in the hostname) as a fallback.
+    pub fn resolve_kibana_host(&self) -> String {
+        if self.kibana_host.is_empty() {
+            if self.host.contains("elastic") {
+                self.host.replace("elastic", "kibana")
+            } else {
+                self.host.clone()
+            }
+        } else {
+            let h = self.kibana_host.trim();
+            if h.starts_with("http://") || h.starts_with("https://") {
+                h.to_string()
+            } else {
+                format!("http://{}", h)
+            }
+        }
+    }
 }
 
 // --- Per-cluster cached module data ---

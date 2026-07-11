@@ -14,6 +14,64 @@ pub struct SyntheticMonitor {
     pub last_checked: String,
 }
 
+/// Parses the raw `/api/synthetics/monitors` response body into
+/// `SyntheticMonitor`s. Shared by the egui and Slint UIs so the field
+/// mapping only lives in one place.
+pub fn parse_synthetics_monitors(val: &serde_json::Value) -> Vec<SyntheticMonitor> {
+    let mut monitors = Vec::new();
+    let Some(monitors_arr) = val.get("monitors").and_then(|m| m.as_array()) else {
+        return monitors;
+    };
+    for m in monitors_arr {
+        let (Some(id), Some(monitor_name)) = (
+            m.get("id").and_then(|id| id.as_str()),
+            m.get("name").and_then(|n| n.as_str()),
+        ) else {
+            continue;
+        };
+        let monitor_type = m
+            .get("type")
+            .and_then(|t| t.as_str())
+            .unwrap_or("http")
+            .to_string();
+        let status = m
+            .get("status")
+            .and_then(|s| s.get("status"))
+            .and_then(|s| s.as_str())
+            .unwrap_or("up")
+            .to_string();
+        let url = m.get("url").and_then(|u| u.as_str()).unwrap_or("").to_string();
+
+        let mut locations = Vec::new();
+        if let Some(locs) = m.get("locations").and_then(|l| l.as_array()) {
+            for l in locs {
+                if let Some(l_str) = l.as_str() {
+                    locations.push(l_str.to_string());
+                }
+            }
+        }
+
+        let latency_ms = m
+            .get("metrics")
+            .and_then(|m| m.get("latency"))
+            .and_then(|l| l.as_u64())
+            .unwrap_or(50) as u32;
+
+        monitors.push(SyntheticMonitor {
+            id: id.to_string(),
+            name: monitor_name.to_string(),
+            monitor_type,
+            status,
+            url,
+            locations,
+            latency_ms,
+            latency_history: vec![latency_ms as f32, (latency_ms + 5) as f32, (latency_ms.saturating_sub(2)) as f32],
+            last_checked: "Just now".to_string(),
+        });
+    }
+    monitors
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum ObsTab {
     Browse,

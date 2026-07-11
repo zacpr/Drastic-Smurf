@@ -308,20 +308,7 @@ pub fn wire(app: &AppShell, manager: &ClusterManager, clusters: &Rc<VecModel<Clu
             };
             let result = if use_kibana {
                 if let Some(config) = cluster_config {
-                    let kibana_host = if config.kibana_host.is_empty() {
-                        if config.host.contains("elastic") {
-                            config.host.replace("elastic", "kibana")
-                        } else {
-                            config.host.clone()
-                        }
-                    } else {
-                        let h = config.kibana_host.trim();
-                        if h.starts_with("http://") || h.starts_with("https://") {
-                            h.to_string()
-                        } else {
-                            format!("http://{}", h)
-                        }
-                    };
+                    let kibana_host = config.resolve_kibana_host();
                     client
                         .send_to_host_raw(&kibana_host, reqwest_method, &interp_path, body_opt)
                         .await
