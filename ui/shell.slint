@@ -6,6 +6,7 @@ import { MonitorRow, ObservabilityScreen } from "observability.slint";
 import { TaskRow, TasksScreen } from "tasks.slint";
 import { BackupRow, SlmPolicyRow, SnapshotScreen } from "snapshot.slint";
 import { DocRow, DiscoverScreen } from "discover.slint";
+import { IndexRow, DataStreamRow, IndicesScreen } from "indices.slint";
 
 export struct ClusterAlert {
     name: string,
@@ -421,6 +422,27 @@ export component AppShell inherits Window {
     callback discover-search-clicked();
     callback discover-doc-toggle-expanded(string);
 
+    in-out property <string> indices-active-cluster: "";
+    in property <int> indices-active-tab: 0;
+    in property <string> indices-filter-text: "";
+    in property <bool> indices-only-selected: false;
+    in property <int> indices-selected-count: 0;
+    in property <string> indices-sort-field: "name";
+    in property <bool> indices-sort-descending: false;
+    in property <[IndexRow]> indices-rows: [];
+    in property <[DataStreamRow]> indices-datastream-rows: [];
+    in property <string> indices-error: "";
+    in property <bool> indices-is-loading: false;
+
+    callback indices-active-cluster-changed(string);
+    callback indices-tab-changed(int);
+    callback indices-filter-changed(string);
+    callback indices-only-selected-toggled();
+    callback indices-sort-changed(string);
+    callback indices-index-checked(string, bool);
+    callback indices-datastream-checked(string, bool);
+    callback indices-refresh-clicked();
+
     callback cluster-toggled(string, bool);
     callback filter-changed(string);
     callback console-active-cluster-changed(string);
@@ -589,7 +611,31 @@ export component AppShell inherits Window {
                 doc-toggle-expanded(key) => { root.discover-doc-toggle-expanded(key); }
             }
 
-            if root.selected-nav != NavItem.dashboard && root.selected-nav != NavItem.console && root.selected-nav != NavItem.status && root.selected-nav != NavItem.observability && root.selected-nav != NavItem.tasks && root.selected-nav != NavItem.snapshot && root.selected-nav != NavItem.discover: Rectangle {
+            if root.selected-nav == NavItem.indices: IndicesScreen {
+                horizontal-stretch: 1;
+                cluster-options: root.focused-cluster-names;
+                active-cluster <=> root.indices-active-cluster;
+                active-tab: root.indices-active-tab;
+                filter-text: root.indices-filter-text;
+                only-selected: root.indices-only-selected;
+                selected-count: root.indices-selected-count;
+                sort-field: root.indices-sort-field;
+                sort-descending: root.indices-sort-descending;
+                indices: root.indices-rows;
+                datastreams: root.indices-datastream-rows;
+                error: root.indices-error;
+                is-loading: root.indices-is-loading;
+                active-cluster-changed(v) => { root.indices-active-cluster-changed(v); }
+                tab-changed(t) => { root.indices-tab-changed(t); }
+                filter-changed(t) => { root.indices-filter-changed(t); }
+                only-selected-toggled => { root.indices-only-selected-toggled(); }
+                sort-changed(f) => { root.indices-sort-changed(f); }
+                index-checked(name, c) => { root.indices-index-checked(name, c); }
+                datastream-checked(name, c) => { root.indices-datastream-checked(name, c); }
+                refresh-clicked => { root.indices-refresh-clicked(); }
+            }
+
+            if root.selected-nav != NavItem.dashboard && root.selected-nav != NavItem.console && root.selected-nav != NavItem.status && root.selected-nav != NavItem.observability && root.selected-nav != NavItem.tasks && root.selected-nav != NavItem.snapshot && root.selected-nav != NavItem.discover && root.selected-nav != NavItem.indices: Rectangle {
                 background: #14181f;
                 horizontal-stretch: 1;
                 Text {

@@ -12,6 +12,7 @@ slint::include_modules!();
 
 mod console;
 mod discover;
+mod indices;
 mod observability;
 mod snapshot;
 mod status;
@@ -92,6 +93,7 @@ pub fn run() -> Result<(), slint::PlatformError> {
     tasks::wire(&app, &manager, &clusters);
     snapshot::wire(&app, &manager, &clusters);
     discover::wire(&app, &manager, &clusters);
+    indices::wire(&app, &manager, &clusters);
 
     // Checkbox toggle: keep the sidebar list, the dashboard's checked-only
     // view, the Console's focused-cluster dropdown, and the "N hidden" count

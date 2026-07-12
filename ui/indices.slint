@@ -1,0 +1,234 @@
+import { LineEdit, ScrollView, CheckBox } from "std-widgets.slint";
+import { ScreenHeader } from "common.slint";
+
+export struct IndexRow {
+    name: string,
+    health: string,
+    status: string,
+    docs-count: string,
+    size: string,
+    checked: bool,
+}
+
+export struct DataStreamRow {
+    name: string,
+    status: string,
+    generation: int,
+    backing-indices: int,
+    size: string,
+    checked: bool,
+}
+
+component TabButton inherits Rectangle {
+    in property <string> label;
+    in property <bool> selected: false;
+    callback clicked();
+
+    height: 26px;
+    background: selected ? #2d3f52 : tab-area.has-hover ? #20262f : transparent;
+    border-radius: 4px;
+
+    tab-area := TouchArea { clicked => { root.clicked(); } }
+    Text {
+        text: root.label;
+        color: selected ? #7fc7ff : #ccc;
+        font-size: 12px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+component SortHeader inherits Rectangle {
+    in property <string> label;
+    in property <bool> active: false;
+    in property <bool> descending: false;
+    callback clicked();
+
+    height: 22px;
+    TouchArea { clicked => { root.clicked(); } }
+    HorizontalLayout {
+        spacing: 3px;
+        Text { text: root.label; color: root.active ? #7fc7ff : #999; font-weight: 700; font-size: 10.5px; vertical-alignment: center; }
+        if root.active: Text { text: root.descending ? "▾" : "▴"; color: #7fc7ff; font-size: 9px; vertical-alignment: center; }
+    }
+}
+
+export component IndicesScreen inherits Rectangle {
+    in property <[string]> cluster-options: [];
+    in-out property <string> active-cluster: "";
+    callback active-cluster-changed(string);
+
+    in property <int> active-tab: 0;
+    in property <string> filter-text: "";
+    in property <bool> only-selected: false;
+    in property <int> selected-count: 0;
+    in property <string> sort-field: "name";
+    in property <bool> sort-descending: false;
+    in property <[IndexRow]> indices: [];
+    in property <[DataStreamRow]> datastreams: [];
+    in property <string> error: "";
+    in property <bool> is-loading: false;
+
+    callback tab-changed(int);
+    callback filter-changed(string);
+    callback only-selected-toggled();
+    callback sort-changed(string);
+    callback index-checked(string, bool);
+    callback datastream-checked(string, bool);
+    callback refresh-clicked();
+
+    background: #14181f;
+
+    VerticalLayout {
+        ScreenHeader {
+            breadcrumb: "Indices";
+            cluster-options: root.cluster-options;
+            active-cluster <=> root.active-cluster;
+            active-cluster-changed(v) => { root.active-cluster-changed(v); }
+        }
+
+        VerticalLayout {
+            padding: 16px;
+            spacing: 12px;
+
+            HorizontalLayout {
+                spacing: 6px;
+                TabButton { label: "Indices"; selected: root.active-tab == 0; clicked => { root.tab-changed(0); } }
+                TabButton { label: "Data Streams"; selected: root.active-tab == 1; clicked => { root.tab-changed(1); } }
+                Rectangle { horizontal-stretch: 1; }
+                Rectangle {
+                    width: 70px;
+                    background: #2d3f52;
+                    border-radius: 4px;
+                    TouchArea { clicked => { root.refresh-clicked(); } }
+                    Text {
+                        text: root.is-loading ? "..." : "↻ Refresh";
+                        color: #7fc7ff;
+                        font-size: 10.5px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+
+            HorizontalLayout {
+                spacing: 10px;
+                LineEdit {
+                    horizontal-stretch: 1;
+                    placeholder-text: "Filter by name...";
+                    text: root.filter-text;
+                    edited(t) => { root.filter-changed(t); }
+                }
+                Rectangle {
+                    width: 140px;
+                    background: root.only-selected ? #2d3f52 : #262b33;
+                    border-radius: 4px;
+                    TouchArea { clicked => { root.only-selected-toggled(); } }
+                    Text {
+                        text: "Selected (" + root.selected-count + ")";
+                        color: root.only-selected ? #7fc7ff : #999;
+                        font-size: 10.5px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+
+            if root.error != "": Text { text: "⚠ " + root.error; color: #ff9a9a; font-size: 12px; wrap: word-wrap; }
+
+            Rectangle {
+                background: #181c22;
+                border-radius: 8px;
+                border-width: 1px;
+                border-color: #2a2f38;
+                vertical-stretch: 1;
+
+                VerticalLayout {
+                    padding: 10px;
+                    spacing: 4px;
+
+                    if root.active-tab == 0: HorizontalLayout {
+                        height: 22px;
+                        spacing: 10px;
+                        Rectangle { width: 20px; }
+                        Rectangle { width: 220px; SortHeader { label: "Name"; active: root.sort-field == "name"; descending: root.sort-descending; clicked => { root.sort-changed("name"); } } }
+                        Rectangle { width: 60px; Text { text: "Health"; color: #999; font-weight: 700; font-size: 10.5px; } }
+                        Rectangle { width: 60px; Text { text: "Status"; color: #999; font-weight: 700; font-size: 10.5px; } }
+                        Rectangle { width: 90px; SortHeader { label: "Docs"; active: root.sort-field == "docs"; descending: root.sort-descending; clicked => { root.sort-changed("docs"); } } }
+                        Rectangle { width: 90px; SortHeader { label: "Size"; active: root.sort-field == "size"; descending: root.sort-descending; clicked => { root.sort-changed("size"); } } }
+                    }
+
+                    if root.active-tab == 1: HorizontalLayout {
+                        height: 22px;
+                        spacing: 10px;
+                        Rectangle { width: 20px; }
+                        Rectangle { width: 220px; Text { text: "Name"; color: #999; font-weight: 700; font-size: 10.5px; } }
+                        Rectangle { width: 70px; Text { text: "Status"; color: #999; font-weight: 700; font-size: 10.5px; } }
+                        Rectangle { width: 70px; Text { text: "Gen"; color: #999; font-weight: 700; font-size: 10.5px; } }
+                        Rectangle { width: 90px; Text { text: "Backing idx"; color: #999; font-weight: 700; font-size: 10.5px; } }
+                        Rectangle { width: 90px; Text { text: "Size"; color: #999; font-weight: 700; font-size: 10.5px; } }
+                    }
+
+                    Rectangle { height: 1px; background: #2a2f38; }
+
+                    ScrollView {
+                        VerticalLayout {
+                            spacing: 2px;
+
+                            if root.active-tab == 0 && root.indices.length == 0: Text { text: "No indices found."; color: #7a828e; font-size: 11px; }
+                            if root.active-tab == 0: VerticalLayout {
+                                spacing: 2px;
+                                for idx in root.indices: HorizontalLayout {
+                                    height: 26px;
+                                    spacing: 10px;
+                                    Rectangle {
+                                        width: 20px;
+                                        CheckBox {
+                                            checked: idx.checked;
+                                            toggled => { root.index-checked(idx.name, self.checked); }
+                                        }
+                                    }
+                                    Text { width: 220px; text: idx.name; color: #ddd; font-size: 11px; overflow: elide; vertical-alignment: center; }
+                                    Rectangle {
+                                        width: 60px;
+                                        Rectangle {
+                                            width: 10px;
+                                            height: 10px;
+                                            border-radius: 5px;
+                                            y: 8px;
+                                            background: idx.health == "green" ? #3ddc84 : idx.health == "yellow" ? #f5c542 : idx.health == "red" ? #ff5c5c : #666;
+                                        }
+                                    }
+                                    Text { width: 60px; text: idx.status; color: #999; font-size: 10.5px; vertical-alignment: center; }
+                                    Text { width: 90px; text: idx.docs-count; color: #ccc; font-size: 11px; vertical-alignment: center; }
+                                    Text { width: 90px; text: idx.size; color: #ccc; font-size: 11px; vertical-alignment: center; }
+                                }
+                            }
+
+                            if root.active-tab == 1 && root.datastreams.length == 0: Text { text: "No data streams found."; color: #7a828e; font-size: 11px; }
+                            if root.active-tab == 1: VerticalLayout {
+                                spacing: 2px;
+                                for ds in root.datastreams: HorizontalLayout {
+                                    height: 26px;
+                                    spacing: 10px;
+                                    Rectangle {
+                                        width: 20px;
+                                        CheckBox {
+                                            checked: ds.checked;
+                                            toggled => { root.datastream-checked(ds.name, self.checked); }
+                                        }
+                                    }
+                                    Text { width: 220px; text: ds.name; color: #ddd; font-size: 11px; overflow: elide; vertical-alignment: center; }
+                                    Text { width: 70px; text: ds.status; color: #999; font-size: 10.5px; vertical-alignment: center; }
+                                    Text { width: 70px; text: ds.generation; color: #999; font-size: 10.5px; vertical-alignment: center; }
+                                    Text { width: 90px; text: ds.backing-indices; color: #ccc; font-size: 11px; vertical-alignment: center; }
+                                    Text { width: 90px; text: ds.size; color: #ccc; font-size: 11px; vertical-alignment: center; }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
