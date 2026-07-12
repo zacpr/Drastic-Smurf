@@ -3,6 +3,7 @@ import { ClusterCard, DashboardOverview } from "dashboard.slint";
 import { PresetCategory, VariablePair, HistoryEntry, SavedQueryItem, PresetItem, ConsoleScreen } from "console.slint";
 import { NodeRow, AllocationRow, StatusScreen } from "status.slint";
 import { MonitorRow, ObservabilityScreen } from "observability.slint";
+import { TaskRow, TasksScreen } from "tasks.slint";
 
 export struct ClusterAlert {
     name: string,
@@ -379,6 +380,20 @@ export component AppShell inherits Window {
     callback obs-refresh-clicked();
     callback obs-pin-toggled(string, bool);
 
+    in-out property <string> tasks-active-cluster: "";
+    in property <string> tasks-filter-text: "";
+    in property <[string]> tasks-categories: ["All"];
+    in property <string> tasks-selected-category: "All";
+    in property <[TaskRow]> tasks-rows: [];
+    in property <string> tasks-error: "";
+    in property <bool> tasks-is-loading: false;
+
+    callback tasks-active-cluster-changed(string);
+    callback tasks-filter-changed(string);
+    callback tasks-category-changed(string);
+    callback tasks-task-toggle-expanded(string);
+    callback tasks-refresh-clicked();
+
     callback cluster-toggled(string, bool);
     callback filter-changed(string);
     callback console-active-cluster-changed(string);
@@ -499,7 +514,24 @@ export component AppShell inherits Window {
                 pin-toggled(id, p) => { root.obs-pin-toggled(id, p); }
             }
 
-            if root.selected-nav != NavItem.dashboard && root.selected-nav != NavItem.console && root.selected-nav != NavItem.status && root.selected-nav != NavItem.observability: Rectangle {
+            if root.selected-nav == NavItem.tasks: TasksScreen {
+                horizontal-stretch: 1;
+                cluster-options: root.focused-cluster-names;
+                active-cluster <=> root.tasks-active-cluster;
+                filter-text: root.tasks-filter-text;
+                categories: root.tasks-categories;
+                selected-category: root.tasks-selected-category;
+                tasks: root.tasks-rows;
+                error: root.tasks-error;
+                is-loading: root.tasks-is-loading;
+                active-cluster-changed(v) => { root.tasks-active-cluster-changed(v); }
+                filter-changed(t) => { root.tasks-filter-changed(t); }
+                category-changed(c) => { root.tasks-category-changed(c); }
+                task-toggle-expanded(key) => { root.tasks-task-toggle-expanded(key); }
+                refresh-clicked => { root.tasks-refresh-clicked(); }
+            }
+
+            if root.selected-nav != NavItem.dashboard && root.selected-nav != NavItem.console && root.selected-nav != NavItem.status && root.selected-nav != NavItem.observability && root.selected-nav != NavItem.tasks: Rectangle {
                 background: #14181f;
                 horizontal-stretch: 1;
                 Text {

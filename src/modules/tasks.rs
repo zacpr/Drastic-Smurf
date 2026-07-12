@@ -347,7 +347,7 @@ pub fn render_tasks_module(ui: &mut Ui, state: &mut TasksState) {
         });
 }
 
-fn get_task_progress_and_eta(task: &TaskInfo) -> Option<(f32, String)> {
+pub fn get_task_progress_and_eta(task: &TaskInfo) -> Option<(f32, String)> {
     let status_val = task.status.as_ref()?;
     let total = status_val.get("total")?.as_f64()?;
     if total <= 0.0 {

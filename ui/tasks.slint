@@ -1,0 +1,197 @@
+import { ComboBox, LineEdit, ScrollView } from "std-widgets.slint";
+import { ScreenHeader } from "common.slint";
+
+export struct TaskRow {
+    task-key: string,
+    action: string,
+    task-id: string,
+    node: string,
+    task-type: string,
+    description: string,
+    cancellable: bool,
+    running-time-label: string,
+    has-progress: bool,
+    progress-ratio: float,
+    eta-label: string,
+    is-long-running: bool,
+    expanded: bool,
+    start-time-label: string,
+    parent-task-id: string,
+}
+
+component Pill inherits Rectangle {
+    in property <string> text;
+    in property <color> bg: #262b33;
+    in property <color> fg: #ccc;
+
+    height: 20px;
+    background: bg;
+    border-radius: 4px;
+    HorizontalLayout {
+        padding-left: 7px;
+        padding-right: 7px;
+        Text { text: root.text; color: root.fg; font-size: 10.5px; vertical-alignment: center; }
+    }
+}
+
+component TaskCard inherits Rectangle {
+    in property <TaskRow> t;
+    callback toggle-expanded(string);
+
+    background: #181c22;
+    border-radius: 8px;
+    border-width: 1px;
+    border-color: t.expanded ? #4a7fb5 : #2a2f38;
+
+    VerticalLayout {
+        padding: 14px;
+        spacing: 8px;
+
+        HorizontalLayout {
+            spacing: 8px;
+            Text { text: t.action; color: white; font-weight: 700; font-size: 13px; vertical-alignment: center; }
+            Rectangle { horizontal-stretch: 1; }
+            if t.cancellable: Pill { text: "Cancellable"; bg: #3a2222; fg: #ff9a9a; }
+            Pill { text: t.running-time-label; }
+        }
+
+        HorizontalLayout {
+            spacing: 14px;
+            Text { text: "Task ID: " + t.task-id; color: #aaa; font-size: 11.5px; }
+            if t.description != "": Text { text: t.description; color: #ddd; font-size: 11.5px; overflow: elide; horizontal-stretch: 1; }
+        }
+
+        if t.has-progress: VerticalLayout {
+            spacing: 4px;
+            HorizontalLayout {
+                spacing: 10px;
+                Text { text: "Progress: " + round(t.progress-ratio * 1000) / 10 + "%"; color: #ddd; font-size: 11.5px; }
+                Text { text: "⏳ ETA: " + t.eta-label; color: #7fdc9a; font-weight: 700; font-size: 11.5px; }
+            }
+            Rectangle {
+                height: 8px;
+                border-radius: 4px;
+                background: #262b33;
+                Rectangle {
+                    x: 0;
+                    width: parent.width * max(0.0, min(1.0, t.progress-ratio));
+                    height: parent.height;
+                    border-radius: 4px;
+                    background: #4a90d9;
+                }
+            }
+        }
+
+        if !t.has-progress && t.is-long-running: Text {
+            text: "⏳ Long running task (> 1 minute, no progress indicators)";
+            color: #7a828e;
+            font-size: 10.5px;
+        }
+
+        Rectangle {
+            height: 22px;
+            width: 110px;
+            border-radius: 4px;
+            background: #2a2f38;
+            TouchArea { clicked => { root.toggle-expanded(t.task-key); } }
+            Text {
+                text: t.expanded ? "Hide details ▲" : "Show details ▼";
+                color: #ccc;
+                font-size: 10.5px;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+
+        if t.expanded: VerticalLayout {
+            padding-top: 4px;
+            spacing: 4px;
+            Rectangle { height: 1px; background: #2a2f38; }
+            HorizontalLayout { spacing: 8px; Text { text: "Task type:"; color: #7a828e; font-size: 11px; width: 100px; } Text { text: t.task-type; color: #ccc; font-size: 11px; } }
+            HorizontalLayout { spacing: 8px; Text { text: "Node:"; color: #7a828e; font-size: 11px; width: 100px; } Text { text: t.node; color: #ccc; font-size: 11px; } }
+            HorizontalLayout { spacing: 8px; Text { text: "Start time:"; color: #7a828e; font-size: 11px; width: 100px; } Text { text: t.start-time-label; color: #ccc; font-size: 11px; } }
+            if t.parent-task-id != "": HorizontalLayout { spacing: 8px; Text { text: "Parent task:"; color: #7a828e; font-size: 11px; width: 100px; } Text { text: t.parent-task-id; color: #ccc; font-size: 11px; } }
+        }
+    }
+}
+
+export component TasksScreen inherits Rectangle {
+    in property <[string]> cluster-options: [];
+    in-out property <string> active-cluster: "";
+    callback active-cluster-changed(string);
+
+    in property <string> filter-text: "";
+    in property <[string]> categories: ["All"];
+    in property <string> selected-category: "All";
+    in property <[TaskRow]> tasks: [];
+    in property <string> error: "";
+    in property <bool> is-loading: false;
+
+    callback filter-changed(string);
+    callback category-changed(string);
+    callback task-toggle-expanded(string);
+    callback refresh-clicked();
+
+    background: #14181f;
+
+    VerticalLayout {
+        ScreenHeader {
+            breadcrumb: "Tasks";
+            cluster-options: root.cluster-options;
+            active-cluster <=> root.active-cluster;
+            active-cluster-changed(v) => { root.active-cluster-changed(v); }
+        }
+
+        VerticalLayout {
+            padding: 16px;
+            spacing: 12px;
+
+            HorizontalLayout {
+                spacing: 10px;
+                LineEdit {
+                    horizontal-stretch: 1;
+                    placeholder-text: "Search action, description, or node...";
+                    text: root.filter-text;
+                    edited(t) => { root.filter-changed(t); }
+                }
+                ComboBox {
+                    width: 160px;
+                    model: root.categories;
+                    current-value: root.selected-category;
+                    selected(v) => { root.category-changed(v); }
+                }
+                Rectangle {
+                    width: 70px;
+                    background: #2d3f52;
+                    border-radius: 4px;
+                    TouchArea { clicked => { root.refresh-clicked(); } }
+                    Text {
+                        text: root.is-loading ? "..." : "↻ Refresh";
+                        color: #7fc7ff;
+                        font-size: 10.5px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+
+            if root.error != "": Text { text: root.error; color: #ff9a9a; font-size: 11px; wrap: word-wrap; }
+
+            if root.tasks.length == 0 && root.error == "": Text {
+                text: "No active tasks found on this cluster.";
+                color: #7a828e;
+                font-size: 12px;
+            }
+
+            ScrollView {
+                VerticalLayout {
+                    spacing: 10px;
+                    for t in root.tasks: TaskCard {
+                        t: t;
+                        toggle-expanded(key) => { root.task-toggle-expanded(key); }
+                    }
+                }
+            }
+        }
+    }
+}
