@@ -167,10 +167,10 @@ component NavButton inherits Rectangle {
     callback clicked();
 
     height: 30px;
-    background: selected ? #2d3f52 : transparent;
+    background: selected ? #2d3f52 : nav-area.has-hover ? #20262f : transparent;
     border-radius: 4px;
 
-    TouchArea {
+    nav-area := TouchArea {
         clicked => { root.clicked(); }
     }
 
@@ -231,6 +231,7 @@ component Sidebar inherits Rectangle {
             checked-count: root.focused-checked-count;
             cluster-toggled(name, checked) => { root.cluster-toggled(name, checked); }
             filter-changed(text) => { root.filter-changed(text); }
+            toggle-collapsed => { root.focused-collapsed = !root.focused-collapsed; }
         }
 
         Rectangle { height: 1px; background: #2a2f38; }
@@ -412,6 +413,7 @@ export component AppShell inherits Window {
                 selected-nav <=> root.selected-nav;
                 cluster-toggled(name, checked) => { root.cluster-toggled(name, checked); }
                 filter-changed(text) => { root.filter-changed(text); }
+                nav-selected(item) => { root.selected-nav = item; }
             }
 
             if root.selected-nav == NavItem.dashboard: DashboardOverview {
