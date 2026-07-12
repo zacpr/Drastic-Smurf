@@ -1,0 +1,184 @@
+import { LineEdit, ScrollView, TextEdit } from "std-widgets.slint";
+import { ScreenHeader } from "common.slint";
+
+export struct DocRow {
+    doc-key: string,
+    preview: string,
+    full-json: string,
+    expanded: bool,
+}
+
+component TimePresetButton inherits Rectangle {
+    in property <string> label;
+    in property <bool> selected: false;
+    callback clicked();
+
+    height: 24px;
+    background: selected ? #2d3f52 : preset-area.has-hover ? #20262f : transparent;
+    border-radius: 4px;
+    border-width: 1px;
+    border-color: selected ? #4a90d9 : #2a2f38;
+
+    preset-area := TouchArea { clicked => { root.clicked(); } }
+    Text {
+        text: root.label;
+        color: selected ? #7fc7ff : #ccc;
+        font-size: 10.5px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+component DocCard inherits Rectangle {
+    in property <DocRow> d;
+    callback toggle-expanded(string);
+
+    background: #181c22;
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: #2a2f38;
+
+    VerticalLayout {
+        padding: 10px;
+        spacing: 6px;
+
+        Rectangle {
+            height: 20px;
+            TouchArea { clicked => { root.toggle-expanded(d.doc-key); } }
+            HorizontalLayout {
+                spacing: 6px;
+                Text { text: d.expanded ? "▾" : "▸"; color: #999; width: 12px; vertical-alignment: center; }
+                Text {
+                    text: d.preview;
+                    color: #ccc;
+                    font-size: 11px;
+                    font-family: "monospace";
+                    vertical-alignment: center;
+                    overflow: elide;
+                    horizontal-stretch: 1;
+                }
+            }
+        }
+
+        if d.expanded: Rectangle {
+            background: #10131a;
+            border-radius: 4px;
+            height: 240px;
+            TextEdit {
+                text: d.full-json;
+                read-only: true;
+                font-family: "monospace";
+                font-size: 11px;
+            }
+        }
+    }
+}
+
+export component DiscoverScreen inherits Rectangle {
+    in property <[string]> cluster-options: [];
+    in-out property <string> active-cluster: "";
+    callback active-cluster-changed(string);
+
+    in-out property <string> index-pattern: "logs-elasticsearch*";
+    in-out property <string> search-query: "";
+    in property <int> time-preset: 1;
+    in property <[DocRow]> results: [];
+    in property <string> error: "";
+    in property <bool> is-loading: false;
+
+    callback time-preset-changed(int);
+    callback search-clicked();
+    callback doc-toggle-expanded(string);
+
+    background: #14181f;
+
+    VerticalLayout {
+        ScreenHeader {
+            breadcrumb: "Discover";
+            cluster-options: root.cluster-options;
+            active-cluster <=> root.active-cluster;
+            active-cluster-changed(v) => { root.active-cluster-changed(v); }
+        }
+
+        VerticalLayout {
+            padding: 16px;
+            spacing: 12px;
+
+            Rectangle {
+                background: #181c22;
+                border-radius: 8px;
+                border-width: 1px;
+                border-color: #2a2f38;
+                VerticalLayout {
+                    padding: 12px;
+                    spacing: 10px;
+
+                    HorizontalLayout {
+                        spacing: 10px;
+                        Text { text: "Index:"; color: #aaa; font-size: 11.5px; vertical-alignment: center; }
+                        LineEdit {
+                            width: 200px;
+                            placeholder-text: "logs-elasticsearch*";
+                            text: root.index-pattern;
+                            edited(t) => { root.index-pattern = t; }
+                        }
+                        LineEdit {
+                            horizontal-stretch: 1;
+                            placeholder-text: "status:500 OR level:error";
+                            text: root.search-query;
+                            edited(t) => { root.search-query = t; }
+                        }
+                        Rectangle {
+                            width: 80px;
+                            background: #2d3f52;
+                            border-radius: 4px;
+                            TouchArea { clicked => { root.search-clicked(); } }
+                            Text {
+                                text: root.is-loading ? "..." : "🔍 Search";
+                                color: #7fc7ff;
+                                font-size: 11px;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+
+                    HorizontalLayout {
+                        spacing: 6px;
+                        Text { text: "Time range:"; color: #7a828e; font-size: 10.5px; vertical-alignment: center; }
+                        TimePresetButton { label: "Last 30m"; selected: root.time-preset == 0; clicked => { root.time-preset-changed(0); } }
+                        TimePresetButton { label: "Last 1h"; selected: root.time-preset == 1; clicked => { root.time-preset-changed(1); } }
+                        TimePresetButton { label: "Last 6h"; selected: root.time-preset == 2; clicked => { root.time-preset-changed(2); } }
+                        TimePresetButton { label: "Last 12h"; selected: root.time-preset == 3; clicked => { root.time-preset-changed(3); } }
+                        TimePresetButton { label: "Last 24h"; selected: root.time-preset == 4; clicked => { root.time-preset-changed(4); } }
+                        TimePresetButton { label: "Last 72h"; selected: root.time-preset == 5; clicked => { root.time-preset-changed(5); } }
+                    }
+                }
+            }
+
+            if root.error != "": Text { text: "⚠ Search error: " + root.error; color: #ff9a9a; font-size: 12px; wrap: word-wrap; }
+
+            HorizontalLayout {
+                Text { text: "Results"; color: #ddd; font-weight: 700; font-size: 13px; vertical-alignment: center; }
+                Rectangle { horizontal-stretch: 1; }
+                Text { text: root.results.length + " documents"; color: #7a828e; font-size: 11px; vertical-alignment: center; }
+            }
+
+            if root.results.length == 0 && root.error == "": Text {
+                text: "No documents to show. Run a search to get started.";
+                color: #7a828e;
+                font-size: 12px;
+            }
+
+            ScrollView {
+                VerticalLayout {
+                    spacing: 6px;
+                    for d in root.results: DocCard {
+                        d: d;
+                        toggle-expanded(key) => { root.doc-toggle-expanded(key); }
+                    }
+                }
+            }
+        }
+    }
+}

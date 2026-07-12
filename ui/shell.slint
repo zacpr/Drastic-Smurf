@@ -5,6 +5,7 @@ import { NodeRow, AllocationRow, StatusScreen } from "status.slint";
 import { MonitorRow, ObservabilityScreen } from "observability.slint";
 import { TaskRow, TasksScreen } from "tasks.slint";
 import { BackupRow, SlmPolicyRow, SnapshotScreen } from "snapshot.slint";
+import { DocRow, DiscoverScreen } from "discover.slint";
 
 export struct ClusterAlert {
     name: string,
@@ -407,6 +408,19 @@ export component AppShell inherits Window {
     callback snapshot-active-cluster-changed(string);
     callback snapshot-refresh-clicked();
 
+    in-out property <string> discover-active-cluster: "";
+    in-out property <string> discover-index-pattern: "logs-elasticsearch*";
+    in-out property <string> discover-search-query: "";
+    in property <int> discover-time-preset: 1;
+    in property <[DocRow]> discover-results: [];
+    in property <string> discover-error: "";
+    in property <bool> discover-is-loading: false;
+
+    callback discover-active-cluster-changed(string);
+    callback discover-time-preset-changed(int);
+    callback discover-search-clicked();
+    callback discover-doc-toggle-expanded(string);
+
     callback cluster-toggled(string, bool);
     callback filter-changed(string);
     callback console-active-cluster-changed(string);
@@ -559,7 +573,23 @@ export component AppShell inherits Window {
                 refresh-clicked => { root.snapshot-refresh-clicked(); }
             }
 
-            if root.selected-nav != NavItem.dashboard && root.selected-nav != NavItem.console && root.selected-nav != NavItem.status && root.selected-nav != NavItem.observability && root.selected-nav != NavItem.tasks && root.selected-nav != NavItem.snapshot: Rectangle {
+            if root.selected-nav == NavItem.discover: DiscoverScreen {
+                horizontal-stretch: 1;
+                cluster-options: root.focused-cluster-names;
+                active-cluster <=> root.discover-active-cluster;
+                index-pattern <=> root.discover-index-pattern;
+                search-query <=> root.discover-search-query;
+                time-preset: root.discover-time-preset;
+                results: root.discover-results;
+                error: root.discover-error;
+                is-loading: root.discover-is-loading;
+                active-cluster-changed(v) => { root.discover-active-cluster-changed(v); }
+                time-preset-changed(p) => { root.discover-time-preset-changed(p); }
+                search-clicked => { root.discover-search-clicked(); }
+                doc-toggle-expanded(key) => { root.discover-doc-toggle-expanded(key); }
+            }
+
+            if root.selected-nav != NavItem.dashboard && root.selected-nav != NavItem.console && root.selected-nav != NavItem.status && root.selected-nav != NavItem.observability && root.selected-nav != NavItem.tasks && root.selected-nav != NavItem.snapshot && root.selected-nav != NavItem.discover: Rectangle {
                 background: #14181f;
                 horizontal-stretch: 1;
                 Text {
