@@ -123,8 +123,24 @@ Important implementation detail, not just cosmetic: these should be a **fixed-po
 
 ## Open questions / not yet decided
 
-- **Coexistence strategy**: run old (egui) and new (Slint) UI as separate binaries sharing a core crate during migration, or work on a branch and cut over screen by screen with the app in a half-migrated state? Flagged as a decision that affects crate structure — unanswered as of this handover.
+- **Coexistence strategy**: run old (egui) and new (Slint) UI as separate binaries sharing a core crate during migration, or work on a branch and cut over screen by screen with the app in a half-migrated state? **Resolved 2026-07-12**: same binary, new `src/ui_slint/` module tree, launched via a `--slint` CLI flag alongside the existing egui app (`cargo run` = old UI, `cargo run -- --slint` = new UI). `core/` and the module `XxxState` structs were already egui-free, so no decoupling work was needed first.
 - Empty-state / quickstart flow when zero clusters are configured — not designed.
 - Full Settings screen layout (cluster CRUD forms, global Alerting-defaults page) — only the per-cluster Alerting toggle panel was mocked in isolation.
 - Mascot: needs three actual image assets from the user (calm / yellow-alert / red-alert) before the placeholder can be replaced.
 - Console's Custom-commands and History tabs need actual design, not just tab slots.
+
+## Progress as of 2026-07-12
+
+Built and merged into `newgui`: persistent shell (alert bar + sidebar), Dashboard (overview grid), Console, Status, Observability, Tasks, Snapshot, Discover, Indices. All follow the same pattern — a `ScreenHeader` (breadcrumb + active-cluster dropdown scoped to the sidebar's focused/checked clusters), a `.slint` file per screen, and a `src/ui_slint/<screen>.rs` wiring module using `tokio::spawn` + `mpsc` channel + a UI-thread `slint::Timer` to bridge async fetches into the (non-Send) Slint models.
+
+Tasks, Snapshot, and Discover were converted from the egui app's cross-cluster aggregated views to single-active-cluster views, per this doc's explicit design rule that every screen except Dashboard-overview and Settings is single-cluster-scoped.
+
+Known simplifications made along the way (revisit if they turn out to matter): Observability's pinned monitors are a static card list rather than the egui app's free-floating draggable/resizable windows, and pin state isn't persisted; Snapshot has no live in-progress speed graph or auto-refresh (fetch-once on cluster switch/refresh click, matching every other screen); Discover has no custom date-range picker (six relative presets only) and no dynamic field-column selector (results render as expandable JSON cards instead); Indices has no ILM policy/template/settings drill-down panel and no doc-count/size trend indicators.
+
+**Revised priority order for what comes next**, per user direction on 2026-07-12 — Pipeline Simulator (the last screen from the original build order, `modules/pipeline*.rs`, ~2,551 lines across 3 files, two sub-modes) is explicitly deprioritized: the user "wasn't happy with the implementation anyway." New order:
+
+1. **Painless script simulator** — a Kibana-dev-console-style script debugger. Explicitly named as filling the niche Pipeline Simulator was meant to cover. Note: `modules/painless.rs` already exists in the egui app as a "Painless Playground" (`render_painless_module`, `PainlessState`, `PainlessTemplate`) — this is a port of an existing feature, not a from-scratch design, following the same screen-building pattern as everything above.
+2. **AI Assistant** — explicitly prioritized ahead of Pipeline Simulator. Already substantial in the egui app (`modules/llm_assistant.rs`, ~1622 lines: `AssistantState`, `render_assistant_panel`, LLM streaming, settings, console actions) — a port, not a new design.
+3. **Roles & role mappings** — genuinely new, not in the egui app. User wants to check roles and role mappings, ideally resolving a username or group claim to its matching roles, and — flagged by the user as "a bit tricky but quite sick" if achievable — further resolving that to the actual index patterns and privileges granted. Needs its own design pass before building (data model, ES APIs involved: likely `_security/role`, `_security/role_mapping`, `_security/user/_privileges` or similar — not yet investigated).
+4. **Visual polish / "verve"** — the user flagged this as very important, ongoing/parallel rather than a single screen. Not yet scoped into concrete tasks.
+5. **Pipeline Simulator** — deprioritized, possibly to be redesigned rather than directly ported given the user's dissatisfaction with the current implementation. Revisit after the above.
