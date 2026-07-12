@@ -4,6 +4,7 @@ import { PresetCategory, VariablePair, HistoryEntry, SavedQueryItem, PresetItem,
 import { NodeRow, AllocationRow, StatusScreen } from "status.slint";
 import { MonitorRow, ObservabilityScreen } from "observability.slint";
 import { TaskRow, TasksScreen } from "tasks.slint";
+import { BackupRow, SlmPolicyRow, SnapshotScreen } from "snapshot.slint";
 
 export struct ClusterAlert {
     name: string,
@@ -394,6 +395,18 @@ export component AppShell inherits Window {
     callback tasks-task-toggle-expanded(string);
     callback tasks-refresh-clicked();
 
+    in-out property <string> snapshot-active-cluster: "";
+    in property <bool> snapshot-reachable: false;
+    in property <string> snapshot-error: "";
+    in property <bool> snapshot-has-repositories: false;
+    in property <string> snapshot-resolved-repo: "";
+    in property <[BackupRow]> snapshot-backups: [];
+    in property <[SlmPolicyRow]> snapshot-slm-policies: [];
+    in property <bool> snapshot-is-loading: false;
+
+    callback snapshot-active-cluster-changed(string);
+    callback snapshot-refresh-clicked();
+
     callback cluster-toggled(string, bool);
     callback filter-changed(string);
     callback console-active-cluster-changed(string);
@@ -531,7 +544,22 @@ export component AppShell inherits Window {
                 refresh-clicked => { root.tasks-refresh-clicked(); }
             }
 
-            if root.selected-nav != NavItem.dashboard && root.selected-nav != NavItem.console && root.selected-nav != NavItem.status && root.selected-nav != NavItem.observability && root.selected-nav != NavItem.tasks: Rectangle {
+            if root.selected-nav == NavItem.snapshot: SnapshotScreen {
+                horizontal-stretch: 1;
+                cluster-options: root.focused-cluster-names;
+                active-cluster <=> root.snapshot-active-cluster;
+                reachable: root.snapshot-reachable;
+                error: root.snapshot-error;
+                has-repositories: root.snapshot-has-repositories;
+                resolved-repo: root.snapshot-resolved-repo;
+                backups: root.snapshot-backups;
+                slm-policies: root.snapshot-slm-policies;
+                is-loading: root.snapshot-is-loading;
+                active-cluster-changed(v) => { root.snapshot-active-cluster-changed(v); }
+                refresh-clicked => { root.snapshot-refresh-clicked(); }
+            }
+
+            if root.selected-nav != NavItem.dashboard && root.selected-nav != NavItem.console && root.selected-nav != NavItem.status && root.selected-nav != NavItem.observability && root.selected-nav != NavItem.tasks && root.selected-nav != NavItem.snapshot: Rectangle {
                 background: #14181f;
                 horizontal-stretch: 1;
                 Text {
