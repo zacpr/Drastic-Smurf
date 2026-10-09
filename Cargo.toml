@@ -1,6 +1,6 @@
 [package]
 name = "drastic-smurf"
-version = "0.5.11"
+version = "0.5.12"
 edition = "2024"
 authors = ["Zac <zac@example.com>"]
 description = "Extensible desktop GUI for monitoring and interacting with multiple Elasticsearch clusters"
@@ -60,6 +60,7 @@ copyright = "2026, Zac <zac@example.com>"
 extended-description = "Extensible desktop GUI for monitoring and interacting with multiple Elasticsearch clusters. Features snapshot monitoring, cluster status dashboard, task monitoring, and an Elastic console."
 section = "utils"
 priority = "optional"
+depends = "$auto, libayatana-appindicator3-1"
 assets = [
     ["target/release/drastic-smurf", "usr/bin/drastic-smurf", "755"],
     ["assets/drastic-smurf.desktop", "usr/share/applications/drastic-smurf.desktop", "644"],
@@ -79,3 +80,7 @@ assets = [
     { source = "target/release/drastic-smurf", dest = "/usr/bin/drastic-smurf", mode = "0755" },
     { source = "assets/drastic-smurf.desktop", dest = "/usr/share/applications/drastic-smurf.desktop", mode = "0644" },
 ]
+
+# Tray support loads this library dynamically, bypassing automatic ELF dependency detection.
+[package.metadata.generate-rpm.requires]
+"libayatana-appindicator3.so.1()(64bit)" = "*"

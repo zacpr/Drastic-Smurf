@@ -90,7 +90,14 @@ $ cargo run
 
 ### Packaging (requires release binary)
 
+Linux builds require GTK 3 and Ayatana AppIndicator development packages in
+addition to libxdo, D-Bus, Wayland, xkbcommon, and pkg-config (see README.md). VS Code
+Linux build tasks invoke `cargo` directly; `flatpak-spawn` is not required.
+
 ```bash
+# Install packaging tools
+$ cargo install --locked cargo-deb cargo-generate-rpm
+
 # Debian/Ubuntu
 $ cargo deb
 
@@ -140,6 +147,14 @@ $ cargo generate-rpm
 |----------|---------|--------------|
 | `ci.yml` | Push/PR to `main`/`master` | `cargo check`, `cargo test`, `cargo fmt --check`, `cargo clippy` |
 | `release.yml` | Tag push (`v*.*.*`) | cargo-dist builds archives + MSI installers + DEB/RPM packages + shell/PowerShell installers, and creates the GitHub Release |
+
+DEB/RPM packaging runs only for the x86_64 Linux target. Missing package outputs
+fail the workflow. Packaging reuses the `dist` profile binary instead of
+rebuilding with the `release` profile. Both packages declare the dynamically
+loaded Ayatana AppIndicator runtime dependency explicitly. Keep Linux system
+dependencies in `dist-workspace.toml` and `ci.yml` in sync; the release workflow
+also installs tray dependencies explicitly
+because its cargo-dist matrix dependency-install commands are generated.
 
 ### Releasing
 

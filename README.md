@@ -54,8 +54,15 @@ cargo build --release
 
 **Linux build deps**
 ```bash
-sudo apt-get install libwayland-dev libxkbcommon-dev   # Debian/Ubuntu
+# Debian/Ubuntu
+sudo apt-get install build-essential pkg-config libdbus-1-dev libwayland-dev libxkbcommon-dev libgtk-3-dev libayatana-appindicator3-dev libxdo-dev
+
+# Fedora
+sudo dnf install gcc gcc-c++ pkgconf-pkg-config dbus-devel wayland-devel libxkbcommon-devel gtk3-devel libayatana-appindicator-gtk3-devel libxdo-devel
 ```
+
+Install a current stable Rust toolchain before building. The VS Code Linux build
+tasks run `cargo` directly and do not require `flatpak-spawn`.
 
 ---
 
@@ -94,9 +101,16 @@ cargo check --all-targets
 cargo run
 
 # Build packages (requires release binary)
+cargo install --locked cargo-deb cargo-generate-rpm
 cargo deb          # Debian/Ubuntu
 cargo generate-rpm # RHEL/Fedora
 ```
+
+Version-tag releases build x86_64 DEB/RPM packages in GitHub Actions and attach
+them to the GitHub Release. A missing package fails the release rather than
+silently publishing without it.
+Both packages declare the dynamically loaded Ayatana AppIndicator runtime
+dependency so tray support also works on a fresh installation.
 
 ---
 

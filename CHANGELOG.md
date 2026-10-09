@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.12] - 2026-10-09
+
+### Fixed
+- Linux CI and release builds install GTK 3, Ayatana AppIndicator, and libxdo development dependencies required by tray support.
+- x86_64 DEB/RPM packaging reuses the cargo-dist binary and reports packaging failures instead of silently ignoring missing outputs.
+- DEB/RPM packages install the dynamically loaded Ayatana AppIndicator runtime library.
+- VS Code Linux build tasks invoke Cargo directly instead of requiring `flatpak-spawn`.
+
 ## [0.1.8] — 2026-05-16
 
 ### Added
