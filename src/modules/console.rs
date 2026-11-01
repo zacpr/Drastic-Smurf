@@ -32,6 +32,7 @@ pub struct ConsoleState {
     pub active_tab: ConsoleTab,
     pub body_height: Option<f32>,
     pub json_error: Option<String>,
+    pub preset_filter: String,
 }
 
 impl ConsoleState {
@@ -54,6 +55,9 @@ pub struct ConsolePreset {
     pub description: &'static str,
     pub use_kibana: bool,
 }
+
+/// Methods the console can send. Anything else falls back to GET in `DrasticSmurfApp::update`.
+const CONSOLE_METHODS: &[&str] = &["GET", "POST", "PUT", "DELETE", "HEAD"];
 
 const PRESETS: &[ConsolePreset] = &[
     // --- Cluster Status & Info ---
@@ -93,6 +97,51 @@ const PRESETS: &[ConsolePreset] = &[
         description: "Retrieve cluster level tasks that have not yet run (e.g. index creations, mapping updates).",
         use_kibana: false,
     },
+    ConsolePreset {
+        category: "Cluster Status & Info",
+        name: "Health Report",
+        method: "GET",
+        path: "/_health_report",
+        body: None,
+        description: "Run the health indicators and list root causes and suggested fixes for any problems found.",
+        use_kibana: false,
+    },
+    ConsolePreset {
+        category: "Cluster Status & Info",
+        name: "License Info",
+        method: "GET",
+        path: "/_license",
+        body: None,
+        description: "Show the active license type, status, and expiry date.",
+        use_kibana: false,
+    },
+    ConsolePreset {
+        category: "Cluster Status & Info",
+        name: "Deprecation Warnings",
+        method: "GET",
+        path: "/_migration/deprecations",
+        body: None,
+        description: "List deprecated settings and features to resolve before the next major upgrade.",
+        use_kibana: false,
+    },
+    ConsolePreset {
+        category: "Cluster Status & Info",
+        name: "Remote Clusters",
+        method: "GET",
+        path: "/_remote/info",
+        body: None,
+        description: "List configured remote clusters and their connection status for CCS and CCR.",
+        use_kibana: false,
+    },
+    ConsolePreset {
+        category: "Cluster Status & Info",
+        name: "Current Master Node",
+        method: "GET",
+        path: "/_cat/master?v",
+        body: None,
+        description: "Show which node is the elected master.",
+        use_kibana: false,
+    },
     // --- Nodes & Allocation ---
     ConsolePreset {
         category: "Nodes & Allocation",
@@ -130,6 +179,51 @@ const PRESETS: &[ConsolePreset] = &[
         description: "List shards sorted by state, helping identify unassigned or recovering shards.",
         use_kibana: false,
     },
+    ConsolePreset {
+        category: "Nodes & Allocation",
+        name: "Node Stats",
+        method: "GET",
+        path: "/_nodes/stats?pretty",
+        body: None,
+        description: "Retrieve detailed JVM, OS, filesystem, thread pool, and indexing statistics per node.",
+        use_kibana: false,
+    },
+    ConsolePreset {
+        category: "Nodes & Allocation",
+        name: "Hot Threads",
+        method: "GET",
+        path: "/_nodes/hot_threads",
+        body: None,
+        description: "Sample the busiest threads on each node to diagnose high CPU usage.",
+        use_kibana: false,
+    },
+    ConsolePreset {
+        category: "Nodes & Allocation",
+        name: "Thread Pool Rejections",
+        method: "GET",
+        path: "/_cat/thread_pool?v&h=node_name,name,active,queue,rejected&s=rejected:desc",
+        body: None,
+        description: "List thread pools by rejection count to spot overloaded nodes.",
+        use_kibana: false,
+    },
+    ConsolePreset {
+        category: "Nodes & Allocation",
+        name: "Node Attributes",
+        method: "GET",
+        path: "/_cat/nodeattrs?v",
+        body: None,
+        description: "List custom node attributes such as data tier or availability zone.",
+        use_kibana: false,
+    },
+    ConsolePreset {
+        category: "Nodes & Allocation",
+        name: "Retry Failed Allocations",
+        method: "POST",
+        path: "/_cluster/reroute?retry_failed=true",
+        body: None,
+        description: "Retry shards that stopped allocating after reaching the maximum number of failed attempts.",
+        use_kibana: false,
+    },
     // --- Indices & Templates ---
     ConsolePreset {
         category: "Indices & Templates",
@@ -151,7 +245,7 @@ const PRESETS: &[ConsolePreset] = &[
     },
     ConsolePreset {
         category: "Indices & Templates",
-        name: "Create Index Template",
+        name: "Create Index",
         method: "PUT",
         path: "/{{index}}",
         body: Some(
@@ -215,6 +309,249 @@ const PRESETS: &[ConsolePreset] = &[
         path: "/_cat/recovery?v&active_only=true",
         body: None,
         description: "Check the status of active index recoveries (e.g. shard relocations or restores).",
+        use_kibana: false,
+    },
+    ConsolePreset {
+        category: "Indices & Templates",
+        name: "Get Index Settings",
+        method: "GET",
+        path: "/{{index}}/_settings?pretty",
+        body: None,
+        description: "Retrieve the settings for one or more indices.",
+        use_kibana: false,
+    },
+    ConsolePreset {
+        category: "Indices & Templates",
+        name: "Update Index Settings",
+        method: "PUT",
+        path: "/{{index}}/_settings",
+        body: Some(
+            r#"{
+  "index": {
+    "number_of_replicas": 1,
+    "refresh_interval": "30s"
+  }
+}"#,
+        ),
+        description: "Change dynamic index settings such as the replica count or refresh interval.",
+        use_kibana: false,
+    },
+    ConsolePreset {
+        category: "Indices & Templates",
+        name: "Get Index Stats",
+        method: "GET",
+        path: "/{{index}}/_stats?pretty",
+        body: None,
+        description: "Retrieve document counts, store size, and indexing and search statistics for an index.",
+        use_kibana: false,
+    },
+    ConsolePreset {
+        category: "Indices & Templates",
+        name: "Count Documents",
+        method: "GET",
+        path: "/{{index}}/_count",
+        body: None,
+        description: "Count the documents in an index, data stream, or alias.",
+        use_kibana: false,
+    },
+    ConsolePreset {
+        category: "Indices & Templates",
+        name: "Refresh Index",
+        method: "POST",
+        path: "/{{index}}/_refresh",
+        body: None,
+        description: "Make recently indexed documents visible to search immediately.",
+        use_kibana: false,
+    },
+    ConsolePreset {
+        category: "Indices & Templates",
+        name: "Force Merge Index",
+        method: "POST",
+        path: "/{{index}}/_forcemerge?max_num_segments=1",
+        body: None,
+        description: "Merge an index down to one segment per shard. Only use on indices that are no longer written to.",
+        use_kibana: false,
+    },
+    ConsolePreset {
+        category: "Indices & Templates",
+        name: "Roll Over Alias",
+        method: "POST",
+        path: "/{{alias}}/_rollover",
+        body: None,
+        description: "Create a new write index behind an alias.",
+        use_kibana: false,
+    },
+    ConsolePreset {
+        category: "Indices & Templates",
+        name: "List Aliases",
+        method: "GET",
+        path: "/_cat/aliases?v&s=alias",
+        body: None,
+        description: "List all aliases and the indices they point to.",
+        use_kibana: false,
+    },
+    ConsolePreset {
+        category: "Indices & Templates",
+        name: "Add Index Alias",
+        method: "POST",
+        path: "/_aliases",
+        body: Some(
+            r#"{
+  "actions": [
+    {
+      "add": {
+        "index": "{{index}}",
+        "alias": "{{alias}}"
+      }
+    }
+  ]
+}"#,
+        ),
+        description: "Point an alias at an index.",
+        use_kibana: false,
+    },
+    ConsolePreset {
+        category: "Indices & Templates",
+        name: "Resolve Index Pattern",
+        method: "GET",
+        path: "/_resolve/index/{{index_pattern}}",
+        body: None,
+        description: "Show which indices, aliases, and data streams a name or wildcard pattern matches.",
+        use_kibana: false,
+    },
+    ConsolePreset {
+        category: "Indices & Templates",
+        name: "List Index Templates",
+        method: "GET",
+        path: "/_index_template",
+        body: None,
+        description: "List all composable index templates.",
+        use_kibana: false,
+    },
+    ConsolePreset {
+        category: "Indices & Templates",
+        name: "Get Index Template",
+        method: "GET",
+        path: "/_index_template/{{template_name}}",
+        body: None,
+        description: "Retrieve one composable index template.",
+        use_kibana: false,
+    },
+    ConsolePreset {
+        category: "Indices & Templates",
+        name: "Create Index Template",
+        method: "PUT",
+        path: "/_index_template/{{template_name}}",
+        body: Some(
+            r#"{
+  "index_patterns": ["my-logs-*"],
+  "priority": 500,
+  "composed_of": [],
+  "template": {
+    "settings": {
+      "index.number_of_shards": 1
+    },
+    "mappings": {
+      "properties": {
+        "@timestamp": { "type": "date" }
+      }
+    }
+  }
+}"#,
+        ),
+        description: "Create or replace a composable index template. Add an empty data_stream object to use it for data streams.",
+        use_kibana: false,
+    },
+    ConsolePreset {
+        category: "Indices & Templates",
+        name: "Delete Index Template",
+        method: "DELETE",
+        path: "/_index_template/{{template_name}}",
+        body: None,
+        description: "Delete a composable index template. Existing indices are not affected.",
+        use_kibana: false,
+    },
+    ConsolePreset {
+        category: "Indices & Templates",
+        name: "List Component Templates",
+        method: "GET",
+        path: "/_component_template",
+        body: None,
+        description: "List all component templates.",
+        use_kibana: false,
+    },
+    ConsolePreset {
+        category: "Indices & Templates",
+        name: "Create Component Template",
+        method: "PUT",
+        path: "/_component_template/{{component_name}}",
+        body: Some(
+            r#"{
+  "template": {
+    "mappings": {
+      "properties": {
+        "@timestamp": { "type": "date" }
+      }
+    }
+  }
+}"#,
+        ),
+        description: "Create or replace a reusable component template.",
+        use_kibana: false,
+    },
+    ConsolePreset {
+        category: "Indices & Templates",
+        name: "Delete Component Template",
+        method: "DELETE",
+        path: "/_component_template/{{component_name}}",
+        body: None,
+        description: "Delete a component template that no index template uses.",
+        use_kibana: false,
+    },
+    // --- Data Streams ---
+    ConsolePreset {
+        category: "Data Streams",
+        name: "List Data Streams",
+        method: "GET",
+        path: "/_data_stream",
+        body: None,
+        description: "List all data streams with their backing indices, template, and ILM policy.",
+        use_kibana: false,
+    },
+    ConsolePreset {
+        category: "Data Streams",
+        name: "Data Stream Stats",
+        method: "GET",
+        path: "/_data_stream/_stats?human=true",
+        body: None,
+        description: "Show backing index counts, store size, and latest timestamp for each data stream.",
+        use_kibana: false,
+    },
+    ConsolePreset {
+        category: "Data Streams",
+        name: "Create Data Stream",
+        method: "PUT",
+        path: "/_data_stream/{{data_stream}}",
+        body: None,
+        description: "Create a data stream. A matching index template with data streams enabled must already exist.",
+        use_kibana: false,
+    },
+    ConsolePreset {
+        category: "Data Streams",
+        name: "Roll Over Data Stream",
+        method: "POST",
+        path: "/{{data_stream}}/_rollover",
+        body: None,
+        description: "Create a new write index for a data stream.",
+        use_kibana: false,
+    },
+    ConsolePreset {
+        category: "Data Streams",
+        name: "Delete Data Stream",
+        method: "DELETE",
+        path: "/_data_stream/{{data_stream}}",
+        body: None,
+        description: "Delete a data stream and all of its backing indices. Danger: non-reversible!",
         use_kibana: false,
     },
     // --- Search & Analytics ---
@@ -283,6 +620,32 @@ const PRESETS: &[ConsolePreset] = &[
         description: "Combine text match search terms with structured filter constraints.",
         use_kibana: false,
     },
+    ConsolePreset {
+        category: "Search & Analytics",
+        name: "ES|QL Query",
+        method: "POST",
+        path: "/_query",
+        body: Some(
+            r#"{
+  "query": "FROM {{index}} | LIMIT 10"
+}"#,
+        ),
+        description: "Run a piped ES|QL query.",
+        use_kibana: false,
+    },
+    ConsolePreset {
+        category: "Search & Analytics",
+        name: "SQL Query",
+        method: "POST",
+        path: "/_sql?format=txt",
+        body: Some(
+            r#"{
+  "query": "SELECT * FROM \"{{index}}\" LIMIT 10"
+}"#,
+        ),
+        description: "Run an Elasticsearch SQL query and return the results as a text table.",
+        use_kibana: false,
+    },
     // --- Ingest & ILM ---
     ConsolePreset {
         category: "Ingest & ILM",
@@ -348,6 +711,108 @@ const PRESETS: &[ConsolePreset] = &[
         description: "Explain the current lifecycle status and active phase state for a managed index.",
         use_kibana: false,
     },
+    ConsolePreset {
+        category: "Ingest & ILM",
+        name: "List Ingest Pipelines",
+        method: "GET",
+        path: "/_ingest/pipeline",
+        body: None,
+        description: "Retrieve all ingest pipeline definitions.",
+        use_kibana: false,
+    },
+    ConsolePreset {
+        category: "Ingest & ILM",
+        name: "Get Ingest Pipeline",
+        method: "GET",
+        path: "/_ingest/pipeline/{{pipeline_id}}",
+        body: None,
+        description: "Retrieve one ingest pipeline definition.",
+        use_kibana: false,
+    },
+    ConsolePreset {
+        category: "Ingest & ILM",
+        name: "Delete Ingest Pipeline",
+        method: "DELETE",
+        path: "/_ingest/pipeline/{{pipeline_id}}",
+        body: None,
+        description: "Delete an ingest pipeline.",
+        use_kibana: false,
+    },
+    ConsolePreset {
+        category: "Ingest & ILM",
+        name: "List ILM Policies",
+        method: "GET",
+        path: "/_ilm/policy",
+        body: None,
+        description: "Retrieve all index lifecycle policies and the indices and data streams using them.",
+        use_kibana: false,
+    },
+    ConsolePreset {
+        category: "Ingest & ILM",
+        name: "Get ILM Policy",
+        method: "GET",
+        path: "/_ilm/policy/{{ilm_policy}}",
+        body: None,
+        description: "Retrieve one index lifecycle policy.",
+        use_kibana: false,
+    },
+    ConsolePreset {
+        category: "Ingest & ILM",
+        name: "Create ILM Policy",
+        method: "PUT",
+        path: "/_ilm/policy/{{ilm_policy}}",
+        body: Some(
+            r#"{
+  "policy": {
+    "phases": {
+      "hot": {
+        "actions": {
+          "rollover": {
+            "max_primary_shard_size": "50gb",
+            "max_age": "30d"
+          }
+        }
+      },
+      "delete": {
+        "min_age": "90d",
+        "actions": {
+          "delete": {}
+        }
+      }
+    }
+  }
+}"#,
+        ),
+        description: "Create or replace an index lifecycle policy with hot rollover and delete phases.",
+        use_kibana: false,
+    },
+    ConsolePreset {
+        category: "Ingest & ILM",
+        name: "Delete ILM Policy",
+        method: "DELETE",
+        path: "/_ilm/policy/{{ilm_policy}}",
+        body: None,
+        description: "Delete an index lifecycle policy that no index is using.",
+        use_kibana: false,
+    },
+    ConsolePreset {
+        category: "Ingest & ILM",
+        name: "List ILM Errors",
+        method: "GET",
+        path: "/*/_ilm/explain?only_errors=true",
+        body: None,
+        description: "List only the managed indices whose lifecycle is stuck in the ERROR step.",
+        use_kibana: false,
+    },
+    ConsolePreset {
+        category: "Ingest & ILM",
+        name: "Retry ILM Step",
+        method: "POST",
+        path: "/{{index}}/_ilm/retry",
+        body: None,
+        description: "Retry the failed lifecycle step for an index in the ERROR step.",
+        use_kibana: false,
+    },
     // --- Snapshot & Backup ---
     ConsolePreset {
         category: "Snapshot & Backup",
@@ -399,6 +864,120 @@ const PRESETS: &[ConsolePreset] = &[
 }"#,
         ),
         description: "Restore an index pattern from a snapshot and rename the indices on import.",
+        use_kibana: false,
+    },
+    ConsolePreset {
+        category: "Snapshot & Backup",
+        name: "List Repositories",
+        method: "GET",
+        path: "/_snapshot",
+        body: None,
+        description: "List all registered snapshot repositories and their settings.",
+        use_kibana: false,
+    },
+    ConsolePreset {
+        category: "Snapshot & Backup",
+        name: "Verify Repository",
+        method: "POST",
+        path: "/_snapshot/{{repo_name}}/_verify",
+        body: None,
+        description: "Check that all master and data nodes can access a snapshot repository.",
+        use_kibana: false,
+    },
+    ConsolePreset {
+        category: "Snapshot & Backup",
+        name: "List Snapshots",
+        method: "GET",
+        path: "/_cat/snapshots/{{repo_name}}?v&s=start_epoch:desc",
+        body: None,
+        description: "List the snapshots in a repository, newest first.",
+        use_kibana: false,
+    },
+    ConsolePreset {
+        category: "Snapshot & Backup",
+        name: "Running Snapshot Status",
+        method: "GET",
+        path: "/_snapshot/_status",
+        body: None,
+        description: "Show shard-level progress for all snapshots currently running.",
+        use_kibana: false,
+    },
+    ConsolePreset {
+        category: "Snapshot & Backup",
+        name: "Delete Snapshot",
+        method: "DELETE",
+        path: "/_snapshot/{{repo_name}}/{{snapshot_name}}",
+        body: None,
+        description: "Delete a snapshot from a repository. Danger: non-reversible!",
+        use_kibana: false,
+    },
+    ConsolePreset {
+        category: "Snapshot & Backup",
+        name: "SLM Status",
+        method: "GET",
+        path: "/_slm/status",
+        body: None,
+        description: "Show whether snapshot lifecycle management is running.",
+        use_kibana: false,
+    },
+    ConsolePreset {
+        category: "Snapshot & Backup",
+        name: "SLM Stats",
+        method: "GET",
+        path: "/_slm/stats",
+        body: None,
+        description: "Show snapshot lifecycle totals for snapshots taken, failed, and deleted.",
+        use_kibana: false,
+    },
+    ConsolePreset {
+        category: "Snapshot & Backup",
+        name: "List SLM Policies",
+        method: "GET",
+        path: "/_slm/policy",
+        body: None,
+        description: "Retrieve all snapshot lifecycle policies with their last run and next run times.",
+        use_kibana: false,
+    },
+    ConsolePreset {
+        category: "Snapshot & Backup",
+        name: "Create SLM Policy",
+        method: "PUT",
+        path: "/_slm/policy/{{slm_policy}}",
+        body: Some(
+            r#"{
+  "schedule": "0 30 1 * * ?",
+  "name": "<nightly-snap-{now/d}>",
+  "repository": "{{repo_name}}",
+  "config": {
+    "indices": ["*"],
+    "include_global_state": false
+  },
+  "retention": {
+    "expire_after": "30d",
+    "min_count": 5,
+    "max_count": 50
+  }
+}"#,
+        ),
+        description: "Create or replace a nightly snapshot lifecycle policy with retention rules.",
+        use_kibana: false,
+    },
+    ConsolePreset {
+        category: "Snapshot & Backup",
+        name: "Run SLM Policy Now",
+        method: "POST",
+        path: "/_slm/policy/{{slm_policy}}/_execute",
+        body: None,
+        description: "Take a snapshot immediately using a snapshot lifecycle policy.",
+        use_kibana: false,
+    },
+    ConsolePreset {
+        category: "Snapshot & Backup",
+        name: "Delete SLM Policy",
+        method: "DELETE",
+        path: "/_slm/policy/{{slm_policy}}",
+        body: None,
+        description: "Delete a snapshot lifecycle policy. Snapshots it already took are kept.",
         use_kibana: false,
     },
     // --- Security & API Keys ---
@@ -488,6 +1067,65 @@ const PRESETS: &[ConsolePreset] = &[
         description: "Retrieve rules and role assignments for a specific role mapping.",
         use_kibana: false,
     },
+    ConsolePreset {
+        category: "Security & API Keys",
+        name: "Who Am I",
+        method: "GET",
+        path: "/_security/_authenticate",
+        body: None,
+        description: "Show the authenticated user, their roles, and the authentication realm.",
+        use_kibana: false,
+    },
+    ConsolePreset {
+        category: "Security & API Keys",
+        name: "List Users",
+        method: "GET",
+        path: "/_security/user",
+        body: None,
+        description: "List all users in the native realm.",
+        use_kibana: false,
+    },
+    ConsolePreset {
+        category: "Security & API Keys",
+        name: "Delete User",
+        method: "DELETE",
+        path: "/_security/user/{{username}}",
+        body: None,
+        description: "Delete a native realm user.",
+        use_kibana: false,
+    },
+    ConsolePreset {
+        category: "Security & API Keys",
+        name: "Create or Update Role",
+        method: "PUT",
+        path: "/_security/role/{{role_name}}",
+        body: Some(
+            r#"{
+  "cluster": ["monitor"],
+  "indices": [
+    {
+      "names": ["logs-*"],
+      "privileges": ["read", "view_index_metadata"]
+    }
+  ]
+}"#,
+        ),
+        description: "Create or replace a security role with cluster and index privileges.",
+        use_kibana: false,
+    },
+    ConsolePreset {
+        category: "Security & API Keys",
+        name: "Invalidate API Key",
+        method: "DELETE",
+        path: "/_security/api_key",
+        body: Some(
+            r#"{
+  "ids": ["{{api_key_id}}"]
+}"#,
+        ),
+        description: "Revoke one or more API keys by ID.",
+        use_kibana: false,
+    },
     // --- Troubleshooting & Maintenance ---
     ConsolePreset {
         category: "Troubleshooting & Maintenance",
@@ -568,6 +1206,589 @@ const PRESETS: &[ConsolePreset] = &[
         description: "Consolidate existing indices into a new, smaller index with fewer primary shards.",
         use_kibana: false,
     },
+    ConsolePreset {
+        category: "Troubleshooting & Maintenance",
+        name: "Cancel Task",
+        method: "POST",
+        path: "/_tasks/{{task_id}}/_cancel",
+        body: None,
+        description: "Cancel a running task. The task must be cancellable.",
+        use_kibana: false,
+    },
+    ConsolePreset {
+        category: "Troubleshooting & Maintenance",
+        name: "Delete By Query",
+        method: "POST",
+        path: "/{{index}}/_delete_by_query?conflicts=proceed",
+        body: Some(
+            r#"{
+  "query": {
+    "range": {
+      "@timestamp": { "lt": "now-30d" }
+    }
+  }
+}"#,
+        ),
+        description: "Delete every document matching a query. Danger: non-reversible, so review the query first!",
+        use_kibana: false,
+    },
+    // --- Transforms, ML & Watcher ---
+    ConsolePreset {
+        category: "Transforms, ML & Watcher",
+        name: "List Transforms",
+        method: "GET",
+        path: "/_transform?size=100",
+        body: None,
+        description: "List transform configurations.",
+        use_kibana: false,
+    },
+    ConsolePreset {
+        category: "Transforms, ML & Watcher",
+        name: "Transform Stats",
+        method: "GET",
+        path: "/_transform/_all/_stats?size=100",
+        body: None,
+        description: "Show state, health, and progress for all transforms.",
+        use_kibana: false,
+    },
+    ConsolePreset {
+        category: "Transforms, ML & Watcher",
+        name: "Start Transform",
+        method: "POST",
+        path: "/_transform/{{transform_id}}/_start",
+        body: None,
+        description: "Start a transform.",
+        use_kibana: false,
+    },
+    ConsolePreset {
+        category: "Transforms, ML & Watcher",
+        name: "Stop Transform",
+        method: "POST",
+        path: "/_transform/{{transform_id}}/_stop?wait_for_completion=true",
+        body: None,
+        description: "Stop a transform and wait for it to finish its current checkpoint work.",
+        use_kibana: false,
+    },
+    ConsolePreset {
+        category: "Transforms, ML & Watcher",
+        name: "List ML Jobs",
+        method: "GET",
+        path: "/_ml/anomaly_detectors",
+        body: None,
+        description: "List machine learning anomaly detection jobs.",
+        use_kibana: false,
+    },
+    ConsolePreset {
+        category: "Transforms, ML & Watcher",
+        name: "ML Job Stats",
+        method: "GET",
+        path: "/_ml/anomaly_detectors/_stats",
+        body: None,
+        description: "Show state, memory, and data counts for anomaly detection jobs.",
+        use_kibana: false,
+    },
+    ConsolePreset {
+        category: "Transforms, ML & Watcher",
+        name: "CCR Stats",
+        method: "GET",
+        path: "/_ccr/stats",
+        body: None,
+        description: "Show cross-cluster replication auto-follow and shard follower statistics.",
+        use_kibana: false,
+    },
+    ConsolePreset {
+        category: "Transforms, ML & Watcher",
+        name: "Watcher Stats",
+        method: "GET",
+        path: "/_watcher/stats",
+        body: None,
+        description: "Show Watcher state and the number of watches on each node.",
+        use_kibana: false,
+    },
+    // --- Fleet: Agent Policies ---
+    ConsolePreset {
+        category: "Fleet: Agent Policies",
+        name: "List Agent Policies",
+        method: "GET",
+        path: "/api/fleet/agent_policies?perPage=100&withAgentCount=true",
+        body: None,
+        description: "List Elastic Agent policies with the number of agents enrolled in each.",
+        use_kibana: true,
+    },
+    ConsolePreset {
+        category: "Fleet: Agent Policies",
+        name: "Get Agent Policy",
+        method: "GET",
+        path: "/api/fleet/agent_policies/{{agent_policy_id}}",
+        body: None,
+        description: "Retrieve one agent policy and its integration policies.",
+        use_kibana: true,
+    },
+    ConsolePreset {
+        category: "Fleet: Agent Policies",
+        name: "Get Full Agent Policy",
+        method: "GET",
+        path: "/api/fleet/agent_policies/{{agent_policy_id}}/full",
+        body: None,
+        description: "Retrieve the compiled policy that is sent to enrolled agents.",
+        use_kibana: true,
+    },
+    ConsolePreset {
+        category: "Fleet: Agent Policies",
+        name: "Create Agent Policy",
+        method: "POST",
+        path: "/api/fleet/agent_policies?sys_monitoring=true",
+        body: Some(
+            r#"{
+  "name": "My agent policy",
+  "namespace": "default",
+  "description": "Created from Drastic Smurf",
+  "monitoring_enabled": ["logs", "metrics"]
+}"#,
+        ),
+        description: "Create an agent policy and add the System integration to it.",
+        use_kibana: true,
+    },
+    ConsolePreset {
+        category: "Fleet: Agent Policies",
+        name: "Update Agent Policy",
+        method: "PUT",
+        path: "/api/fleet/agent_policies/{{agent_policy_id}}",
+        body: Some(
+            r#"{
+  "name": "My agent policy",
+  "namespace": "default",
+  "description": "Updated from Drastic Smurf",
+  "monitoring_enabled": ["logs", "metrics"]
+}"#,
+        ),
+        description: "Update an agent policy's name, namespace, description, and monitoring settings.",
+        use_kibana: true,
+    },
+    ConsolePreset {
+        category: "Fleet: Agent Policies",
+        name: "Copy Agent Policy",
+        method: "POST",
+        path: "/api/fleet/agent_policies/{{agent_policy_id}}/copy",
+        body: Some(
+            r#"{
+  "name": "Copy of my agent policy",
+  "description": "Copied from Drastic Smurf"
+}"#,
+        ),
+        description: "Duplicate an agent policy and its integration policies.",
+        use_kibana: true,
+    },
+    ConsolePreset {
+        category: "Fleet: Agent Policies",
+        name: "Delete Agent Policy",
+        method: "POST",
+        path: "/api/fleet/agent_policies/delete",
+        body: Some(
+            r#"{
+  "agentPolicyId": "{{agent_policy_id}}"
+}"#,
+        ),
+        description: "Delete an agent policy. Fleet rejects this while agents are still enrolled in the policy.",
+        use_kibana: true,
+    },
+    // --- Fleet: Integration Policies ---
+    ConsolePreset {
+        category: "Fleet: Integration Policies",
+        name: "List Integration Policies",
+        method: "GET",
+        path: "/api/fleet/package_policies?perPage=100",
+        body: None,
+        description: "List the integration (package) policies attached to agent policies.",
+        use_kibana: true,
+    },
+    ConsolePreset {
+        category: "Fleet: Integration Policies",
+        name: "Find Policies by Package",
+        method: "GET",
+        path: "/api/fleet/package_policies?perPage=100&kuery=ingest-package-policies.package.name:{{package_name}}",
+        body: None,
+        description: "List the integration policies that use a given package.",
+        use_kibana: true,
+    },
+    ConsolePreset {
+        category: "Fleet: Integration Policies",
+        name: "Get Integration Policy",
+        method: "GET",
+        path: "/api/fleet/package_policies/{{package_policy_id}}",
+        body: None,
+        description: "Retrieve one integration policy.",
+        use_kibana: true,
+    },
+    ConsolePreset {
+        category: "Fleet: Integration Policies",
+        name: "Create Integration Policy",
+        method: "POST",
+        path: "/api/fleet/package_policies",
+        body: Some(
+            r#"{
+  "name": "nginx-1",
+  "namespace": "default",
+  "policy_ids": ["{{agent_policy_id}}"],
+  "package": {
+    "name": "nginx",
+    "version": "{{package_version}}"
+  },
+  "inputs": {}
+}"#,
+        ),
+        description: "Add an integration to an agent policy using the simplified format. Leaving inputs empty uses the package defaults.",
+        use_kibana: true,
+    },
+    ConsolePreset {
+        category: "Fleet: Integration Policies",
+        name: "Update Integration Policy",
+        method: "PUT",
+        path: "/api/fleet/package_policies/{{package_policy_id}}",
+        body: Some(
+            r#"{
+  "name": "nginx-1",
+  "namespace": "default",
+  "enabled": true,
+  "policy_ids": ["{{agent_policy_id}}"],
+  "package": {
+    "name": "nginx",
+    "version": "{{package_version}}"
+  },
+  "inputs": {}
+}"#,
+        ),
+        description: "Update an integration policy using the simplified format.",
+        use_kibana: true,
+    },
+    ConsolePreset {
+        category: "Fleet: Integration Policies",
+        name: "Delete Integration Policy",
+        method: "DELETE",
+        path: "/api/fleet/package_policies/{{package_policy_id}}",
+        body: None,
+        description: "Remove one integration policy from its agent policies.",
+        use_kibana: true,
+    },
+    ConsolePreset {
+        category: "Fleet: Integration Policies",
+        name: "Bulk Delete Integration Policies",
+        method: "POST",
+        path: "/api/fleet/package_policies/delete",
+        body: Some(
+            r#"{
+  "packagePolicyIds": ["{{package_policy_id}}"]
+}"#,
+        ),
+        description: "Remove several integration policies in one request.",
+        use_kibana: true,
+    },
+    ConsolePreset {
+        category: "Fleet: Integration Policies",
+        name: "Dry Run Policy Upgrade",
+        method: "POST",
+        path: "/api/fleet/package_policies/upgrade/dryrun",
+        body: Some(
+            r#"{
+  "packagePolicyIds": ["{{package_policy_id}}"]
+}"#,
+        ),
+        description: "Preview an integration policy upgrade and report any conflicts without changing anything.",
+        use_kibana: true,
+    },
+    ConsolePreset {
+        category: "Fleet: Integration Policies",
+        name: "Upgrade Integration Policy",
+        method: "POST",
+        path: "/api/fleet/package_policies/upgrade",
+        body: Some(
+            r#"{
+  "packagePolicyIds": ["{{package_policy_id}}"]
+}"#,
+        ),
+        description: "Upgrade integration policies to the installed package version.",
+        use_kibana: true,
+    },
+    // --- Fleet: Integration Packages ---
+    ConsolePreset {
+        category: "Fleet: Integration Packages",
+        name: "List Available Integrations",
+        method: "GET",
+        path: "/api/fleet/epm/packages",
+        body: None,
+        description: "List the integration packages available from the package registry.",
+        use_kibana: true,
+    },
+    ConsolePreset {
+        category: "Fleet: Integration Packages",
+        name: "List Installed Integrations",
+        method: "GET",
+        path: "/api/fleet/epm/packages/installed?perPage=100",
+        body: None,
+        description: "List the integration packages installed in this Kibana.",
+        use_kibana: true,
+    },
+    ConsolePreset {
+        category: "Fleet: Integration Packages",
+        name: "Get Integration Package",
+        method: "GET",
+        path: "/api/fleet/epm/packages/{{package_name}}",
+        body: None,
+        description: "Retrieve a package's details, including its latest version and install status.",
+        use_kibana: true,
+    },
+    ConsolePreset {
+        category: "Fleet: Integration Packages",
+        name: "Install Integration Package",
+        method: "POST",
+        path: "/api/fleet/epm/packages/{{package_name}}/{{package_version}}",
+        body: Some(
+            r#"{
+  "force": false
+}"#,
+        ),
+        description: "Install a package version from the registry, including its assets and templates.",
+        use_kibana: true,
+    },
+    ConsolePreset {
+        category: "Fleet: Integration Packages",
+        name: "Uninstall Integration Package",
+        method: "DELETE",
+        path: "/api/fleet/epm/packages/{{package_name}}/{{package_version}}",
+        body: None,
+        description: "Uninstall a package and its assets. Fleet rejects this while integration policies still use it.",
+        use_kibana: true,
+    },
+    // --- Fleet: Agents & Enrollment ---
+    ConsolePreset {
+        category: "Fleet: Agents & Enrollment",
+        name: "List Agents",
+        method: "GET",
+        path: "/api/fleet/agents?perPage=100",
+        body: None,
+        description: "List enrolled Elastic Agents.",
+        use_kibana: true,
+    },
+    ConsolePreset {
+        category: "Fleet: Agents & Enrollment",
+        name: "Agent Status Summary",
+        method: "GET",
+        path: "/api/fleet/agent_status",
+        body: None,
+        description: "Show agent counts by status, such as online, offline, and error.",
+        use_kibana: true,
+    },
+    ConsolePreset {
+        category: "Fleet: Agents & Enrollment",
+        name: "Get Agent",
+        method: "GET",
+        path: "/api/fleet/agents/{{agent_id}}",
+        body: None,
+        description: "Retrieve one agent's status, version, and assigned policy.",
+        use_kibana: true,
+    },
+    ConsolePreset {
+        category: "Fleet: Agents & Enrollment",
+        name: "Reassign Agent",
+        method: "POST",
+        path: "/api/fleet/agents/{{agent_id}}/reassign",
+        body: Some(
+            r#"{
+  "policy_id": "{{agent_policy_id}}"
+}"#,
+        ),
+        description: "Move an agent to a different agent policy.",
+        use_kibana: true,
+    },
+    ConsolePreset {
+        category: "Fleet: Agents & Enrollment",
+        name: "Upgrade Agent",
+        method: "POST",
+        path: "/api/fleet/agents/{{agent_id}}/upgrade",
+        body: Some(
+            r#"{
+  "version": "{{agent_version}}"
+}"#,
+        ),
+        description: "Upgrade an agent to a specific version.",
+        use_kibana: true,
+    },
+    ConsolePreset {
+        category: "Fleet: Agents & Enrollment",
+        name: "Unenroll Agent",
+        method: "POST",
+        path: "/api/fleet/agents/{{agent_id}}/unenroll",
+        body: Some(
+            r#"{
+  "revoke": false
+}"#,
+        ),
+        description: "Unenroll an agent from Fleet. Set revoke to true to invalidate its API keys immediately.",
+        use_kibana: true,
+    },
+    ConsolePreset {
+        category: "Fleet: Agents & Enrollment",
+        name: "List Enrollment Keys",
+        method: "GET",
+        path: "/api/fleet/enrollment_api_keys",
+        body: None,
+        description: "List enrollment tokens. Responses include the secret token values.",
+        use_kibana: true,
+    },
+    ConsolePreset {
+        category: "Fleet: Agents & Enrollment",
+        name: "Create Enrollment Key",
+        method: "POST",
+        path: "/api/fleet/enrollment_api_keys",
+        body: Some(
+            r#"{
+  "name": "My enrollment key",
+  "policy_id": "{{agent_policy_id}}"
+}"#,
+        ),
+        description: "Create an enrollment token for an agent policy.",
+        use_kibana: true,
+    },
+    ConsolePreset {
+        category: "Fleet: Agents & Enrollment",
+        name: "Revoke Enrollment Key",
+        method: "DELETE",
+        path: "/api/fleet/enrollment_api_keys/{{enrollment_key_id}}",
+        body: None,
+        description: "Revoke an enrollment token so it can no longer enroll agents.",
+        use_kibana: true,
+    },
+    ConsolePreset {
+        category: "Fleet: Agents & Enrollment",
+        name: "Fleet Setup Status",
+        method: "GET",
+        path: "/api/fleet/agents/setup",
+        body: None,
+        description: "Check whether Fleet is ready and list any missing requirements.",
+        use_kibana: true,
+    },
+    ConsolePreset {
+        category: "Fleet: Agents & Enrollment",
+        name: "List Fleet Outputs",
+        method: "GET",
+        path: "/api/fleet/outputs",
+        body: None,
+        description: "List the outputs that agents send data to.",
+        use_kibana: true,
+    },
+    ConsolePreset {
+        category: "Fleet: Agents & Enrollment",
+        name: "List Fleet Server Hosts",
+        method: "GET",
+        path: "/api/fleet/fleet_server_hosts",
+        body: None,
+        description: "List the Fleet Server hosts that agents connect to.",
+        use_kibana: true,
+    },
+    // --- Kibana Data Views ---
+    ConsolePreset {
+        category: "Kibana Data Views",
+        name: "List Data Views",
+        method: "GET",
+        path: "/api/data_views",
+        body: None,
+        description: "List all data views in the current space.",
+        use_kibana: true,
+    },
+    ConsolePreset {
+        category: "Kibana Data Views",
+        name: "Get Data View",
+        method: "GET",
+        path: "/api/data_views/data_view/{{data_view_id}}",
+        body: None,
+        description: "Retrieve one data view, including its fields.",
+        use_kibana: true,
+    },
+    ConsolePreset {
+        category: "Kibana Data Views",
+        name: "Create Data View",
+        method: "POST",
+        path: "/api/data_views/data_view",
+        body: Some(
+            r#"{
+  "data_view": {
+    "title": "logs-*",
+    "name": "All logs",
+    "timeFieldName": "@timestamp"
+  }
+}"#,
+        ),
+        description: "Create a data view. The title is the index pattern to match, and name is the label shown in Kibana.",
+        use_kibana: true,
+    },
+    ConsolePreset {
+        category: "Kibana Data Views",
+        name: "Update Data View",
+        method: "POST",
+        path: "/api/data_views/data_view/{{data_view_id}}",
+        body: Some(
+            r#"{
+  "data_view": {
+    "name": "All logs",
+    "timeFieldName": "@timestamp"
+  },
+  "refresh_fields": true
+}"#,
+        ),
+        description: "Update a data view and refresh its field list.",
+        use_kibana: true,
+    },
+    ConsolePreset {
+        category: "Kibana Data Views",
+        name: "Delete Data View",
+        method: "DELETE",
+        path: "/api/data_views/data_view/{{data_view_id}}",
+        body: None,
+        description: "Delete a data view. Dashboards and saved searches that use it will stop working.",
+        use_kibana: true,
+    },
+    ConsolePreset {
+        category: "Kibana Data Views",
+        name: "Get Default Data View",
+        method: "GET",
+        path: "/api/data_views/default",
+        body: None,
+        description: "Show which data view is the default in this space.",
+        use_kibana: true,
+    },
+    ConsolePreset {
+        category: "Kibana Data Views",
+        name: "Set Default Data View",
+        method: "POST",
+        path: "/api/data_views/default",
+        body: Some(
+            r#"{
+  "data_view_id": "{{data_view_id}}",
+  "force": true
+}"#,
+        ),
+        description: "Make a data view the default in this space, replacing any existing default.",
+        use_kibana: true,
+    },
+    ConsolePreset {
+        category: "Kibana Data Views",
+        name: "Add Runtime Field",
+        method: "POST",
+        path: "/api/data_views/data_view/{{data_view_id}}/runtime_field",
+        body: Some(
+            r#"{
+  "name": "my_runtime_field",
+  "runtimeField": {
+    "type": "keyword",
+    "script": {
+      "source": "emit(doc['host.name'].value)"
+    }
+  }
+}"#,
+        ),
+        description: "Add a runtime field to a data view.",
+        use_kibana: true,
+    },
     // --- Kibana Spaces & Security ---
     ConsolePreset {
         category: "Kibana Spaces & Security",
@@ -619,6 +1840,41 @@ const PRESETS: &[ConsolePreset] = &[
         path: "/api/security/logged_in_user",
         body: None,
         description: "Get detailed information about the currently logged-in Kibana user profile.",
+        use_kibana: true,
+    },
+    ConsolePreset {
+        category: "Kibana Spaces & Security",
+        name: "Get Space",
+        method: "GET",
+        path: "/api/spaces/space/{{space_id}}",
+        body: None,
+        description: "Retrieve one Kibana space.",
+        use_kibana: true,
+    },
+    ConsolePreset {
+        category: "Kibana Spaces & Security",
+        name: "Delete Space",
+        method: "DELETE",
+        path: "/api/spaces/space/{{space_id}}",
+        body: None,
+        description: "Delete a Kibana space and all of the saved objects in it. Danger: non-reversible!",
+        use_kibana: true,
+    },
+    ConsolePreset {
+        category: "Kibana Spaces & Security",
+        name: "Copy Objects to Space",
+        method: "POST",
+        path: "/api/spaces/_copy_saved_objects",
+        body: Some(
+            r#"{
+  "objects": [
+    { "type": "dashboard", "id": "my-dashboard" }
+  ],
+  "spaces": ["{{space_id}}"],
+  "includeReferences": true
+}"#,
+        ),
+        description: "Copy saved objects and the objects they reference into another space.",
         use_kibana: true,
     },
     // --- Kibana Saved Objects ---
@@ -682,7 +1938,169 @@ const PRESETS: &[ConsolePreset] = &[
         description: "List all loaded features, applications, and licensing privileges currently active in Kibana.",
         use_kibana: true,
     },
+    // --- Kibana Alerting & Connectors ---
+    ConsolePreset {
+        category: "Kibana Alerting & Connectors",
+        name: "Alerting Health",
+        method: "GET",
+        path: "/api/alerting/_health",
+        body: None,
+        description: "Check whether the alerting framework is healthy and has its prerequisites in place.",
+        use_kibana: true,
+    },
+    ConsolePreset {
+        category: "Kibana Alerting & Connectors",
+        name: "Task Manager Health",
+        method: "GET",
+        path: "/api/task_manager/_health",
+        body: None,
+        description: "Show task manager throughput, backlog, and capacity. Useful when rules run late.",
+        use_kibana: true,
+    },
+    ConsolePreset {
+        category: "Kibana Alerting & Connectors",
+        name: "List Rule Types",
+        method: "GET",
+        path: "/api/alerting/rule_types",
+        body: None,
+        description: "List the alerting rule types available in this Kibana.",
+        use_kibana: true,
+    },
+    ConsolePreset {
+        category: "Kibana Alerting & Connectors",
+        name: "Find Alerting Rules",
+        method: "GET",
+        path: "/api/alerting/rules/_find?per_page=100",
+        body: None,
+        description: "List alerting rules with their schedule and last run status.",
+        use_kibana: true,
+    },
+    ConsolePreset {
+        category: "Kibana Alerting & Connectors",
+        name: "Get Alerting Rule",
+        method: "GET",
+        path: "/api/alerting/rule/{{rule_id}}",
+        body: None,
+        description: "Retrieve one alerting rule.",
+        use_kibana: true,
+    },
+    ConsolePreset {
+        category: "Kibana Alerting & Connectors",
+        name: "Enable Alerting Rule",
+        method: "POST",
+        path: "/api/alerting/rule/{{rule_id}}/_enable",
+        body: None,
+        description: "Enable an alerting rule.",
+        use_kibana: true,
+    },
+    ConsolePreset {
+        category: "Kibana Alerting & Connectors",
+        name: "Disable Alerting Rule",
+        method: "POST",
+        path: "/api/alerting/rule/{{rule_id}}/_disable",
+        body: None,
+        description: "Disable an alerting rule.",
+        use_kibana: true,
+    },
+    ConsolePreset {
+        category: "Kibana Alerting & Connectors",
+        name: "Delete Alerting Rule",
+        method: "DELETE",
+        path: "/api/alerting/rule/{{rule_id}}",
+        body: None,
+        description: "Delete an alerting rule.",
+        use_kibana: true,
+    },
+    ConsolePreset {
+        category: "Kibana Alerting & Connectors",
+        name: "List Connectors",
+        method: "GET",
+        path: "/api/actions/connectors",
+        body: None,
+        description: "List the connectors in the current space.",
+        use_kibana: true,
+    },
+    ConsolePreset {
+        category: "Kibana Alerting & Connectors",
+        name: "List Connector Types",
+        method: "GET",
+        path: "/api/actions/connector_types",
+        body: None,
+        description: "List the connector types and whether each is enabled and licensed.",
+        use_kibana: true,
+    },
+    // --- Kibana Cases, SLOs & Security ---
+    ConsolePreset {
+        category: "Kibana Cases, SLOs & Security",
+        name: "Search Cases",
+        method: "GET",
+        path: "/api/cases/_find?perPage=100",
+        body: None,
+        description: "List cases in the current space.",
+        use_kibana: true,
+    },
+    ConsolePreset {
+        category: "Kibana Cases, SLOs & Security",
+        name: "Create Case",
+        method: "POST",
+        path: "/api/cases",
+        body: Some(
+            r#"{
+  "title": "My case",
+  "description": "Created from Drastic Smurf",
+  "owner": "cases",
+  "tags": [],
+  "settings": {
+    "syncAlerts": false
+  },
+  "connector": {
+    "id": "none",
+    "name": "none",
+    "type": ".none",
+    "fields": null
+  }
+}"#,
+        ),
+        description: "Create a case with no external connector.",
+        use_kibana: true,
+    },
+    ConsolePreset {
+        category: "Kibana Cases, SLOs & Security",
+        name: "List SLOs",
+        method: "GET",
+        path: "/s/{{space_id}}/api/observability/slos?perPage=100",
+        body: None,
+        description: "List service level objectives in a space. Use default for the default space.",
+        use_kibana: true,
+    },
+    ConsolePreset {
+        category: "Kibana Cases, SLOs & Security",
+        name: "Find Detection Rules",
+        method: "GET",
+        path: "/api/detection_engine/rules/_find?per_page=100",
+        body: None,
+        description: "List Elastic Security detection rules.",
+        use_kibana: true,
+    },
+    ConsolePreset {
+        category: "Kibana Cases, SLOs & Security",
+        name: "List Synthetic Monitors",
+        method: "GET",
+        path: "/api/synthetics/monitors?per_page=100",
+        body: None,
+        description: "List Synthetics monitors and their configuration.",
+        use_kibana: true,
+    },
 ];
+
+/// Case-insensitive title match. Every whitespace-separated word in the filter must appear.
+pub fn preset_matches_filter(name: &str, filter: &str) -> bool {
+    let name = name.to_lowercase();
+    filter
+        .to_lowercase()
+        .split_whitespace()
+        .all(|word| name.contains(word))
+}
 
 pub fn interpolate_variables(input: &str, variables: &[(String, String)]) -> String {
     let mut output = input.to_string();
@@ -763,6 +2181,27 @@ pub fn render_console_module(
                     ui.separator();
                     ui.add_space(8.0);
 
+                    // Preset filter stays above the scroll area so it remains visible
+                    if state.active_tab == ConsoleTab::Presets {
+                        ui.horizontal(|ui| {
+                            let clear_width = 24.0;
+                            ui.add(
+                                egui::TextEdit::singleline(&mut state.preset_filter)
+                                    .hint_text("🔍 Filter commands by title...")
+                                    .desired_width(ui.available_width() - clear_width - ui.spacing().item_spacing.x)
+                            );
+                            let has_filter = !state.preset_filter.is_empty();
+                            let clear_btn = ui.add_enabled(
+                                has_filter,
+                                egui::Button::new("✖").min_size(egui::vec2(clear_width, 0.0)),
+                            );
+                            if clear_btn.clicked() {
+                                state.preset_filter.clear();
+                            }
+                        });
+                        ui.add_space(6.0);
+                    }
+
                     // Scrollable Tab Content
                     let scroll_height = (ui.available_height() - 4.0).max(100.0);
                     egui::ScrollArea::vertical()
@@ -781,57 +2220,84 @@ pub fn render_console_module(
                                     ui.separator();
                                     ui.add_space(4.0);
 
-                                    let mut current_cat = "";
-                                    for preset in PRESETS {
-                                        if preset.category != current_cat {
-                                            current_cat = preset.category;
-                                            ui.add_space(8.0);
-                                            ui.label(
-                                                egui::RichText::new(current_cat)
-                                                    .strong()
-                                                    .color(crate::ui::theme::Theme::text_secondary())
-                                                    .size(12.0),
-                                            );
-                                            ui.add_space(4.0);
+                                    let filter_active = !state.preset_filter.trim().is_empty();
+                                    let mut any_match = false;
+                                    for group in PRESETS.chunk_by(|a, b| a.category == b.category) {
+                                        let matches: Vec<&ConsolePreset> = group
+                                            .iter()
+                                            .filter(|p| preset_matches_filter(p.name, &state.preset_filter))
+                                            .collect();
+                                        if matches.is_empty() {
+                                            continue;
                                         }
+                                        any_match = true;
 
-                                        let btn_label = if preset.use_kibana {
-                                            format!("🎨 {}", preset.name)
-                                        } else {
-                                            preset.name.to_string()
-                                        };
-
-                                        let btn = ui.add(
-                                            egui::Button::new(btn_label)
-                                                .fill(crate::ui::theme::Theme::bg_input())
+                                        let category = group[0].category;
+                                        let header = egui::CollapsingHeader::new(
+                                            egui::RichText::new(format!("{} ({})", category, matches.len()))
+                                                .strong()
+                                                .color(crate::ui::theme::Theme::text_secondary())
+                                                .size(12.0),
                                         );
-                                        if btn.clicked() {
-                                            state.method = preset.method.to_string();
-                                            state.path = preset.path.to_string();
-                                            state.body = preset.body.map(|b| b.to_string()).unwrap_or_default();
-                                            state.use_kibana_host = preset.use_kibana;
-                                            state.history_index = None;
-                                        }
-                                        btn.on_hover_ui(|ui| {
-                                            ui.set_max_width(220.0);
-                                            let prefix = if preset.use_kibana { "🎨 Kibana API" } else { "🔌 Elasticsearch API" };
-                                            ui.label(
-                                                egui::RichText::new(prefix)
-                                                    .small()
-                                                    .color(crate::ui::theme::Theme::text_muted()),
-                                            );
-                                            ui.label(
-                                                egui::RichText::new(format!("{} {}", preset.method, preset.path))
-                                                    .strong()
-                                                    .color(crate::ui::theme::Theme::accent()),
-                                            );
-                                            ui.label(
-                                                egui::RichText::new(preset.description)
-                                                    .size(11.0)
-                                                    .color(crate::ui::theme::Theme::text_primary()),
-                                            );
+                                        // Filtering forces sections open under a separate id, so clearing
+                                        // the filter restores whatever the user had expanded.
+                                        let header = if filter_active {
+                                            header
+                                                .id_salt(("console_preset_filtered", category))
+                                                .default_open(true)
+                                                .open(Some(true))
+                                        } else {
+                                            header.id_salt(("console_preset", category)).default_open(false)
+                                        };
+                                        header.show(ui, |ui| {
+                                            for preset in matches {
+                                                let btn_label = if preset.use_kibana {
+                                                    format!("🎨 {}", preset.name)
+                                                } else {
+                                                    preset.name.to_string()
+                                                };
+
+                                                let btn = ui.add(
+                                                    egui::Button::new(btn_label)
+                                                        .fill(crate::ui::theme::Theme::bg_input())
+                                                );
+                                                if btn.clicked() {
+                                                    state.method = preset.method.to_string();
+                                                    state.path = preset.path.to_string();
+                                                    state.body = preset.body.map(|b| b.to_string()).unwrap_or_default();
+                                                    state.use_kibana_host = preset.use_kibana;
+                                                    state.history_index = None;
+                                                }
+                                                btn.on_hover_ui(|ui| {
+                                                    ui.set_max_width(220.0);
+                                                    let prefix = if preset.use_kibana { "🎨 Kibana API" } else { "🔌 Elasticsearch API" };
+                                                    ui.label(
+                                                        egui::RichText::new(prefix)
+                                                            .small()
+                                                            .color(crate::ui::theme::Theme::text_muted()),
+                                                    );
+                                                    ui.label(
+                                                        egui::RichText::new(format!("{} {}", preset.method, preset.path))
+                                                            .strong()
+                                                            .color(crate::ui::theme::Theme::accent()),
+                                                    );
+                                                    ui.label(
+                                                        egui::RichText::new(preset.description)
+                                                            .size(11.0)
+                                                            .color(crate::ui::theme::Theme::text_primary()),
+                                                    );
+                                                });
+                                                ui.add_space(3.0);
+                                            }
                                         });
-                                        ui.add_space(3.0);
+                                    }
+
+                                    if !any_match {
+                                        ui.label(
+                                            egui::RichText::new("No commands match this filter.")
+                                                .color(crate::ui::theme::Theme::text_muted())
+                                                .size(11.0),
+                                        );
                                     }
                                 }
                                 ConsoleTab::Variables => {
@@ -1008,7 +2474,7 @@ pub fn render_console_module(
                         egui::ComboBox::from_id_salt("console_method")
                             .selected_text(egui::RichText::new(&state.method).color(method_color).strong())
                             .show_ui(ui, |ui| {
-                                for m in ["GET", "POST", "PUT", "DELETE", "HEAD"] {
+                                for &m in CONSOLE_METHODS {
                                     let color = match m {
                                         "GET" => crate::ui::theme::Theme::success(),
                                         "POST" => crate::ui::theme::Theme::warning(),
@@ -1409,5 +2875,175 @@ mod tests {
         assert!(res.contains("\"shards\": {{shards}}"));
         assert!(res.contains("\"val\": \"{{my_val}}\""));
         assert!(!res.contains("// Some comment"));
+    }
+
+    #[test]
+    fn test_preset_matches_filter() {
+        assert!(preset_matches_filter("Create Agent Policy", ""));
+        assert!(preset_matches_filter("Create Agent Policy", "   "));
+        assert!(preset_matches_filter("Create Agent Policy", "agent"));
+        assert!(preset_matches_filter("Create Agent Policy", "AGENT policy"));
+        assert!(preset_matches_filter(
+            "Create Agent Policy",
+            "policy create"
+        ));
+        assert!(!preset_matches_filter("Create Agent Policy", "delete"));
+        assert!(!preset_matches_filter(
+            "Create Agent Policy",
+            "agent delete"
+        ));
+    }
+
+    #[test]
+    fn test_preset_bodies_are_valid_json() {
+        for preset in PRESETS {
+            if let Some(body) = preset.body {
+                assert!(
+                    serde_json::from_str::<serde_json::Value>(body).is_ok(),
+                    "invalid JSON body in preset '{}'",
+                    preset.name
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_preset_methods_can_be_sent() {
+        for preset in PRESETS {
+            assert!(
+                CONSOLE_METHODS.contains(&preset.method),
+                "preset '{}' uses unsupported method {}",
+                preset.name,
+                preset.method
+            );
+        }
+    }
+
+    #[test]
+    fn test_preset_categories_are_contiguous_and_names_unique() {
+        // A split category would render two collapsing headers with the same id.
+        let mut seen = std::collections::HashSet::new();
+        for group in PRESETS.chunk_by(|a, b| a.category == b.category) {
+            assert!(
+                seen.insert(group[0].category),
+                "category '{}' is split",
+                group[0].category
+            );
+        }
+
+        let mut names = std::collections::HashSet::new();
+        for preset in PRESETS {
+            assert!(
+                names.insert(preset.name),
+                "duplicate preset name '{}'",
+                preset.name
+            );
+        }
+    }
+
+    fn collect_text(shape: &egui::Shape, out: &mut Vec<(String, egui::Rect)>) {
+        match shape {
+            egui::Shape::Vec(shapes) => shapes.iter().for_each(|s| collect_text(s, out)),
+            egui::Shape::Text(text) => {
+                let rect = egui::Rect::from_min_size(text.pos, text.galley.size());
+                out.push((text.galley.text().to_string(), rect));
+            }
+            _ => {}
+        }
+    }
+
+    /// Renders the console headlessly and returns the painted text with its position.
+    fn render_presets(ctx: &egui::Context, state: &mut ConsoleState) -> Vec<(String, egui::Rect)> {
+        let clusters = vec!["test".to_string()];
+        let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1400.0, 4000.0));
+        let mut text = Vec::new();
+        for _ in 0..3 {
+            let input = egui::RawInput {
+                screen_rect: Some(screen),
+                ..Default::default()
+            };
+            let output = ctx.run(input, |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    render_console_module(ui, state, &clusters, &mut None, &mut None, &mut None);
+                });
+            });
+            text.clear();
+            output
+                .shapes
+                .iter()
+                .for_each(|s| collect_text(&s.shape, &mut text));
+        }
+        text
+    }
+
+    fn has_text(text: &[(String, egui::Rect)], wanted: &str) -> bool {
+        text.iter().any(|(t, _)| t.contains(wanted))
+    }
+
+    #[test]
+    fn test_preset_sections_collapsed_until_filtered() {
+        let ctx = egui::Context::default();
+        let mut state = ConsoleState::new();
+        state.selected_cluster = "test".to_string();
+
+        let text = render_presets(&ctx, &mut state);
+        assert!(has_text(&text, "Fleet: Agent Policies (7)"));
+        assert!(
+            !has_text(&text, "Create Agent Policy"),
+            "sections must start collapsed"
+        );
+
+        state.preset_filter = "create agent".to_string();
+        let text = render_presets(&ctx, &mut state);
+        assert!(has_text(&text, "Fleet: Agent Policies (1)"));
+        assert!(
+            has_text(&text, "Create Agent Policy"),
+            "matching sections must open"
+        );
+        assert!(!has_text(&text, "Delete Agent Policy"));
+        assert!(
+            !has_text(&text, "Cluster Status & Info"),
+            "empty sections must be hidden"
+        );
+
+        state.preset_filter = "no such command".to_string();
+        let text = render_presets(&ctx, &mut state);
+        assert!(has_text(&text, "No commands match this filter."));
+
+        state.preset_filter.clear();
+        let text = render_presets(&ctx, &mut state);
+        assert!(has_text(&text, "Fleet: Agent Policies (7)"));
+        assert!(
+            !has_text(&text, "Create Agent Policy"),
+            "clearing the filter must re-collapse"
+        );
+    }
+
+    #[test]
+    fn test_preset_titles_fit_workspace_panel() {
+        let ctx = egui::Context::default();
+        let mut state = ConsoleState::new();
+        state.selected_cluster = "test".to_string();
+
+        for preset in PRESETS {
+            state.preset_filter = preset.name.to_string();
+            let text = render_presets(&ctx, &mut state);
+            let left = text
+                .iter()
+                .find(|(t, _)| t == "WORKSPACE")
+                .map(|(_, r)| r.left())
+                .expect("workspace title should render");
+            for wanted in [preset.name, preset.category] {
+                let (_, rect) = text
+                    .iter()
+                    .find(|(t, _)| t.contains(wanted))
+                    .unwrap_or_else(|| panic!("'{wanted}' should render"));
+                assert!(
+                    rect.right() <= left + 280.0,
+                    "'{wanted}' is {:.0}px wide and overflows the panel",
+                    rect.width()
+                );
+            }
+        }
     }
 }

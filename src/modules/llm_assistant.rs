@@ -10,9 +10,7 @@
 use std::sync::mpsc::{Receiver, Sender, channel};
 
 use crate::core::auth;
-use crate::core::config::{
-    self, ChatConversation, ChatMessage, LlmProviderPreset, LlmSettings,
-};
+use crate::core::config::{self, ChatConversation, ChatMessage, LlmProviderPreset, LlmSettings};
 use crate::core::llm::{self, ChatMessage as LlmMessage};
 use crate::ui::theme::Theme;
 use eframe::egui;
@@ -336,7 +334,10 @@ fn render_chat(
         }
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if let Some(conv) = state.active_conversation()
-                && ui.button("🗑").on_hover_text("Delete this conversation").clicked()
+                && ui
+                    .button("🗑")
+                    .on_hover_text("Delete this conversation")
+                    .clicked()
             {
                 *on_delete_conversation = Some(conv.id.clone());
             }
@@ -428,8 +429,12 @@ fn render_chat(
         let send_btn = ui.add_enabled(
             !state.is_streaming && !state.draft.trim().is_empty(),
             egui::Button::new(
-                egui::RichText::new(if state.is_streaming { "⏳ Streaming..." } else { "📤 Send" })
-                    .color(Theme::contrast_text_color(Theme::accent())),
+                egui::RichText::new(if state.is_streaming {
+                    "⏳ Streaming..."
+                } else {
+                    "📤 Send"
+                })
+                .color(Theme::contrast_text_color(Theme::accent())),
             )
             .fill(Theme::accent()),
         );
@@ -574,8 +579,7 @@ pub fn render_settings_section(
         if ui
             .add(
                 egui::Button::new(
-                    egui::RichText::new("Save")
-                        .color(Theme::contrast_text_color(Theme::accent())),
+                    egui::RichText::new("Save").color(Theme::contrast_text_color(Theme::accent())),
                 )
                 .fill(Theme::accent())
                 .min_size(egui::Vec2::new(80.0, 22.0)),
@@ -610,15 +614,13 @@ pub fn render_settings_section(
     // Auto-fetch when the base URL settles, when the API key is saved,
     // when the provider changes, or on first visit to the Settings panel
     // while we have a URL configured.
-    let url_changed_since_last_fetch =
-        state.settings.base_url != state.models_for_base_url;
+    let url_changed_since_last_fetch = state.settings.base_url != state.models_for_base_url;
     let should_auto_fetch = !state.settings.base_url.trim().is_empty()
         && state.models_rx.is_none()
         && (api_key_just_saved
             || (base_url_changed_committed && url_changed_since_last_fetch)
             || provider_changed
-            || (matches!(state.models_status, ModelsStatus::Idle)
-                && url_changed_since_last_fetch));
+            || (matches!(state.models_status, ModelsStatus::Idle) && url_changed_since_last_fetch));
     if should_auto_fetch {
         start_models_fetch(state);
     }
@@ -731,10 +733,7 @@ pub fn render_settings_section(
     ui.horizontal(|ui| {
         ui.label("Max context chars:");
         if ui
-            .add(
-                egui::DragValue::new(&mut state.settings.max_context_chars)
-                    .range(500..=20000),
-            )
+            .add(egui::DragValue::new(&mut state.settings.max_context_chars).range(500..=20000))
             .changed()
         {
             state.last_saved_at = Some(chrono::Utc::now());
@@ -804,15 +803,17 @@ fn render_action_card(
             );
             ui.add_space(2.0);
             ui.horizontal(|ui| {
-                ui.label(egui::RichText::new("Cluster:").size(11.0).color(Theme::text_muted()));
                 ui.label(
-                    egui::RichText::new(
-                        if action.cluster.is_empty() {
-                            "(default)"
-                        } else {
-                            action.cluster.as_str()
-                        },
-                    )
+                    egui::RichText::new("Cluster:")
+                        .size(11.0)
+                        .color(Theme::text_muted()),
+                );
+                ui.label(
+                    egui::RichText::new(if action.cluster.is_empty() {
+                        "(default)"
+                    } else {
+                        action.cluster.as_str()
+                    })
                     .strong()
                     .size(11.0),
                 );
@@ -860,9 +861,12 @@ fn render_action_card(
                     && !available_clusters.contains(&action.cluster)
                 {
                     ui.label(
-                        egui::RichText::new(format!("⚠ cluster '{}' not configured", action.cluster))
-                            .color(Theme::danger())
-                            .size(10.0),
+                        egui::RichText::new(format!(
+                            "⚠ cluster '{}' not configured",
+                            action.cluster
+                        ))
+                        .color(Theme::danger())
+                        .size(10.0),
                     );
                 }
             });
@@ -908,8 +912,7 @@ fn drain_stream(state: &mut AssistantState, ctx: &egui::Context) {
             }
             Err(std::sync::mpsc::TryRecvError::Disconnected) => {
                 state.is_streaming = false;
-                state.last_error =
-                    Some("Stream connection closed unexpectedly".to_string());
+                state.last_error = Some("Stream connection closed unexpectedly".to_string());
                 ctx.request_repaint();
                 return;
             }
@@ -1082,10 +1085,7 @@ pub fn spawn_stream(
 }
 
 /// Spawn an async fetch of the provider's `/models` listing.
-pub fn spawn_models_fetch(
-    settings: LlmSettings,
-    api_key: Option<String>,
-) -> Receiver<ModelsMsg> {
+pub fn spawn_models_fetch(settings: LlmSettings, api_key: Option<String>) -> Receiver<ModelsMsg> {
     let (tx, rx): (Sender<ModelsMsg>, Receiver<ModelsMsg>) = channel();
     tokio::spawn(async move {
         let client = reqwest::Client::builder()
@@ -1453,14 +1453,7 @@ mod tests {
     #[test]
     fn cluster_context_truncates_long_output() {
         let long_version = "8.10.0".repeat(20);
-        let ctx = build_cluster_context(
-            Some("big"),
-            None,
-            None,
-            Some(&long_version),
-            None,
-            40,
-        );
+        let ctx = build_cluster_context(Some("big"), None, None, Some(&long_version), None, 40);
         assert!(ctx.summary.len() <= 80);
         assert!(ctx.summary.contains("Cluster: big"));
         assert!(ctx.summary.contains("...[context truncated]..."));
@@ -1597,7 +1590,11 @@ curl -X POST 'http://localhost:9200/_refresh'
     fn ignores_prose_lines_starting_with_uppercase() {
         let text = "GET requests are how we read docs.";
         let actions = parse_console_actions(text);
-        assert!(actions.is_empty(), "prose should not be parsed: {:?}", actions);
+        assert!(
+            actions.is_empty(),
+            "prose should not be parsed: {:?}",
+            actions
+        );
     }
 
     #[test]
@@ -1606,10 +1603,7 @@ curl -X POST 'http://localhost:9200/_refresh'
             strip_url_to_path("https://elastic.example.com:9200/_cat/indices"),
             "/_cat/indices"
         );
-        assert_eq!(
-            strip_url_to_path("http://localhost:9200"),
-            "/"
-        );
+        assert_eq!(strip_url_to_path("http://localhost:9200"), "/");
         assert_eq!(strip_url_to_path("/relative"), "/relative");
     }
 

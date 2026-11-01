@@ -239,7 +239,9 @@ pub fn default_llm_providers() -> Vec<LlmProviderPreset> {
             id: "azure_openai".to_string(),
             label: "Azure OpenAI".to_string(),
             kind: LlmProviderKind::OpenAiCompatible,
-            default_base_url: "https://YOUR_RESOURCE.openai.azure.com/openai/deployments/YOUR_DEPLOYMENT".to_string(),
+            default_base_url:
+                "https://YOUR_RESOURCE.openai.azure.com/openai/deployments/YOUR_DEPLOYMENT"
+                    .to_string(),
             default_model: "gpt-4o".to_string(),
             models: vec![
                 "gpt-4o".to_string(),

@@ -888,12 +888,11 @@ pub fn filterable_select(
         selected.clone()
     };
 
-    let button_text = egui::RichText::new(format!("▾ {}", display))
-        .color(if selected.is_empty() {
-            Theme::text_muted()
-        } else {
-            Theme::text_primary()
-        });
+    let button_text = egui::RichText::new(format!("▾ {}", display)).color(if selected.is_empty() {
+        Theme::text_muted()
+    } else {
+        Theme::text_primary()
+    });
 
     let button = egui::Button::new(button_text)
         .fill(Theme::bg_input())
@@ -943,10 +942,7 @@ pub fn filterable_select(
                     } else {
                         for opt in visible {
                             let is_sel = opt == selected;
-                            if ui
-                                .selectable_label(is_sel, opt)
-                                .clicked()
-                            {
+                            if ui.selectable_label(is_sel, opt).clicked() {
                                 *selected = opt.clone();
                                 filter.clear();
                                 changed = true;

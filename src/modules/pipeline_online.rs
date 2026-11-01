@@ -281,11 +281,7 @@ pub fn render_online_pipeline_module(
         if state.indices_loading && target_list.is_empty() {
             // Animated spinner while initial targets are loading. We request a
             // continuous repaint below so the spinner keeps animating.
-            let _ = ui.add(
-                egui::Spinner::new()
-                    .color(Theme::info())
-                    .size(16.0),
-            );
+            let _ = ui.add(egui::Spinner::new().color(Theme::info()).size(16.0));
             ui.label(
                 egui::RichText::new(format!(
                     "Loading {}...",
@@ -316,11 +312,9 @@ pub fn render_online_pipeline_module(
         if ui
             .add_enabled(
                 !state.selected_cluster.is_empty() && !state.indices_loading,
-                egui::Button::new(
-                    egui::RichText::new("🔄").color(Theme::text_primary()),
-                )
-                .fill(Theme::bg_input())
-                .stroke(egui::Stroke::new(1.0, Theme::border())),
+                egui::Button::new(egui::RichText::new("🔄").color(Theme::text_primary()))
+                    .fill(Theme::bg_input())
+                    .stroke(egui::Stroke::new(1.0, Theme::border())),
             )
             .on_hover_text("Re-fetch indices / data streams from the cluster")
             .clicked()
@@ -446,8 +440,7 @@ pub fn render_online_pipeline_module(
             .show(ui.ctx(), |ui| {
                 if presets.is_empty() {
                     ui.label(
-                        egui::RichText::new("No saved presets yet.")
-                            .color(Theme::text_muted()),
+                        egui::RichText::new("No saved presets yet.").color(Theme::text_muted()),
                     );
                 } else {
                     egui::ScrollArea::vertical()
@@ -538,8 +531,16 @@ fn render_pipeline_column(
             ui.add_space(4.0);
 
             ui.horizontal(|ui| {
-                ui.radio_value(&mut state.pipeline_mode, PipelineMode::Default, "Default (use stored pipeline)");
-                ui.radio_value(&mut state.pipeline_mode, PipelineMode::Loaded, "Loaded (substitute)");
+                ui.radio_value(
+                    &mut state.pipeline_mode,
+                    PipelineMode::Default,
+                    "Default (use stored pipeline)",
+                );
+                ui.radio_value(
+                    &mut state.pipeline_mode,
+                    PipelineMode::Loaded,
+                    "Loaded (substitute)",
+                );
             });
 
             if state.pipeline_mode == PipelineMode::Loaded {
@@ -578,7 +579,9 @@ fn render_pipeline_column(
                     egui::TextEdit::multiline(&mut state.pipeline_text)
                         .font(egui::TextStyle::Monospace)
                         .code_editor()
-                        .hint_text("Pipeline definition JSON (used as a request-scoped substitution)")
+                        .hint_text(
+                            "Pipeline definition JSON (used as a request-scoped substitution)",
+                        )
                         .desired_rows(10)
                         .desired_width(ui.available_width())
                         .layouter(&mut |ui, text, wrap_width| {
@@ -669,10 +672,7 @@ fn render_documents_column(
                     .strong(),
                 )
                 .fill(success_color);
-                if ui
-                    .add_sized([ui.available_width(), 32.0], btn)
-                    .clicked()
-                {
+                if ui.add_sized([ui.available_width(), 32.0], btn).clicked() {
                     on_action.push(OnlineAction::Simulate {
                         cluster: state.selected_cluster.clone(),
                         target: state.target_name.clone(),
@@ -732,8 +732,7 @@ fn render_result_column(ui: &mut Ui, state: &mut OnlinePipelineState) {
                                 crate::ui::widgets::json_layouter(ui, t, wrap_width)
                             }),
                     );
-                    if resp.lost_focus() || resp.ctx.input(|i| i.key_pressed(egui::Key::Escape))
-                    {
+                    if resp.lost_focus() || resp.ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
                         // No-op: keeps text in sync but doesn't capture keys.
                     }
                     state.result_text = text;
@@ -748,13 +747,8 @@ mod tests {
 
     #[test]
     fn build_body_default_mode() {
-        let body = build_simulate_body(
-            r#"[{"_source":{"a":1}}]"#,
-            &PipelineMode::Default,
-            "",
-            "",
-        )
-        .unwrap();
+        let body = build_simulate_body(r#"[{"_source":{"a":1}}]"#, &PipelineMode::Default, "", "")
+            .unwrap();
         assert_eq!(
             body,
             json!({
@@ -789,12 +783,7 @@ mod tests {
 
     #[test]
     fn build_body_loaded_mode_requires_id() {
-        let res = build_simulate_body(
-            r#"[{"_source":{}}]"#,
-            &PipelineMode::Loaded,
-            "",
-            "{}",
-        );
+        let res = build_simulate_body(r#"[{"_source":{}}]"#, &PipelineMode::Loaded, "", "{}");
         assert!(res.is_err());
     }
 

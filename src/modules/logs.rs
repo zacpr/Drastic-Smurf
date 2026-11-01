@@ -1,9 +1,9 @@
 //! Logs tab: query ECS-style `logs-*` indices on a selected cluster,
 //! filter by app/service, hostname, severity and free-text query.
 
-use egui::{Color32, Ui};
 use crate::core::es_client::{LogEntry, LogFieldNames, LogFilters};
 use crate::ui::theme::Theme;
+use egui::{Color32, Ui};
 
 #[derive(Debug, Clone)]
 pub struct LogsState {
@@ -47,11 +47,23 @@ impl LogsState {
         let mut state = Self::default();
         state.index_pattern = settings.index_pattern.clone();
         state.limit = settings.limit;
-        state.field_names.timestamp.clone_from(&settings.timestamp_field);
-        state.field_names.message.clone_from(&settings.message_field);
+        state
+            .field_names
+            .timestamp
+            .clone_from(&settings.timestamp_field);
+        state
+            .field_names
+            .message
+            .clone_from(&settings.message_field);
         state.field_names.app.clone_from(&settings.app_field);
-        state.field_names.hostname.clone_from(&settings.hostname_field);
-        state.field_names.severity.clone_from(&settings.severity_field);
+        state
+            .field_names
+            .hostname
+            .clone_from(&settings.hostname_field);
+        state
+            .field_names
+            .severity
+            .clone_from(&settings.severity_field);
         state
     }
 
@@ -85,7 +97,11 @@ pub fn render_logs_module(
     }
 
     ui.horizontal(|ui| {
-        ui.heading(egui::RichText::new("Logs").color(Theme::accent()).size(16.0));
+        ui.heading(
+            egui::RichText::new("Logs")
+                .color(Theme::accent())
+                .size(16.0),
+        );
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if ui
                 .selectable_label(state.show_settings, "⚙ Settings")
@@ -155,7 +171,11 @@ pub fn render_logs_module(
                 });
                 ui.horizontal(|ui| {
                     ui.label("Page size:");
-                    ui.add(egui::DragValue::new(&mut state.limit).range(10..=10000).speed(10));
+                    ui.add(
+                        egui::DragValue::new(&mut state.limit)
+                            .range(10..=10000)
+                            .speed(10),
+                    );
                 });
 
                 if ui.button("Reset to ECS defaults").clicked() {
@@ -180,14 +200,10 @@ pub fn render_logs_module(
         .show(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.label("App:");
-                ui.add(
-                    egui::TextEdit::singleline(&mut state.filters.app)
-                        .desired_width(120.0),
-                );
+                ui.add(egui::TextEdit::singleline(&mut state.filters.app).desired_width(120.0));
                 ui.label("Hostname:");
                 ui.add(
-                    egui::TextEdit::singleline(&mut state.filters.hostname)
-                        .desired_width(140.0),
+                    egui::TextEdit::singleline(&mut state.filters.hostname).desired_width(140.0),
                 );
                 ui.label("Severity:");
                 ui.add(
@@ -271,7 +287,11 @@ fn render_log_row(
             ui.horizontal(|ui| {
                 let btn_text = if is_expanded { "▼" } else { "▶" };
                 if ui.button(btn_text).clicked() {
-                    new_expanded_id = if is_expanded { None } else { Some(row_id.clone()) };
+                    new_expanded_id = if is_expanded {
+                        None
+                    } else {
+                        Some(row_id.clone())
+                    };
                 }
 
                 // Timestamp
@@ -292,7 +312,10 @@ fn render_log_row(
                     "info" => ("INF", Theme::success()),
                     "debug" => ("DBG", Theme::text_muted()),
                     "trace" => ("TRC", Theme::text_muted()),
-                    _ => (entry.severity.as_deref().unwrap_or("?"), Theme::text_secondary()),
+                    _ => (
+                        entry.severity.as_deref().unwrap_or("?"),
+                        Theme::text_secondary(),
+                    ),
                 };
                 egui::Frame::new()
                     .fill(badge_color)
@@ -323,7 +346,11 @@ fn render_log_row(
 
                 // Message
                 let msg = entry.message.as_deref().unwrap_or("(no message)");
-                let msg_short = if msg.len() > 120 { format!("{}…", &msg[..120]) } else { msg.to_string() };
+                let msg_short = if msg.len() > 120 {
+                    format!("{}…", &msg[..120])
+                } else {
+                    msg.to_string()
+                };
                 ui.label(
                     egui::RichText::new(msg_short)
                         .color(Theme::text_primary())

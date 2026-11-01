@@ -167,7 +167,11 @@ impl EsClient {
     ) -> Result<T, EsError> {
         tracing::info!("[{}] {} {}", self.config.name, method, url);
 
-        let req = if let Some(t) = timeout { req.timeout(t) } else { req };
+        let req = if let Some(t) = timeout {
+            req.timeout(t)
+        } else {
+            req
+        };
 
         let start = std::time::Instant::now();
         let resp = req.send().await.map_err(|e| {
@@ -231,7 +235,11 @@ impl EsClient {
         })?;
 
         if !body.is_empty() {
-            tracing::debug!("[{}] Response body: {}", self.config.name, truncate(&body, 2000));
+            tracing::debug!(
+                "[{}] Response body: {}",
+                self.config.name,
+                truncate(&body, 2000)
+            );
         }
 
         serde_json::from_str(&body).map_err(|e| {
@@ -411,7 +419,9 @@ impl EsClient {
 
         let body_str = body.to_string();
         let (mut req, method, url) = self.request(reqwest::Method::POST, &path);
-        req = req.body(body_str).header("Content-Type", "application/json");
+        req = req
+            .body(body_str)
+            .header("Content-Type", "application/json");
 
         let value: serde_json::Value = self.exec(req, &method, &url).await?;
         let hits = value
@@ -477,6 +487,54 @@ impl EsClient {
     pub async fn get_data_streams(&self) -> Result<DataStreamResponse, EsError> {
         let (req, method, url) = self.request(reqwest::Method::GET, "/_data_stream");
         self.exec(req, &method, &url).await
+    }
+
+    pub async fn get_index_templates(&self) -> Result<Vec<IndexTemplateItem>, EsError> {
+        let (req, method, url) = self.request(reqwest::Method::GET, "/_index_template");
+        let resp: GetIndexTemplatesResponse = self.exec(req, &method, &url).await?;
+        Ok(resp.index_templates)
+    }
+
+    pub async fn get_component_templates(&self) -> Result<Vec<ComponentTemplateItem>, EsError> {
+        let (req, method, url) = self.request(reqwest::Method::GET, "/_component_template");
+        let resp: GetComponentTemplatesResponse = self.exec(req, &method, &url).await?;
+        Ok(resp.component_templates)
+    }
+
+    pub async fn get_index_template(
+        &self,
+        name: &str,
+    ) -> Result<Option<IndexTemplateItem>, EsError> {
+        let path = format!("/_index_template/{}", name);
+        let (req, method, url) = self.request(reqwest::Method::GET, &path);
+        match self
+            .exec::<GetIndexTemplatesResponse>(req, &method, &url)
+            .await
+        {
+            Ok(resp) => Ok(resp.index_templates.into_iter().next()),
+            Err(EsError::Http { status, .. }) if status == reqwest::StatusCode::NOT_FOUND => {
+                Ok(None)
+            }
+            Err(e) => Err(e),
+        }
+    }
+
+    pub async fn get_component_template(
+        &self,
+        name: &str,
+    ) -> Result<Option<ComponentTemplateItem>, EsError> {
+        let path = format!("/_component_template/{}", name);
+        let (req, method, url) = self.request(reqwest::Method::GET, &path);
+        match self
+            .exec::<GetComponentTemplatesResponse>(req, &method, &url)
+            .await
+        {
+            Ok(resp) => Ok(resp.component_templates.into_iter().next()),
+            Err(EsError::Http { status, .. }) if status == reqwest::StatusCode::NOT_FOUND => {
+                Ok(None)
+            }
+            Err(e) => Err(e),
+        }
     }
 
     pub async fn cat_allocation(&self) -> Result<Vec<CatAllocation>, EsError> {
@@ -1310,6 +1368,52 @@ pub struct TimestampField {
 pub struct DataStreamBackingIndex {
     pub index_name: String,
     pub index_uuid: String,
+}
+
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+pub struct GetIndexTemplatesResponse {
+    #[serde(default)]
+    pub index_templates: Vec<IndexTemplateItem>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+pub struct IndexTemplateItem {
+    pub name: String,
+    #[serde(default)]
+    pub index_template: IndexTemplateContent,
+}
+
+#[derive(Debug, Clone, Default, serde::Deserialize, serde::Serialize)]
+pub struct IndexTemplateContent {
+    #[serde(default)]
+    pub index_patterns: Vec<String>,
+    #[serde(default)]
+    pub composed_of: Vec<String>,
+    pub priority: Option<i64>,
+    pub version: Option<i64>,
+    pub _meta: Option<serde_json::Value>,
+    pub data_stream: Option<serde_json::Value>,
+    pub template: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+pub struct GetComponentTemplatesResponse {
+    #[serde(default)]
+    pub component_templates: Vec<ComponentTemplateItem>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+pub struct ComponentTemplateItem {
+    pub name: String,
+    #[serde(default)]
+    pub component_template: ComponentTemplateContent,
+}
+
+#[derive(Debug, Clone, Default, serde::Deserialize, serde::Serialize)]
+pub struct ComponentTemplateContent {
+    pub template: Option<serde_json::Value>,
+    pub version: Option<i64>,
+    pub _meta: Option<serde_json::Value>,
 }
 
 pub fn parse_allocation_explain(raw: &serde_json::Value) -> AllocationExplain {

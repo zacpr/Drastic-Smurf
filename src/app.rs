@@ -6,21 +6,20 @@ use std::time::Instant;
 use eframe::egui;
 
 use crate::core::cluster_manager::ClusterManager;
+use crate::core::config::ChatMessage;
 use crate::core::config::ClusterConfig;
 use crate::core::es_client::{ClusterHealth, EsClient, LogEntry, LogFieldNames, LogFilters};
-use serde_json::Value;
 use crate::modules::appearance::{AppearanceState, render_appearance_module};
 use crate::modules::clusters::{ClustersState, render_clusters_module};
 use crate::modules::console::{ConsoleState, render_console_module};
 use crate::modules::dashboard::{DashboardState, render_dashboard_module};
 use crate::modules::discover::{DiscoverState, render_discover_module};
 use crate::modules::indices::{IndicesState, render_indices_module};
-use crate::modules::logs::{LogsState, render_logs_module};
 use crate::modules::llm_assistant::{
-    self, AssistantState, ClusterContext, SendRequest, build_cluster_context,
-    build_llm_messages, spawn_stream,
+    self, AssistantState, ClusterContext, SendRequest, build_cluster_context, build_llm_messages,
+    spawn_stream,
 };
-use crate::core::config::ChatMessage;
+use crate::modules::logs::{LogsState, render_logs_module};
 use crate::modules::observability::{ObservabilityState, render_observability_module};
 use crate::modules::painless::{PainlessState, render_painless_module};
 use crate::modules::pipeline::{PipelineState, render_pipeline_module};
@@ -32,6 +31,7 @@ use crate::modules::tasks::{TasksState, render_tasks_module};
 use crate::ui::theme::Theme;
 use crate::ui::toasts::Toasts;
 use crate::ui::vfx;
+use serde_json::Value;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Tab {
@@ -73,6 +73,16 @@ pub enum RefreshMsg {
         String,
         Vec<crate::core::es_client::CatIndex>,
         Vec<crate::core::es_client::DataStream>,
+        Vec<crate::core::es_client::IndexTemplateItem>,
+        Vec<crate::core::es_client::ComponentTemplateItem>,
+    ),
+    IndexTemplateResult(
+        String,
+        Result<crate::core::es_client::IndexTemplateItem, String>,
+    ),
+    ComponentTemplateResult(
+        String,
+        Result<crate::core::es_client::ComponentTemplateItem, String>,
     ),
     IndicesError(String, String),
     ObservabilityResult(String, Vec<crate::modules::observability::SyntheticMonitor>),
@@ -169,7 +179,11 @@ pub struct DrasticSmurfApp {
     tray_quit_id: Option<tray_icon::menu::MenuId>,
 }
 
-fn load_tray_icon() -> Option<(tray_icon::TrayIcon, tray_icon::menu::MenuId, tray_icon::menu::MenuId)> {
+fn load_tray_icon() -> Option<(
+    tray_icon::TrayIcon,
+    tray_icon::menu::MenuId,
+    tray_icon::menu::MenuId,
+)> {
     let icon_bytes = include_bytes!("../drastic.png");
     let image = match image::load_from_memory(icon_bytes) {
         Ok(img) => img.into_rgba8(),
@@ -827,10 +841,35 @@ impl DrasticSmurfApp {
                         }
                     }
                 }
-                RefreshMsg::IndicesResult(_name, indices, datastreams) => {
-                    self.indices_state.update_data(indices, datastreams);
+                RefreshMsg::IndicesResult(_name, indices, datastreams, templates, components) => {
+                    self.indices_state
+                        .update_data(indices, datastreams, templates, components);
                     self.indices_state.error = None;
                     self.indices_state.is_loading = false;
+                }
+                RefreshMsg::IndexTemplateResult(_name, res) => {
+                    self.indices_state.template_detail_loading = false;
+                    match res {
+                        Ok(tmpl) => {
+                            self.indices_state.selected_template_detail = Some(tmpl);
+                        }
+                        Err(e) => {
+                            self.toasts
+                                .error(format!("Failed to fetch index template: {}", e));
+                        }
+                    }
+                }
+                RefreshMsg::ComponentTemplateResult(_name, res) => {
+                    self.indices_state.component_detail_loading = false;
+                    match res {
+                        Ok(comp) => {
+                            self.indices_state.selected_component_detail = Some(comp);
+                        }
+                        Err(e) => {
+                            self.toasts
+                                .error(format!("Failed to fetch component template: {}", e));
+                        }
+                    }
                 }
                 RefreshMsg::IndicesError(_name, err) => {
                     self.indices_state.error = Some(err);
@@ -913,10 +952,8 @@ impl DrasticSmurfApp {
                     }
                 }
                 RefreshMsg::OnlineIndicesResult(_name, indices, datastreams) => {
-                    self.pipeline_online_state.indices = indices
-                        .into_iter()
-                        .map(|i| i.index)
-                        .collect();
+                    self.pipeline_online_state.indices =
+                        indices.into_iter().map(|i| i.index).collect();
                     self.pipeline_online_state.datastreams =
                         datastreams.into_iter().map(|d| d.name).collect();
                     self.pipeline_online_state.indices_loading = false;
@@ -2274,13 +2311,93 @@ impl DrasticSmurfApp {
                     .map(|c| c.name.clone())
                     .collect();
                 let mut on_fetch_detail = None;
+                let mut on_fetch_template = None;
+                let mut on_fetch_component = None;
                 render_indices_module(
                     ui,
                     &mut self.indices_state,
                     &cluster_names,
                     &mut self.indices_refresh,
                     &mut on_fetch_detail,
+                    &mut on_fetch_template,
+                    &mut on_fetch_component,
                 );
+
+                if let Some(template_name) = on_fetch_template {
+                    self.indices_state.template_detail_loading = true;
+                    let tx = self.refresh_tx.clone();
+                    let ctx = ui.ctx().clone();
+                    let manager = self.cluster_manager.clone();
+                    let cluster_name = self.indices_state.selected_cluster.clone();
+                    tokio::spawn(async move {
+                        if let Some(client) = manager.get_client(&cluster_name) {
+                            match client.get_index_template(&template_name).await {
+                                Ok(Some(item)) => {
+                                    let _ = tx.send(RefreshMsg::IndexTemplateResult(
+                                        template_name,
+                                        Ok(item),
+                                    ));
+                                }
+                                Ok(None) => {
+                                    let _ = tx.send(RefreshMsg::IndexTemplateResult(
+                                        template_name,
+                                        Err("Template not found".to_string()),
+                                    ));
+                                }
+                                Err(e) => {
+                                    let _ = tx.send(RefreshMsg::IndexTemplateResult(
+                                        template_name,
+                                        Err(e.to_string()),
+                                    ));
+                                }
+                            }
+                        } else {
+                            let _ = tx.send(RefreshMsg::IndexTemplateResult(
+                                template_name,
+                                Err("Failed to obtain cluster client".to_string()),
+                            ));
+                        }
+                        ctx.request_repaint();
+                    });
+                }
+
+                if let Some(component_name) = on_fetch_component {
+                    self.indices_state.component_detail_loading = true;
+                    let tx = self.refresh_tx.clone();
+                    let ctx = ui.ctx().clone();
+                    let manager = self.cluster_manager.clone();
+                    let cluster_name = self.indices_state.selected_cluster.clone();
+                    tokio::spawn(async move {
+                        if let Some(client) = manager.get_client(&cluster_name) {
+                            match client.get_component_template(&component_name).await {
+                                Ok(Some(item)) => {
+                                    let _ = tx.send(RefreshMsg::ComponentTemplateResult(
+                                        component_name,
+                                        Ok(item),
+                                    ));
+                                }
+                                Ok(None) => {
+                                    let _ = tx.send(RefreshMsg::ComponentTemplateResult(
+                                        component_name,
+                                        Err("Component template not found".to_string()),
+                                    ));
+                                }
+                                Err(e) => {
+                                    let _ = tx.send(RefreshMsg::ComponentTemplateResult(
+                                        component_name,
+                                        Err(e.to_string()),
+                                    ));
+                                }
+                            }
+                        } else {
+                            let _ = tx.send(RefreshMsg::ComponentTemplateResult(
+                                component_name,
+                                Err("Failed to obtain cluster client".to_string()),
+                            ));
+                        }
+                        ctx.request_repaint();
+                    });
+                }
 
                 if let Some((target_name, is_datastream)) = on_fetch_detail {
                     self.indices_state.detail_loading = true;
@@ -2633,7 +2750,12 @@ impl DrasticSmurfApp {
             Tab::PainlessPlayground => {
                 let clusters = self.cluster_manager.clusters();
                 let cluster_names: Vec<String> = clusters.iter().map(|c| c.name.clone()).collect();
-                render_painless_module(ui, &mut self.painless_state, &cluster_names, &mut self.painless_send);
+                render_painless_module(
+                    ui,
+                    &mut self.painless_state,
+                    &cluster_names,
+                    &mut self.painless_send,
+                );
             }
         }
     }
@@ -2693,16 +2815,12 @@ impl DrasticSmurfApp {
 
         if !open {
             self.assistant_dock_visible = false;
-            let _ = self
-                .cluster_manager
-                .set_assistant_dock_visible(false);
+            let _ = self.cluster_manager.set_assistant_dock_visible(false);
         }
 
         if self.assistant_state.close_requested {
             self.assistant_dock_visible = false;
-            let _ = self
-                .cluster_manager
-                .set_assistant_dock_visible(false);
+            let _ = self.cluster_manager.set_assistant_dock_visible(false);
             self.assistant_state.close_requested = false;
         }
 
@@ -2756,7 +2874,8 @@ impl DrasticSmurfApp {
             action.body,
             false,
         ));
-        self.toasts.info("Running assistant-proposed command in Console");
+        self.toasts
+            .info("Running assistant-proposed command in Console");
     }
 
     fn render_assistant_chevron(&mut self, ctx: &egui::Context) {
@@ -2795,8 +2914,7 @@ impl DrasticSmurfApp {
                 // on top via `ui.put` doesn't "steal" the hover state from
                 // this rect (which used to cause flickering as the button
                 // moved in and out from under the cursor).
-                let (rect, _response) =
-                    ui.allocate_exact_size(area_size, egui::Sense::hover());
+                let (rect, _response) = ui.allocate_exact_size(area_size, egui::Sense::hover());
 
                 let pointer_in_area = ui.rect_contains_pointer(rect);
 
@@ -2820,22 +2938,15 @@ impl DrasticSmurfApp {
                 // symmetric ease so the slide-out and slide-back feel
                 // identical (no overshoot bounce on retract).
                 let target = if keep_open { 1.0_f32 } else { 0.0 };
-                let progress = ctx.animate_value_with_time(
-                    id.with("chevron_progress"),
-                    target,
-                    0.22,
-                );
+                let progress =
+                    ctx.animate_value_with_time(id.with("chevron_progress"), target, 0.22);
                 let eased = crate::ui::widgets::ease_in_out_cubic(progress);
-                let current_width =
-                    collapsed + (expanded - collapsed) * eased;
+                let current_width = collapsed + (expanded - collapsed) * eased;
 
                 // Draw the actual button right-aligned inside the area so it
                 // always stays flush with the right edge.
                 let button_rect = egui::Rect::from_min_size(
-                    egui::Pos2::new(
-                        rect.max.x - current_width,
-                        rect.min.y,
-                    ),
+                    egui::Pos2::new(rect.max.x - current_width, rect.min.y),
                     egui::Vec2::new(current_width, rect.height()),
                 );
                 let show_label = progress > 0.4;
@@ -2851,9 +2962,7 @@ impl DrasticSmurfApp {
                     egui::Button::new(
                         egui::RichText::new(label)
                             .strong()
-                            .color(Theme::contrast_text_color(
-                                Theme::accent(),
-                            ))
+                            .color(Theme::contrast_text_color(Theme::accent()))
                             .size(font_size),
                     )
                     .fill(Theme::accent())
@@ -2867,9 +2976,7 @@ impl DrasticSmurfApp {
 
                 if btn.clicked() {
                     self.assistant_dock_visible = true;
-                    let _ = self
-                        .cluster_manager
-                        .set_assistant_dock_visible(true);
+                    let _ = self.cluster_manager.set_assistant_dock_visible(true);
                 }
 
                 // Keep painting while the animation is in flight, while the
@@ -2902,11 +3009,23 @@ impl DrasticSmurfApp {
             .iter()
             .find(|(n, _)| n == &cluster_name)
             .and_then(|(_, s)| s.as_ref());
-        let es_version = self.status_state.es_versions.get(&cluster_name).map(|s| s.as_str());
-        let error = self.status_state.errors.get(&cluster_name).map(|s| s.as_str());
+        let es_version = self
+            .status_state
+            .es_versions
+            .get(&cluster_name)
+            .map(|s| s.as_str());
+        let error = self
+            .status_state
+            .errors
+            .get(&cluster_name)
+            .map(|s| s.as_str());
 
         build_cluster_context(
-            if cluster_name.is_empty() { None } else { Some(&cluster_name) },
+            if cluster_name.is_empty() {
+                None
+            } else {
+                Some(&cluster_name)
+            },
             health,
             stats,
             es_version,
@@ -2935,11 +3054,7 @@ impl DrasticSmurfApp {
                 timestamp: now,
             });
             if conv.title == "New conversation" {
-                conv.title = req
-                    .user_text
-                    .chars()
-                    .take(60)
-                    .collect::<String>();
+                conv.title = req.user_text.chars().take(60).collect::<String>();
             }
             conv.updated_at = now;
         }
@@ -2971,9 +3086,8 @@ impl DrasticSmurfApp {
             messages.pop();
         }
 
-        let api_key_res = crate::core::auth::get_llm_api_key(
-            &self.assistant_state.settings.provider_id,
-        );
+        let api_key_res =
+            crate::core::auth::get_llm_api_key(&self.assistant_state.settings.provider_id);
         let api_key = match api_key_res {
             Ok(Some(k)) if !k.is_empty() => Some(k),
             _ => None,
@@ -2985,8 +3099,7 @@ impl DrasticSmurfApp {
                 "ollama" | "lmstudio" | "vllm" | "custom"
             )
         {
-            self
-                .assistant_state
+            self.assistant_state
                 .last_error
                 .get_or_insert_with(String::new);
             self.assistant_state.last_error =
@@ -3004,10 +3117,10 @@ impl DrasticSmurfApp {
 
     fn persist_assistant_conversations(&mut self) {
         let active = self.assistant_state.active_conversation_id.clone();
-        if let Err(e) = self.cluster_manager.save_assistant_conversations(
-            self.assistant_state.conversations.clone(),
-            active,
-        ) {
+        if let Err(e) = self
+            .cluster_manager
+            .save_assistant_conversations(self.assistant_state.conversations.clone(), active)
+        {
             tracing::warn!("Failed to persist assistant conversations: {}", e);
         }
     }
@@ -3213,7 +3326,11 @@ impl eframe::App for DrasticSmurfApp {
 
         // Poll tray icon click events
         while let Ok(event) = tray_icon::TrayIconEvent::receiver().try_recv() {
-            if let tray_icon::TrayIconEvent::Click { button: tray_icon::MouseButton::Left, .. } = event {
+            if let tray_icon::TrayIconEvent::Click {
+                button: tray_icon::MouseButton::Left,
+                ..
+            } = event
+            {
                 ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
                 ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
             }
@@ -3239,25 +3356,19 @@ impl eframe::App for DrasticSmurfApp {
 
         // Debounced cluster filter: apply only after FILTER_DEBOUNCE_MS of no typing.
         let now = std::time::Instant::now();
-        let debounce = std::time::Duration::from_millis(
-            crate::modules::indices::FILTER_DEBOUNCE_MS,
-        );
-        if crate::modules::indices::filter_debounce_due(
-            self.cluster_filter_typed_at,
-            now,
-            debounce,
-        ) {
+        let debounce =
+            std::time::Duration::from_millis(crate::modules::indices::FILTER_DEBOUNCE_MS);
+        if crate::modules::indices::filter_debounce_due(self.cluster_filter_typed_at, now, debounce)
+        {
             self.cluster_filter_typed_at = None;
             self.cluster_manager
                 .set_cluster_filter(self.cluster_filter.clone());
             self.ensure_selected_clusters_match_filter();
-        } else if let Some(remaining) =
-            crate::modules::indices::filter_debounce_remaining(
-                self.cluster_filter_typed_at,
-                now,
-                debounce,
-            )
-        {
+        } else if let Some(remaining) = crate::modules::indices::filter_debounce_remaining(
+            self.cluster_filter_typed_at,
+            now,
+            debounce,
+        ) {
             ctx.request_repaint_after(remaining);
         }
 
@@ -3359,7 +3470,9 @@ impl eframe::App for DrasticSmurfApp {
         }
 
         // Handle logs search
-        if let Some((cluster_name, filters, field_names, index_pattern, limit)) = self.logs_send.take() {
+        if let Some((cluster_name, filters, field_names, index_pattern, limit)) =
+            self.logs_send.take()
+        {
             if let Some(client) = self.cluster_manager.get_client(&cluster_name) {
                 let tx = self.refresh_tx.clone();
                 let ctx = ctx.clone();
@@ -3413,18 +3526,18 @@ impl eframe::App for DrasticSmurfApp {
                 tokio::spawn(async move {
                     let indices_res = client.cat_indices().await;
                     let datastreams_res = client.get_data_streams().await;
-                    match (indices_res, datastreams_res) {
-                        (Ok(indices), Ok(ds_resp)) => {
-                            let _ = tx.send(RefreshMsg::IndicesResult(
-                                name,
-                                indices,
-                                ds_resp.data_streams,
-                            ));
+                    let templates_res = client.get_index_templates().await;
+                    let components_res = client.get_component_templates().await;
+
+                    match indices_res {
+                        Ok(indices) => {
+                            let ds = datastreams_res.map(|r| r.data_streams).unwrap_or_default();
+                            let tmpls = templates_res.unwrap_or_default();
+                            let comps = components_res.unwrap_or_default();
+                            let _ =
+                                tx.send(RefreshMsg::IndicesResult(name, indices, ds, tmpls, comps));
                         }
-                        (Ok(indices), Err(_)) => {
-                            let _ = tx.send(RefreshMsg::IndicesResult(name, indices, Vec::new()));
-                        }
-                        (Err(e), _) => {
+                        Err(e) => {
                             let _ = tx.send(RefreshMsg::IndicesError(name, e.to_string()));
                         }
                     }
@@ -3645,10 +3758,7 @@ impl eframe::App for DrasticSmurfApp {
                             self.pipeline_online_state.pipelines_loading = false;
                         }
                     }
-                    crate::modules::pipeline_online::OnlineAction::LoadPipelineDef(
-                        cluster,
-                        id,
-                    ) => {
+                    crate::modules::pipeline_online::OnlineAction::LoadPipelineDef(cluster, id) => {
                         if let Some(client) = self.cluster_manager.get_client(&cluster) {
                             let tx = self.refresh_tx.clone();
                             let ctx = ctx.clone();
@@ -3671,33 +3781,23 @@ impl eframe::App for DrasticSmurfApp {
                                     Err(e) => Err(e.to_string()),
                                 };
                                 let _ = tx.send(RefreshMsg::OnlinePipelineDefResult(
-                                    name,
-                                    id_clone,
-                                    result,
+                                    name, id_clone, result,
                                 ));
                                 ctx.request_repaint();
                             });
                         }
                     }
-                    crate::modules::pipeline_online::OnlineAction::FetchDoc(
-                        cluster,
-                        index,
-                        id,
-                    ) => {
+                    crate::modules::pipeline_online::OnlineAction::FetchDoc(cluster, index, id) => {
                         if let Some(client) = self.cluster_manager.get_client(&cluster) {
                             let tx = self.refresh_tx.clone();
                             let ctx = ctx.clone();
                             tokio::spawn(async move {
                                 let path = format!("/{}/_doc/{}", index, id);
-                                let res = client
-                                    .execute(reqwest::Method::GET, &path, None)
-                                    .await;
+                                let res = client.execute(reqwest::Method::GET, &path, None).await;
                                 let result = match res {
                                     Ok(v) => {
-                                        let source = v
-                                            .get("_source")
-                                            .cloned()
-                                            .unwrap_or(Value::Null);
+                                        let source =
+                                            v.get("_source").cloned().unwrap_or(Value::Null);
                                         Ok(source)
                                     }
                                     Err(e) => Err(e.to_string()),
@@ -3744,10 +3844,8 @@ impl eframe::App for DrasticSmurfApp {
                                     tokio::spawn(async move {
                                         let res = client.simulate_ingest(&target, body).await;
                                         let result = match res {
-                                            Ok(v) => {
-                                                serde_json::to_string_pretty(&v)
-                                                    .map_err(|e| e.to_string())
-                                            }
+                                            Ok(v) => serde_json::to_string_pretty(&v)
+                                                .map_err(|e| e.to_string()),
                                             Err(e) => Err(e.to_string()),
                                         };
                                         let _ = tx.send(RefreshMsg::OnlineSimulateResult(result));
@@ -3755,9 +3853,8 @@ impl eframe::App for DrasticSmurfApp {
                                     });
                                 } else {
                                     self.pipeline_online_state.is_loading = false;
-                                    self.pipeline_online_state.pipeline_error = Some(
-                                        "Failed to obtain cluster client".to_string(),
-                                    );
+                                    self.pipeline_online_state.pipeline_error =
+                                        Some("Failed to obtain cluster client".to_string());
                                 }
                             }
                             Err(e) => {
@@ -3771,11 +3868,10 @@ impl eframe::App for DrasticSmurfApp {
                         }
                     }
                     crate::modules::pipeline_online::OnlineAction::SavePreset(name) => {
-                        let preset =
-                            crate::modules::pipeline_online::collect_preset(
-                                &self.pipeline_online_state,
-                                name,
-                            );
+                        let preset = crate::modules::pipeline_online::collect_preset(
+                            &self.pipeline_online_state,
+                            name,
+                        );
                         let mut presets = self.cluster_manager.pipeline_test_presets();
                         if let Some(idx) = presets.iter().position(|p| p.name == preset.name) {
                             presets[idx] = preset.clone();
@@ -3783,11 +3879,9 @@ impl eframe::App for DrasticSmurfApp {
                             presets.push(preset.clone());
                         }
                         if let Err(e) = self.cluster_manager.save_pipeline_test_presets(presets) {
-                            self.toasts
-                                .error(format!("Failed to save preset: {}", e));
+                            self.toasts.error(format!("Failed to save preset: {}", e));
                         } else {
-                            self.toasts
-                                .info(format!("Saved preset '{}'", preset.name));
+                            self.toasts.info(format!("Saved preset '{}'", preset.name));
                         }
                     }
                     crate::modules::pipeline_online::OnlineAction::LoadPreset(name) => {
@@ -3839,10 +3933,8 @@ impl eframe::App for DrasticSmurfApp {
                                             .unwrap_or_default(),
                                         Err(_) => Vec::new(),
                                     };
-                                    let _ = tx.send(RefreshMsg::OnlinePipelinesResult(
-                                        name_clone,
-                                        ids,
-                                    ));
+                                    let _ =
+                                        tx.send(RefreshMsg::OnlinePipelinesResult(name_clone, ids));
                                     ctx.request_repaint();
                                 });
                             }
@@ -3853,8 +3945,7 @@ impl eframe::App for DrasticSmurfApp {
                         let mut presets = self.cluster_manager.pipeline_test_presets();
                         presets.retain(|p| p.name != name);
                         if let Err(e) = self.cluster_manager.save_pipeline_test_presets(presets) {
-                            self.toasts
-                                .error(format!("Failed to delete preset: {}", e));
+                            self.toasts.error(format!("Failed to delete preset: {}", e));
                         } else {
                             self.toasts.info(format!("Deleted preset '{}'", name));
                         }
@@ -4383,7 +4474,43 @@ impl eframe::App for DrasticSmurfApp {
                                     ui.horizontal(|ui| {
                                         ui.label(egui::RichText::new("Matched Index Template:").strong().size(12.0).color(Theme::text_primary()));
                                         if let Some(ref template) = detail.index_template {
-                                            ui.label(egui::RichText::new(template).strong().size(12.0).color(Theme::success()));
+                                            let link = ui.add(
+                                                egui::Link::new(
+                                                    egui::RichText::new(template)
+                                                        .strong()
+                                                        .size(12.0)
+                                                        .color(Theme::success())
+                                                        .underline(),
+                                                )
+                                            ).on_hover_text("Click to view Index Template details, composed components in order, and settings");
+                                            if link.clicked() {
+                                                if let Some(t) = self.indices_state.index_templates.iter().find(|t| &t.name == template) {
+                                                    self.indices_state.selected_template_detail = Some(t.clone());
+                                                } else {
+                                                    self.indices_state.template_detail_loading = true;
+                                                    let tx = self.refresh_tx.clone();
+                                                    let ctx = ctx.clone();
+                                                    let manager = self.cluster_manager.clone();
+                                                    let cluster_name = self.indices_state.selected_cluster.clone();
+                                                    let t_name = template.clone();
+                                                    tokio::spawn(async move {
+                                                        if let Some(client) = manager.get_client(&cluster_name) {
+                                                            match client.get_index_template(&t_name).await {
+                                                                Ok(Some(item)) => {
+                                                                    let _ = tx.send(RefreshMsg::IndexTemplateResult(t_name, Ok(item)));
+                                                                }
+                                                                Ok(None) => {
+                                                                    let _ = tx.send(RefreshMsg::IndexTemplateResult(t_name, Err("Template not found".to_string())));
+                                                                }
+                                                                Err(e) => {
+                                                                    let _ = tx.send(RefreshMsg::IndexTemplateResult(t_name, Err(e.to_string())));
+                                                                }
+                                                            }
+                                                        }
+                                                        ctx.request_repaint();
+                                                    });
+                                                }
+                                            }
                                         } else {
                                             ui.label(egui::RichText::new("None (Directly created or no matching pattern found)").size(11.5).color(Theme::text_muted()).italics());
                                         }
@@ -4466,6 +4593,491 @@ impl eframe::App for DrasticSmurfApp {
                 });
             if !is_open {
                 self.indices_state.selected_detail = None;
+            }
+        }
+
+        // Render Loading Dialogs for Index & Component Templates
+        if self.indices_state.template_detail_loading {
+            let mut is_open = true;
+            egui::Window::new("⏳ Loading Index Template...")
+                .open(&mut is_open)
+                .collapsible(false)
+                .resizable(false)
+                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+                .show(ctx, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.spinner();
+                        ui.label("Fetching index template details...");
+                    });
+                });
+            if !is_open {
+                self.indices_state.template_detail_loading = false;
+            }
+        }
+
+        if self.indices_state.component_detail_loading {
+            let mut is_open = true;
+            egui::Window::new("⏳ Loading Component Template...")
+                .open(&mut is_open)
+                .collapsible(false)
+                .resizable(false)
+                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+                .show(ctx, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.spinner();
+                        ui.label("Fetching component template details...");
+                    });
+                });
+            if !is_open {
+                self.indices_state.component_detail_loading = false;
+            }
+        }
+
+        // Render Index Template Details Window
+        let current_template = self.indices_state.selected_template_detail.clone();
+        if let Some(ref template) = current_template {
+            let mut is_open = true;
+            let title = format!("📋 Index Template Details - {}", template.name);
+
+            egui::Window::new(title)
+                .id(egui::Id::new("index_template_detail_modal_window"))
+                .open(&mut is_open)
+                .collapsible(false)
+                .resizable(true)
+                .default_size([720.0, 560.0])
+                .show(ctx, |ui| {
+                    egui::ScrollArea::vertical()
+                        .id_salt("template_detail_scroll_area")
+                        .show(ui, |ui| {
+                            // Header metrics
+                            ui.horizontal(|ui| {
+                                ui.label(egui::RichText::new("Template Name:").strong().size(13.0).color(Theme::text_muted()));
+                                ui.label(egui::RichText::new(&template.name).strong().size(13.0).color(Theme::accent()));
+
+                                ui.add_space(16.0);
+                                ui.label(egui::RichText::new("Type:").strong().size(13.0).color(Theme::text_muted()));
+                                if template.index_template.data_stream.is_some() {
+                                    ui.add(crate::ui::widgets::StatePill::new("Data Stream", Theme::accent()));
+                                } else {
+                                    ui.add(crate::ui::widgets::StatePill::new("Standard Index", Theme::text_secondary()));
+                                }
+
+                                if let Some(priority) = template.index_template.priority {
+                                    ui.add_space(16.0);
+                                    ui.label(egui::RichText::new("Priority:").strong().size(13.0).color(Theme::text_muted()));
+                                    ui.add(crate::ui::widgets::StatePill::new(format!("{}", priority), Theme::text_primary()));
+                                }
+
+                                if let Some(ver) = template.index_template.version {
+                                    ui.add_space(16.0);
+                                    ui.label(egui::RichText::new("Version:").strong().size(13.0).color(Theme::text_muted()));
+                                    ui.label(egui::RichText::new(format!("v{}", ver)).size(12.0).color(Theme::text_muted()));
+                                }
+                            });
+
+                            ui.add_space(10.0);
+
+                            // Index Patterns
+                            egui::Frame::new()
+                                .fill(Theme::bg_input())
+                                .corner_radius(Theme::CARD_ROUNDING)
+                                .inner_margin(12.0)
+                                .show(ui, |ui| {
+                                    ui.label(egui::RichText::new("Index Patterns:").strong().size(12.0).color(Theme::text_primary()));
+                                    ui.add_space(4.0);
+                                    if template.index_template.index_patterns.is_empty() {
+                                        ui.label(egui::RichText::new("No patterns specified").size(11.0).color(Theme::text_muted()).italics());
+                                    } else {
+                                        ui.horizontal_wrapped(|ui| {
+                                            for pat in &template.index_template.index_patterns {
+                                                ui.add(crate::ui::widgets::StatePill::new(pat, Theme::text_primary()));
+                                            }
+                                        });
+                                    }
+                                });
+
+                            ui.add_space(12.0);
+
+                            // Composed Component Templates in exact order
+                            egui::Frame::new()
+                                .fill(Theme::bg_input())
+                                .corner_radius(Theme::CARD_ROUNDING)
+                                .inner_margin(12.0)
+                                .show(ui, |ui| {
+                                    ui.horizontal(|ui| {
+                                        ui.label(egui::RichText::new("🧩 Composed Component Templates (In Order of Precedence):").strong().size(12.5).color(Theme::text_primary()));
+                                        let count = template.index_template.composed_of.len();
+                                        ui.add(crate::ui::widgets::StatePill::new(format!("{} component{}", count, if count == 1 { "" } else { "s" }), Theme::accent()));
+                                    });
+                                    ui.label(egui::RichText::new("Applied in sequential order. Later components override settings/mappings from earlier ones. Click any component to inspect.").size(10.5).color(Theme::text_muted()).italics());
+                                    ui.add_space(8.0);
+
+                                    if template.index_template.composed_of.is_empty() {
+                                        ui.label(egui::RichText::new("None (No component templates composed in this index template)").size(11.5).color(Theme::text_muted()).italics());
+                                    } else {
+                                        for (idx, comp_name) in template.index_template.composed_of.iter().enumerate() {
+                                            ui.horizontal(|ui| {
+                                                ui.label(egui::RichText::new(format!("#{}:", idx + 1)).strong().size(11.5).color(Theme::text_muted()));
+
+                                                let comp_link = ui.add(
+                                                    egui::Link::new(
+                                                        egui::RichText::new(comp_name)
+                                                            .strong()
+                                                            .size(12.0)
+                                                            .color(Theme::accent())
+                                                            .underline(),
+                                                    )
+                                                ).on_hover_text("Click to view Component Template details, settings, and mappings");
+
+                                                if comp_link.clicked() {
+                                                    if let Some(comp) = self.indices_state.component_templates.iter().find(|c| &c.name == comp_name) {
+                                                        self.indices_state.selected_component_detail = Some(comp.clone());
+                                                    } else {
+                                                        self.indices_state.component_detail_loading = true;
+                                                        let tx = self.refresh_tx.clone();
+                                                        let ctx = ctx.clone();
+                                                        let manager = self.cluster_manager.clone();
+                                                        let cluster_name = self.indices_state.selected_cluster.clone();
+                                                        let c_name = comp_name.clone();
+                                                        tokio::spawn(async move {
+                                                            if let Some(client) = manager.get_client(&cluster_name) {
+                                                                match client.get_component_template(&c_name).await {
+                                                                    Ok(Some(item)) => {
+                                                                        let _ = tx.send(RefreshMsg::ComponentTemplateResult(c_name, Ok(item)));
+                                                                    }
+                                                                    Ok(None) => {
+                                                                        let _ = tx.send(RefreshMsg::ComponentTemplateResult(c_name, Err("Component template not found".to_string())));
+                                                                    }
+                                                                    Err(e) => {
+                                                                        let _ = tx.send(RefreshMsg::ComponentTemplateResult(c_name, Err(e.to_string())));
+                                                                    }
+                                                                }
+                                                            }
+                                                            ctx.request_repaint();
+                                                        });
+                                                    }
+                                                }
+
+                                                if let Some(cached_comp) = self.indices_state.component_templates.iter().find(|c| &c.name == comp_name) {
+                                                    if let Some(ref tmpl) = cached_comp.component_template.template {
+                                                        if tmpl.get("settings").is_some() {
+                                                            ui.add(crate::ui::widgets::StatePill::new("Settings", Theme::text_muted()));
+                                                        }
+                                                        if tmpl.get("mappings").is_some() {
+                                                            ui.add(crate::ui::widgets::StatePill::new("Mappings", Theme::text_muted()));
+                                                        }
+                                                        if tmpl.get("aliases").is_some() {
+                                                            ui.add(crate::ui::widgets::StatePill::new("Aliases", Theme::text_muted()));
+                                                        }
+                                                    }
+                                                }
+                                            });
+                                            ui.add_space(3.0);
+                                        }
+                                    }
+                                });
+
+                            ui.add_space(12.0);
+
+                            // Template direct configuration
+                            if let Some(ref tmpl_val) = template.index_template.template {
+                                if let Some(settings) = tmpl_val.get("settings") {
+                                    ui.collapsing(egui::RichText::new("⚙️ Template Direct Settings").strong().size(12.5).color(Theme::text_primary()), |ui| {
+                                        let formatted = serde_json::to_string_pretty(settings).unwrap_or_default();
+                                        egui::Frame::new().fill(Theme::bg_input()).corner_radius(4.0).inner_margin(8.0).show(ui, |ui| {
+                                            ui.add(egui::TextEdit::multiline(&mut formatted.as_str()).font(egui::TextStyle::Monospace).frame(false));
+                                        });
+                                    });
+                                    ui.add_space(6.0);
+                                }
+
+                                if let Some(mappings) = tmpl_val.get("mappings") {
+                                    ui.collapsing(egui::RichText::new("🗺️ Template Direct Mappings").strong().size(12.5).color(Theme::text_primary()), |ui| {
+                                        let formatted = serde_json::to_string_pretty(mappings).unwrap_or_default();
+                                        egui::Frame::new().fill(Theme::bg_input()).corner_radius(4.0).inner_margin(8.0).show(ui, |ui| {
+                                            ui.add(egui::TextEdit::multiline(&mut formatted.as_str()).font(egui::TextStyle::Monospace).frame(false));
+                                        });
+                                    });
+                                    ui.add_space(6.0);
+                                }
+
+                                if let Some(aliases) = tmpl_val.get("aliases") {
+                                    ui.collapsing(egui::RichText::new("🏷️ Template Direct Aliases").strong().size(12.5).color(Theme::text_primary()), |ui| {
+                                        let formatted = serde_json::to_string_pretty(aliases).unwrap_or_default();
+                                        egui::Frame::new().fill(Theme::bg_input()).corner_radius(4.0).inner_margin(8.0).show(ui, |ui| {
+                                            ui.add(egui::TextEdit::multiline(&mut formatted.as_str()).font(egui::TextStyle::Monospace).frame(false));
+                                        });
+                                    });
+                                    ui.add_space(6.0);
+                                }
+                            }
+
+                            // Raw JSON collapsible
+                            ui.collapsing(egui::RichText::new("📄 Full Index Template JSON").strong().size(12.0).color(Theme::text_secondary()), |ui| {
+                                let formatted = serde_json::to_string_pretty(template).unwrap_or_default();
+                                ui.horizontal(|ui| {
+                                    if ui.button("📋 Copy JSON").clicked() {
+                                        ui.ctx().copy_text(formatted.clone());
+                                        self.toasts.info("Template JSON copied to clipboard");
+                                    }
+                                });
+                                egui::Frame::new().fill(Theme::bg_input()).corner_radius(4.0).inner_margin(8.0).show(ui, |ui| {
+                                    ui.add(egui::TextEdit::multiline(&mut formatted.as_str()).font(egui::TextStyle::Monospace).frame(false));
+                                });
+                            });
+                        });
+                });
+            if !is_open {
+                self.indices_state.selected_template_detail = None;
+            }
+        }
+
+        // Render Component Template Details Window
+        let current_comp = self.indices_state.selected_component_detail.clone();
+        if let Some(ref comp) = current_comp {
+            let mut is_open = true;
+            let title = format!("🧩 Component Template Details - {}", comp.name);
+
+            egui::Window::new(title)
+                .id(egui::Id::new("component_template_detail_modal_window"))
+                .open(&mut is_open)
+                .collapsible(false)
+                .resizable(true)
+                .default_size([680.0, 520.0])
+                .show(ctx, |ui| {
+                    egui::ScrollArea::vertical()
+                        .id_salt("component_detail_scroll_area")
+                        .show(ui, |ui| {
+                            ui.horizontal(|ui| {
+                                ui.label(
+                                    egui::RichText::new("Component Name:")
+                                        .strong()
+                                        .size(13.0)
+                                        .color(Theme::text_muted()),
+                                );
+                                ui.label(
+                                    egui::RichText::new(&comp.name)
+                                        .strong()
+                                        .size(13.0)
+                                        .color(Theme::accent()),
+                                );
+
+                                if let Some(ver) = comp.component_template.version {
+                                    ui.add_space(16.0);
+                                    ui.label(
+                                        egui::RichText::new("Version:")
+                                            .strong()
+                                            .size(13.0)
+                                            .color(Theme::text_muted()),
+                                    );
+                                    ui.label(
+                                        egui::RichText::new(format!("v{}", ver))
+                                            .size(12.0)
+                                            .color(Theme::text_muted()),
+                                    );
+                                }
+                            });
+
+                            if let Some(desc) = comp
+                                .component_template
+                                ._meta
+                                .as_ref()
+                                .and_then(|m| m.get("description"))
+                                .and_then(|d| d.as_str())
+                            {
+                                ui.add_space(6.0);
+                                ui.label(
+                                    egui::RichText::new(desc)
+                                        .size(12.0)
+                                        .color(Theme::text_secondary())
+                                        .italics(),
+                                );
+                            }
+
+                            ui.add_space(10.0);
+
+                            // Used in Index Templates section
+                            egui::Frame::new()
+                                .fill(Theme::bg_input())
+                                .corner_radius(Theme::CARD_ROUNDING)
+                                .inner_margin(12.0)
+                                .show(ui, |ui| {
+                                    ui.label(
+                                        egui::RichText::new("Used in Index Templates:")
+                                            .strong()
+                                            .size(12.0)
+                                            .color(Theme::text_primary()),
+                                    );
+                                    ui.add_space(4.0);
+
+                                    let used_by: Vec<String> = self
+                                        .indices_state
+                                        .index_templates
+                                        .iter()
+                                        .filter(|t| {
+                                            t.index_template.composed_of.contains(&comp.name)
+                                        })
+                                        .map(|t| t.name.clone())
+                                        .collect();
+
+                                    if used_by.is_empty() {
+                                        ui.label(
+                                            egui::RichText::new(
+                                                "Not referenced by any known index templates",
+                                            )
+                                            .size(11.0)
+                                            .color(Theme::text_muted())
+                                            .italics(),
+                                        );
+                                    } else {
+                                        ui.horizontal_wrapped(|ui| {
+                                            for t_name in &used_by {
+                                                let link = ui
+                                                    .add(egui::Link::new(
+                                                        egui::RichText::new(t_name)
+                                                            .strong()
+                                                            .size(11.5)
+                                                            .color(Theme::success())
+                                                            .underline(),
+                                                    ))
+                                                    .on_hover_text(
+                                                        "Click to view this Index Template",
+                                                    );
+                                                if link.clicked() {
+                                                    if let Some(t) = self
+                                                        .indices_state
+                                                        .index_templates
+                                                        .iter()
+                                                        .find(|t| &t.name == t_name)
+                                                    {
+                                                        self.indices_state
+                                                            .selected_template_detail =
+                                                            Some(t.clone());
+                                                    }
+                                                }
+                                            }
+                                        });
+                                    }
+                                });
+
+                            ui.add_space(12.0);
+
+                            // Settings, Mappings, Aliases sections
+                            if let Some(ref tmpl) = comp.component_template.template {
+                                if let Some(settings) = tmpl.get("settings") {
+                                    ui.collapsing(
+                                        egui::RichText::new("⚙️ Component Settings")
+                                            .strong()
+                                            .size(12.5)
+                                            .color(Theme::text_primary()),
+                                        |ui| {
+                                            let formatted = serde_json::to_string_pretty(settings)
+                                                .unwrap_or_default();
+                                            egui::Frame::new()
+                                                .fill(Theme::bg_input())
+                                                .corner_radius(4.0)
+                                                .inner_margin(8.0)
+                                                .show(ui, |ui| {
+                                                    ui.add(
+                                                        egui::TextEdit::multiline(
+                                                            &mut formatted.as_str(),
+                                                        )
+                                                        .font(egui::TextStyle::Monospace)
+                                                        .frame(false),
+                                                    );
+                                                });
+                                        },
+                                    );
+                                    ui.add_space(6.0);
+                                }
+
+                                if let Some(mappings) = tmpl.get("mappings") {
+                                    ui.collapsing(
+                                        egui::RichText::new("🗺️ Component Mappings")
+                                            .strong()
+                                            .size(12.5)
+                                            .color(Theme::text_primary()),
+                                        |ui| {
+                                            let formatted = serde_json::to_string_pretty(mappings)
+                                                .unwrap_or_default();
+                                            egui::Frame::new()
+                                                .fill(Theme::bg_input())
+                                                .corner_radius(4.0)
+                                                .inner_margin(8.0)
+                                                .show(ui, |ui| {
+                                                    ui.add(
+                                                        egui::TextEdit::multiline(
+                                                            &mut formatted.as_str(),
+                                                        )
+                                                        .font(egui::TextStyle::Monospace)
+                                                        .frame(false),
+                                                    );
+                                                });
+                                        },
+                                    );
+                                    ui.add_space(6.0);
+                                }
+
+                                if let Some(aliases) = tmpl.get("aliases") {
+                                    ui.collapsing(
+                                        egui::RichText::new("🏷️ Component Aliases")
+                                            .strong()
+                                            .size(12.5)
+                                            .color(Theme::text_primary()),
+                                        |ui| {
+                                            let formatted = serde_json::to_string_pretty(aliases)
+                                                .unwrap_or_default();
+                                            egui::Frame::new()
+                                                .fill(Theme::bg_input())
+                                                .corner_radius(4.0)
+                                                .inner_margin(8.0)
+                                                .show(ui, |ui| {
+                                                    ui.add(
+                                                        egui::TextEdit::multiline(
+                                                            &mut formatted.as_str(),
+                                                        )
+                                                        .font(egui::TextStyle::Monospace)
+                                                        .frame(false),
+                                                    );
+                                                });
+                                        },
+                                    );
+                                    ui.add_space(6.0);
+                                }
+                            }
+
+                            // Full JSON
+                            ui.collapsing(
+                                egui::RichText::new("📄 Full Component Template JSON")
+                                    .strong()
+                                    .size(12.0)
+                                    .color(Theme::text_secondary()),
+                                |ui| {
+                                    let formatted =
+                                        serde_json::to_string_pretty(comp).unwrap_or_default();
+                                    ui.horizontal(|ui| {
+                                        if ui.button("📋 Copy JSON").clicked() {
+                                            ui.ctx().copy_text(formatted.clone());
+                                            self.toasts.info("Component JSON copied to clipboard");
+                                        }
+                                    });
+                                    egui::Frame::new()
+                                        .fill(Theme::bg_input())
+                                        .corner_radius(4.0)
+                                        .inner_margin(8.0)
+                                        .show(ui, |ui| {
+                                            ui.add(
+                                                egui::TextEdit::multiline(&mut formatted.as_str())
+                                                    .font(egui::TextStyle::Monospace)
+                                                    .frame(false),
+                                            );
+                                        });
+                                },
+                            );
+                        });
+                });
+            if !is_open {
+                self.indices_state.selected_component_detail = None;
             }
         }
 
