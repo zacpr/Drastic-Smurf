@@ -153,8 +153,11 @@ impl ClusterManager {
         let llm = self.llm.lock().unwrap().clone();
         let assistant_dock_visible = *self.assistant_dock_visible.lock().unwrap();
         let assistant_conversations = self.assistant_conversations.lock().unwrap().clone();
-        let assistant_active_conversation_id =
-            self.assistant_active_conversation_id.lock().unwrap().clone();
+        let assistant_active_conversation_id = self
+            .assistant_active_conversation_id
+            .lock()
+            .unwrap()
+            .clone();
 
         let mut config = crate::core::config::AppConfig::load().unwrap_or_default();
         config.clusters = clusters.clone();
@@ -425,7 +428,10 @@ impl ClusterManager {
         self.llm.lock().unwrap().clone()
     }
 
-    pub fn save_llm_settings(&self, settings: crate::core::config::LlmSettings) -> anyhow::Result<()> {
+    pub fn save_llm_settings(
+        &self,
+        settings: crate::core::config::LlmSettings,
+    ) -> anyhow::Result<()> {
         {
             let mut l = self.llm.lock().unwrap();
             *l = settings;

@@ -229,11 +229,20 @@ fn render_left_pane(
                 egui::ComboBox::from_id_salt("painless_template")
                     .selected_text(template_text)
                     .show_ui(ui, |ui| {
-                        if ui.selectable_label(state.selected_template_index.is_none(), "Custom").clicked() {
+                        if ui
+                            .selectable_label(state.selected_template_index.is_none(), "Custom")
+                            .clicked()
+                        {
                             state.selected_template_index = None;
                         }
                         for (idx, t) in TEMPLATES.iter().enumerate() {
-                            if ui.selectable_label(state.selected_template_index == Some(idx), t.name).clicked() {
+                            if ui
+                                .selectable_label(
+                                    state.selected_template_index == Some(idx),
+                                    t.name,
+                                )
+                                .clicked()
+                            {
                                 state.selected_template_index = Some(idx);
                                 state.context = t.context;
                                 state.custom_context = t.custom_context.to_string();
@@ -285,7 +294,14 @@ fn render_left_pane(
                                 PainlessContext::Filter,
                                 PainlessContext::Custom,
                             ] {
-                                if ui.selectable_value(&mut state.context, ctx_type, ctx_type.as_str()).clicked() {
+                                if ui
+                                    .selectable_value(
+                                        &mut state.context,
+                                        ctx_type,
+                                        ctx_type.as_str(),
+                                    )
+                                    .clicked()
+                                {
                                     state.selected_template_index = None;
                                 }
                             }
@@ -311,7 +327,7 @@ fn render_left_pane(
                     .font(egui::TextStyle::Monospace)
                     .code_editor()
                     .desired_rows(12)
-                    .desired_width(ui.available_width())
+                    .desired_width(ui.available_width()),
             );
             if res.changed() {
                 state.selected_template_index = None;
@@ -400,8 +416,11 @@ fn render_left_pane(
                         ui.colored_label(Theme::danger(), format!("⚠️ {}", err));
                     }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.button("✨ Format").clicked() && !state.document_json.trim().is_empty() {
-                            match crate::modules::console::prettify_json_body(&state.document_json) {
+                        if ui.button("✨ Format").clicked()
+                            && !state.document_json.trim().is_empty()
+                        {
+                            match crate::modules::console::prettify_json_body(&state.document_json)
+                            {
                                 Ok(formatted) => {
                                     state.document_json = formatted;
                                     state.doc_error = None;
@@ -450,7 +469,10 @@ fn render_left_pane(
 
         ui.add_space(8.0);
     } else {
-        ui.checkbox(&mut state.show_context_setup, "Show Context Setup (Mock mappings)");
+        ui.checkbox(
+            &mut state.show_context_setup,
+            "Show Context Setup (Mock mappings)",
+        );
         ui.add_space(8.0);
     }
 
@@ -535,7 +557,11 @@ fn render_right_pane(ui: &mut Ui, state: &mut PainlessState) {
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if ui.small_button("📋 Copy Response").clicked() {
-                        let text_to_copy = state.full_response.as_ref().unwrap_or(&state.response).clone();
+                        let text_to_copy = state
+                            .full_response
+                            .as_ref()
+                            .unwrap_or(&state.response)
+                            .clone();
                         ui.ctx().copy_text(text_to_copy);
                     }
                     if ui.small_button("Clear").clicked() {

@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.13] - 2026-11-01
+
+### Added
+- Expanded Elastic Console presets with collapsible categories and title filtering, including Fleet, Kibana data views, alerting, and troubleshooting requests.
+- Index Templates and Components explorer tabs with sorting, filtering, system-entity visibility controls, and linked detail dialogs.
+- Elasticsearch client support for listing and retrieving index and component templates.
+- Regression tests for console presets, filtering, layout, and template exploration.
+
 ## [0.5.12] - 2026-10-09
 
 ### Fixed

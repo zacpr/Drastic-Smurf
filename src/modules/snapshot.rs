@@ -374,16 +374,9 @@ pub async fn fetch_cluster_snapshot(
                     }
                 } else {
                     // Completed snapshot: construct stats using metadata from _snapshot list
-                    let total_shards = info
-                        .shards
-                        .as_ref()
-                        .and_then(|s| s.total)
-                        .unwrap_or(0);
-                    let successful_shards = info
-                        .shards
-                        .as_ref()
-                        .and_then(|s| s.successful)
-                        .unwrap_or(0);
+                    let total_shards = info.shards.as_ref().and_then(|s| s.total).unwrap_or(0);
+                    let successful_shards =
+                        info.shards.as_ref().and_then(|s| s.successful).unwrap_or(0);
 
                     // For completed backups, try to call status API to retrieve the exact size & file count!
                     let mut loaded_detail_stats = false;

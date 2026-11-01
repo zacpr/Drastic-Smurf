@@ -165,9 +165,10 @@ pub async fn chat_complete(
             truncate(&text, 500)
         ));
     }
-    let parsed: Value = resp.json().await.with_context(|| {
-        format!("Failed to parse LLM response JSON from {}", url)
-    })?;
+    let parsed: Value = resp
+        .json()
+        .await
+        .with_context(|| format!("Failed to parse LLM response JSON from {}", url))?;
     let content = parsed
         .get("choices")
         .and_then(|c| c.as_array())
@@ -315,11 +316,7 @@ pub async fn list_models(
 
     let mut ids: Vec<String> = array
         .iter()
-        .filter_map(|m| {
-            m.get("id")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string())
-        })
+        .filter_map(|m| m.get("id").and_then(|v| v.as_str()).map(|s| s.to_string()))
         .collect();
     ids.sort();
     ids.dedup();
@@ -333,10 +330,7 @@ fn extract_delta(value: &Value) -> Option<String> {
     {
         return Some(s.to_string());
     }
-    if let Some(s) = value
-        .pointer("/choices/0/text")
-        .and_then(|v| v.as_str())
-    {
+    if let Some(s) = value.pointer("/choices/0/text").and_then(|v| v.as_str()) {
         return Some(s.to_string());
     }
     None
@@ -448,7 +442,9 @@ mod tests {
         );
         // Custom path is respected and not normalised.
         assert_eq!(
-            resolve_models_url("https://myresource.openai.azure.com/openai/deployments/mydeployment"),
+            resolve_models_url(
+                "https://myresource.openai.azure.com/openai/deployments/mydeployment"
+            ),
             "https://myresource.openai.azure.com/openai/deployments/mydeployment/models"
         );
     }
@@ -486,7 +482,10 @@ mod tests {
             extra_headers: vec![],
         };
         let h = build_auth_headers(&s, Some("sk-test"), &LlmProviderKind::OpenAiCompatible);
-        assert!(h.iter().any(|(k, v)| k == "Authorization" && v == "Bearer sk-test"));
+        assert!(
+            h.iter()
+                .any(|(k, v)| k == "Authorization" && v == "Bearer sk-test")
+        );
     }
 
     #[test]
@@ -502,7 +501,10 @@ mod tests {
             extra_headers: vec![],
         };
         let h = build_auth_headers(&s, Some("ghu_x"), &LlmProviderKind::GitHubCopilot);
-        assert!(h.iter().any(|(k, v)| k == "Authorization" && v == "Bearer ghu_x"));
+        assert!(
+            h.iter()
+                .any(|(k, v)| k == "Authorization" && v == "Bearer ghu_x")
+        );
         assert!(h.iter().any(|(k, _)| k == "Editor-Version"));
         assert!(h.iter().any(|(k, _)| k == "Copilot-Integration-Id"));
     }
@@ -511,10 +513,21 @@ mod tests {
     fn request_body_contains_messages() {
         let s = LlmSettings::default();
         let msgs = vec![
-            ChatMessage { role: "system".into(), content: "You are helpful".into() },
-            ChatMessage { role: "user".into(), content: "Hi".into() },
+            ChatMessage {
+                role: "system".into(),
+                content: "You are helpful".into(),
+            },
+            ChatMessage {
+                role: "user".into(),
+                content: "Hi".into(),
+            },
         ];
-        let req = ChatRequest { settings: &s, api_key: None, messages: &msgs, stream: true };
+        let req = ChatRequest {
+            settings: &s,
+            api_key: None,
+            messages: &msgs,
+            stream: true,
+        };
         let body = build_request_body(&req);
         assert_eq!(body["model"], "gpt-4o-mini");
         assert_eq!(body["stream"], true);
