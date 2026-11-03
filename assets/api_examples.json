@@ -1,0 +1,1932 @@
+{
+ "DELETE /_component_template/{{component_name}}": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-cluster-delete-component-template",
+  "operation": "DELETE /_component_template/{name}"
+ },
+ "DELETE /_data_stream/{{data_stream}}": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-indices-delete-data-stream",
+  "operation": "DELETE /_data_stream/{name}"
+ },
+ "DELETE /_ilm/policy/{{ilm_policy}}": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-ilm-delete-lifecycle",
+  "operation": "DELETE /_ilm/policy/{policy}",
+  "response": [
+   {
+    "summary": "A successful response when deleting a lifecycle policy.",
+    "value": "{\n  \"acknowledged\": true\n}"
+   }
+  ]
+ },
+ "DELETE /_index_template/{{template_name}}": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-indices-delete-index-template",
+  "operation": "DELETE /_index_template/{name}"
+ },
+ "DELETE /_ingest/pipeline/{{pipeline_id}}": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-ingest-delete-pipeline",
+  "operation": "DELETE /_ingest/pipeline/{id}"
+ },
+ "DELETE /_security/api_key": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-security-invalidate-api-key",
+  "operation": "DELETE /_security/api_key",
+  "request": [
+   {
+    "summary": "API keys by ID",
+    "value": "{\n  \"ids\" : [ \"VuaCfGcBCdbkQm-e5aOx\" ]\n}"
+   },
+   {
+    "summary": "API keys by name",
+    "value": "{\n  \"name\" : \"my-api-key\"\n}"
+   },
+   {
+    "summary": "API keys by realm",
+    "value": "{\n  \"realm_name\" : \"native1\"\n}"
+   },
+   {
+    "summary": "API keys by user",
+    "value": "{\n  \"username\" : \"myuser\"\n}"
+   }
+  ],
+  "response": [
+   {
+    "summary": "A successful response from `DELETE /_security/api_key`.",
+    "value": "{\n  \"invalidated_api_keys\": [ \n    \"api-key-id-1\"\n  ],\n  \"previously_invalidated_api_keys\": [ \n    \"api-key-id-2\",\n    \"api-key-id-3\"\n  ],\n  \"error_count\": 2, \n  \"error_details\": [ \n    {\n      \"type\": \"exception\",\n      \"reason\": \"error occurred while invalidating api keys\",\n      \"caused_by\": {\n        \"type\": \"illegal_argument_exception\",\n        \"reason\": \"invalid api key id\"\n      }\n    },\n    {\n      \"type\": \"exception\",\n      \"reason\": \"error occurred while invalidating api keys\",\n      \"caused_by\": {\n        \"type\": \"illegal_argument_exception\",\n        \"reason\": \"invalid api key id\"\n      }\n    }\n  ]\n}"
+   }
+  ]
+ },
+ "DELETE /_security/user/{{username}}": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-security-delete-user",
+  "operation": "DELETE /_security/user/{username}",
+  "response": [
+   {
+    "summary": "A successful response from `DELETE /_security/user/jacknich`.",
+    "value": "{\n  \"found\" : true\n}"
+   }
+  ]
+ },
+ "DELETE /_slm/policy/{{slm_policy}}": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-slm-delete-lifecycle",
+  "operation": "DELETE /_slm/policy/{policy_id}"
+ },
+ "DELETE /_snapshot/{{repo_name}}/{{snapshot_name}}": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-snapshot-delete",
+  "operation": "DELETE /_snapshot/{repository}/{snapshot}",
+  "response": [
+   {
+    "summary": "A successful response from `DELETE /_snapshot/my_repository/snapshot_2,snapshot_3`. The...",
+    "value": "{\n  \"acknowledged\" : true\n}"
+   }
+  ]
+ },
+ "DELETE /api/alerting/rule/{{rule_id}}": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/kibana/operation/operation-delete-alerting-rule-id",
+  "operation": "DELETE /api/alerting/rule/{id}"
+ },
+ "DELETE /api/data_views/data_view/{{data_view_id}}": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/kibana/operation/operation-deletedataviewdefault",
+  "operation": "DELETE /api/data_views/data_view/{viewId}"
+ },
+ "DELETE /api/fleet/enrollment_api_keys/{{enrollment_key_id}}": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/kibana/operation/operation-delete-fleet-enrollment-api-keys-keyid",
+  "operation": "DELETE /api/fleet/enrollment_api_keys/{keyId}",
+  "response": [
+   {
+    "summary": "The enrollment API key was successfully revoked",
+    "value": "{\n  \"action\": \"deleted\"\n}"
+   }
+  ]
+ },
+ "DELETE /api/fleet/epm/packages/{{package_name}}/{{package_version}}": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/kibana/operation/operation-delete-fleet-epm-packages-pkgname-pkgversion",
+  "operation": "DELETE /api/fleet/epm/packages/{pkgName}/{pkgVersion}",
+  "response": [
+   {
+    "summary": "Package successfully deleted",
+    "value": "{\n  \"items\": [\n    {\n      \"id\": \"aws-logs-aws.cloudwatch_logs-default\",\n      \"type\": \"index_template\"\n    }\n  ]\n}"
+   }
+  ]
+ },
+ "DELETE /api/fleet/package_policies/{{package_policy_id}}": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/kibana/operation/operation-delete-fleet-package-policies-packagepolicyid",
+  "operation": "DELETE /api/fleet/package_policies/{packagePolicyId}",
+  "response": [
+   {
+    "summary": "The package policy was successfully deleted",
+    "value": "{\n  \"id\": \"package-policy-id-1\"\n}"
+   }
+  ]
+ },
+ "DELETE /api/spaces/space/{{space_id}}": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/kibana/operation/operation-delete-spaces-space-id",
+  "operation": "DELETE /api/spaces/space/{id}"
+ },
+ "DELETE /{{index}}": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-indices-delete",
+  "operation": "DELETE /{index}"
+ },
+ "GET /": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-info",
+  "operation": "GET /",
+  "response": [
+   {
+    "summary": "Stack response",
+    "value": "{\n  \"name\": \"instance-0000000000\",\n  \"cluster_name\": \"my_test_cluster\",\n  \"cluster_uuid\": \"zk-HjQtYQGyL3NFSSu7InA\",\n  \"version\": {\n    \"number\": \"9.1.0\",\n    \"build_flavor\": \"default\",\n    \"build_type\": \"docker\",\n    \"build_hash\": 0,\n    \"build_date\": \"2025-07-09T22:10:13.578Z\",\n    \"build_snapshot\": false,\n    \"lucene_version\": \"10.2.2\",\n    \"minimum_wire_compatibility_version\": \"8.19.0\",\n    \"minimum_index_compatibility_version\": \"8.0.0\"\n  },\n  \"tagline\": \"You Know, for Search\"\n}"
+   },
+   {
+    "summary": "Serverless response",
+    "value": "{\n  \"name\": \"serverless\",\n  \"cluster_name\": \"my_test_serverless_cluster\",\n  \"cluster_uuid\": \"8xx0pi24Squnf4PFDOAtwg\",\n  \"version\": {\n    \"number\": \"9.4.0\",\n    \"build_flavor\": \"serverless\",\n    \"build_type\": \"docker\",\n    \"build_hash\": \"6b73650b7c4192d4a7ef1d75a368dad7d28f1ae0\",\n    \"build_date\": \"2026-03-31T12:25:05.021Z\",\n    \"build_snapshot\": false,\n    \"lucene_version\": \"10.4.0\",\n    \"minimum_wire_compatibility_version\": \"9.4.0\",\n    \"minimum_index_compatibility_version\": \"9.4.0\"\n  },\n  \"tagline\": \"You Know, for Search\"\n}"
+   }
+  ]
+ },
+ "GET /*/_ilm/explain": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-ilm-explain-lifecycle",
+  "operation": "GET /{index}/_ilm/explain",
+  "response": [
+   {
+    "summary": "A successful response when retrieving the current ILM status for an index.",
+    "value": "{\n  \"indices\": {\n    \"my-index-000001\": {\n      \"index\": \"my-index-000001\",\n      \"index_creation_date_millis\": 1538475653281,\n      \"index_creation_date\": \"2018-10-15T13:45:21.981Z\",\n      \"time_since_index_creation\": \"15s\",\n      \"managed\": true,\n      \"policy\": \"my_policy\",\n      \"lifecycle_date_millis\": 1538475653281,\n      \"lifecycle_date\": \"2018-10-15T13:45:21.981Z\",\n      \"age\": \"15s\",\n      \"phase\": \"new\",\n      \"phase_time_millis\": 1538475653317,\n      \"phase_time\": \"2018-10-15T13:45:22.577Z\",\n      \"action\": \"complete\"\n      \"action_time_millis\": 1538475653317,\n      \"action_time\": \"2018-10-15T13:45:22.577Z\",\n      \"step\": \"complete\",\n      \"step_time_millis\": 1538475653317,\n      \"step_time\": \"2018-10-15T13:45:22.577Z\"\n    }\n  }\n}"
+   }
+  ]
+ },
+ "GET /_cat/aliases": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-cat-aliases",
+  "operation": "GET /_cat/aliases",
+  "response": [
+   {
+    "summary": "A successful response from `GET _cat/aliases?format=json&v=true`. This response shows t...",
+    "value": "[\n  {\n    \"alias\": \"alias1\",\n    \"index\": \"test1\",\n    \"filter\": \"-\",\n    \"routing.index\": \"-\",\n    \"routing.search\": \"-\",\n    \"is_write_index\": \"true\"\n  },\n  {\n    \"alias\": \"alias1\",\n    \"index\": \"test1\",\n    \"filter\": \"*\",\n    \"routing.index\": \"-\",\n    \"routing.search\": \"-\",\n    \"is_write_index\": \"true\"\n  },\n  {\n    \"alias\": \"alias3\",\n    \"index\": \"test1\",\n    \"filter\": \"-\",\n    \"routing.index\": \"1\",\n    \"routing.search\": \"1\",\n    \"is_write_index\": \"true\"\n  },\n  {\n    \"alias\": \"alias4\",\n    \"index\": \"test1\",\n    \"filter\": \"-\",\n    \"routing.index\": \"2\",\n    \"routing.search\": \"1,2\",\n    \"is_write_index\": \"true\"\n  }\n]"
+   }
+  ]
+ },
+ "GET /_cat/allocation": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-cat-allocation",
+  "operation": "GET /_cat/allocation",
+  "response": [
+   {
+    "summary": "A successful response from `GET /_cat/allocation?v=true&format=json`. It shows a single...",
+    "value": "[\n  {\n    \"shards\": \"1\",\n    \"shards.undesired\": \"0\",\n    \"write_load.forecast\": \"0.0\",\n    \"disk.indices.forecast\": \"260b\",\n    \"disk.indices\": \"260b\",\n    \"disk.used\": \"47.3gb\",\n    \"disk.avail\": \"43.4gb\",\n    \"disk.total\": \"100.7gb\",\n    \"disk.percent\": \"46\",\n    \"host\": \"127.0.0.1\",\n    \"ip\": \"127.0.0.1\",\n    \"node\": \"CSUXak2\",\n    \"node.role\": \"himrst\"\n  }\n]"
+   }
+  ]
+ },
+ "GET /_cat/indices": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-cat-indices",
+  "operation": "GET /_cat/indices",
+  "response": [
+   {
+    "summary": "A successful response from `GET /_cat/indices/my-index-*?v=true&s=index&format=json`.",
+    "value": "[\n  {\n    \"health\": \"yellow\",\n    \"status\": \"open\",\n    \"index\": \"my-index-000001\",\n    \"uuid\": \"u8FNjxh8Rfy_awN11oDKYQ\",\n    \"pri\": \"1\",\n    \"rep\": \"1\",\n    \"docs.count\": \"1200\",\n    \"docs.deleted\": \"0\",\n    \"store.size\": \"88.1kb\",\n    \"pri.store.size\": \"88.1kb\",\n    \"dataset.size\": \"88.1kb\"\n  },\n  {\n    \"health\": \"green\",\n    \"status\": \"open\",\n    \"index\": \"my-index-000002\",\n    \"uuid\": \"nYFWZEO7TUiOjLQXBaYJpA \",\n    \"pri\": \"1\",\n    \"rep\": \"0\",\n    \"docs.count\": \"0\",\n    \"docs.deleted\": \"0\",\n    \"store.size\": \"260b\",\n    \"pri.store.size\": \"260b\",\n    \"dataset.size\": \"260b\"\n  }\n]"
+   }
+  ]
+ },
+ "GET /_cat/master": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-cat-master",
+  "operation": "GET /_cat/master",
+  "response": [
+   {
+    "summary": "A successful response from `GET /_cat/master?v=true&format=json`.",
+    "value": "[\n  {\n    \"id\": \"YzWoH_2BT-6UjVGDyPdqYg\",\n    \"host\": \"127.0.0.1\",\n    \"ip\": \"127.0.0.1\",\n    \"node\": \"YzWoH_2\"\n  }\n]"
+   }
+  ]
+ },
+ "GET /_cat/nodeattrs": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-cat-nodeattrs",
+  "operation": "GET /_cat/nodeattrs",
+  "response": [
+   {
+    "summary": "Default columns",
+    "value": "[\n  {\n    \"node\": \"node-0\",\n    \"host\": \"127.0.0.1\",\n    \"ip\": \"127.0.0.1\",\n    \"attr\": \"testattr\",\n    \"value\": \"test\"\n  }\n]"
+   },
+   {
+    "summary": "Explicit columns",
+    "value": "[\n  {\n    \"name\": \"node-0\",\n    \"pid\": \"19566\",\n    \"attr\": \"testattr\",\n    \"value\": \"test\"\n  }\n]"
+   }
+  ]
+ },
+ "GET /_cat/nodes": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-cat-nodes",
+  "operation": "GET /_cat/nodes",
+  "response": [
+   {
+    "summary": "Default columns",
+    "value": "[\n  {\n    \"ip\": \"127.0.0.1\",\n    \"heap.percent\": \"65\",\n    \"ram.percent\": \"99\",\n    \"cpu\": \"42\",\n    \"load_1m\": \"3.07\",\n    \"load_5m\": null,\n    \"load_15m\": null,\n    \"node.role\": \"cdfhilmrstw\",\n    \"master\": \"*\",\n    \"name\": \"mJw06l1\"\n  }\n]"
+   },
+   {
+    "summary": "Explicit columns",
+    "value": "[\n  {\n    \"id\": \"veJR\",\n    \"ip\": \"127.0.0.1\",\n    \"port\": \"59938\",\n    \"v\": \"9.0.0\",\n    \"m\": \"*\"\n  }\n]"
+   }
+  ]
+ },
+ "GET /_cat/recovery": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-cat-recovery",
+  "operation": "GET /_cat/recovery",
+  "response": [
+   {
+    "summary": "No ongoing recoveries",
+    "value": "[\n  {\n    \"index\": \"my-index-000001 \",\n    \"shard\": \"0\",\n    \"time\": \"13ms\",\n    \"type\": \"store\",\n    \"stage\": \"done\",\n    \"source_host\": \"n/a\",\n    \"source_node\": \"n/a\",\n    \"target_host\": \"127.0.0.1\",\n    \"target_node\": \"node-0\",\n    \"repository\": \"n/a\",\n    \"snapshot\": \"n/a\",\n    \"files\": \"0\",\n    \"files_recovered\": \"0\",\n    \"files_percent\": \"100.0%\",\n    \"files_total\": \"13\",\n    \"bytes\": \"0b\",\n    \"bytes_recovered\": \"0b\",\n    \"bytes_percent\": \"100.0%\",\n    \"bytes_total\": \"9928b\",\n    \"translog_ops\": \"0\",\n    \"translog_ops_recovered\": \"0\",\n    \"translog_ops_percent\": \"100.0%\"\n  }\n]"
+   },
+   {
+    "summary": "A live shard recovery",
+    "value": "[\n  {\n    \"i\": \"my-index-000001\",\n    \"s\": \"0\",\n    \"t\": \"1252ms\",\n    \"ty\": \"peer\",\n    \"st\": \"done\",\n    \"shost\": \"192.168.1.1\",\n    \"thost\": \"192.168.1.1\",\n    \"f\": \"0\",\n    \"fp\": \"100.0%\",\n    \"b\": \"0b\",\n    \"bp\": \"100.0%\",\n  }\n]"
+   },
+   {
+    "summary": "A snapshot recovery",
+    "value": "[\n  {\n    \"i\": \"my-index-000001\",\n    \"s\": \"0\",\n    \"t\": \"1978ms\",\n    \"ty\": \"snapshot\",\n    \"st\": \"done\",\n    \"rep\": \"my-repo\",\n    \"snap\": \"snap-1\",\n    \"f\": \"79\",\n    \"fp\": \"8.0%\",\n    \"b\": \"12086\",\n    \"bp\": \"9.0%\"\n  }\n]"
+   }
+  ]
+ },
+ "GET /_cat/shards": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-cat-shards",
+  "operation": "GET /_cat/shards",
+  "response": [
+   {
+    "summary": "A single data stream or index",
+    "value": "[\n  {\n    \"index\": \"my-index-000001\",\n    \"shard\": \"0\",\n    \"prirep\": \"p\",\n    \"state\": \"STARTED\",\n    \"docs\": \"3014\",\n    \"store\": \"31.1mb\",\n    \"dataset\": \"249b\",\n    \"ip\": \"192.168.56.10\",\n    \"node\": \"H5dfFeA\"\n  }\n]"
+   },
+   {
+    "summary": "A wildcard pattern",
+    "value": "[\n  {\n    \"index\": \"my-index-000001\",\n    \"shard\": \"0\",\n    \"prirep\": \"p\",\n    \"state\": \"STARTED\",\n    \"docs\": \"3014\",\n    \"store\": \"31.1mb\",\n    \"dataset\": \"249b\",\n    \"ip\": \"192.168.56.10\",\n    \"node\": \"H5dfFeA\"\n  }\n]"
+   },
+   {
+    "summary": "A relocating shard",
+    "value": "[\n  {\n    \"index\": \"my-index-000001\",\n    \"shard\": \"0\",\n    \"prirep\": \"p\",\n    \"state\": \"RELOCATING\",\n    \"docs\": \"3014\",\n    \"store\": \"31.1mb\",\n    \"dataset\": \"249b\",\n    \"ip\": \"192.168.56.10\",\n    \"node\": \"H5dfFeA -> -> 192.168.56.30 bGG90GE\"\n  }\n]"
+   },
+   {
+    "summary": "Shard states",
+    "value": "[\n  {\n    \"index\": \"my-index-000001\",\n    \"shard\": \"0\",\n    \"prirep\": \"p\",\n    \"state\": \"STARTED\",\n    \"docs\": \"3014\",\n    \"store\": \"31.1mb\",\n    \"dataset\": \"249b\",\n    \"ip\": \"192.168.56.10\",\n    \"node\": \"H5dfFeA\"\n  },\n  {\n    \"index\": \"my-index-000001\",\n    \"shard\": \"0\",\n    \"prirep\": \"r\",\n    \"state\": \"INITIALIZING\",\n    \"docs\": \"0\",\n    \"store\": \"14.3mb\",\n    \"dataset\": \"249b\",\n    \"ip\": \"192.168.56.30\",\n    \"node\": \"bGG90GE\"\n  }\n]"
+   }
+  ]
+ },
+ "GET /_cat/snapshots/{{repo_name}}": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-cat-snapshots",
+  "operation": "GET /_cat/snapshots/{repository}",
+  "response": [
+   {
+    "summary": "A successful response from `GET /_cat/snapshots/repo1?v=true&s=id&format=json`.",
+    "value": "[\n  {\n    \"id\": \"snap1\",\n    \"repository\": \"repo1\",\n    \"status\": \"FAILED\",\n    \"start_epoch\": \"1445616705\",\n    \"start_time\": \"18:11:45\",\n    \"end_epoch\": \"1445616978\",\n    \"end_time\": \"18:16:18\",\n    \"duration\": \"4.6m\",\n    \"indices\": \"1\",\n    \"successful_shards\": \"4\",\n    \"failed_shards\": \"1\",\n    \"total_shards\": \"5\"\n  },\n  {\n    \"id\": \"snap2\",\n    \"repository\": \"repo1\",\n    \"status\": \"SUCCESS\",\n    \"start_epoch\": \"1445634298\",\n    \"start_time\": \"23:04:58\",\n    \"end_epoch\": \"1445634672\",\n    \"end_time\": \"23:11:12\",\n    \"duration\": \"6.2m\",\n    \"indices\": \"2\",\n    \"successful_shards\": \"10\",\n    \"failed_shards\": \"0\",\n    \"total_shards\": \"10\"\n  }\n]"
+   }
+  ]
+ },
+ "GET /_cat/thread_pool": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-cat-thread-pool",
+  "operation": "GET /_cat/thread_pool",
+  "response": [
+   {
+    "summary": "Default columns",
+    "value": "[\n  {\n    \"node_name\": \"node-0\",\n    \"name\": \"analyze\",\n    \"active\": \"0\",\n    \"queue\": \"0\",\n    \"rejected\": \"0\"\n  },\n  {\n    \"node_name\": \"node-0\",\n    \"name\": \"fetch_shard_started\",\n    \"active\": \"0\",\n    \"queue\": \"0\",\n    \"rejected\": \"0\"\n  },\n  {\n    \"node_name\": \"node-0\",\n    \"name\": \"fetch_shard_store\",\n    \"active\": \"0\",\n    \"queue\": \"0\",\n    \"rejected\": \"0\"\n  },\n  {\n    \"node_name\": \"node-0\",\n    \"name\": \"flush\",\n    \"active\": \"0\",\n    \"queue\": \"0\",\n    \"rejected\": \"0\"\n  },\n  {\n    \"node_name\": \"node-0\",\n    \"name\": \"write\",\n    \"active\": \"0\",\n    \"queue\": \"0\",\n    \"rejected\": \"0\"\n  }\n]"
+   },
+   {
+    "summary": "Explicit columns",
+    "value": "[\n  {\n    \"id\": \"0EWUhXeBQtaVGlexUeVwMg\",\n    \"name\": \"generic\",\n    \"active\": \"0\",\n    \"rejected\": \"0\",\n    \"completed\": \"70\"\n  }\n]"
+   }
+  ]
+ },
+ "GET /_ccr/stats": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-ccr-stats",
+  "operation": "GET /_ccr/stats",
+  "response": [
+   {
+    "summary": "A successful response from `GET /_ccr/stats` that returns cross-cluster replication stats.",
+    "value": "{\n  \"auto_follow_stats\" : {\n    \"number_of_failed_follow_indices\" : 0,\n    \"number_of_failed_remote_cluster_state_requests\" : 0,\n    \"number_of_successful_follow_indices\" : 1,\n    \"recent_auto_follow_errors\" : [],\n    \"auto_followed_clusters\" : []\n  },\n  \"follow_stats\" : {\n    \"indices\" : [\n      {\n        \"index\" : \"follower_index\",\n        \"total_global_checkpoint_lag\" : 256,\n        \"shards\" : [\n          {\n            \"remote_cluster\" : \"remote_cluster\",\n            \"leader_index\" : \"leader_index\",\n            \"follower_index\" : \"follower_index\",\n            \"shard_id\" : 0,\n            \"leader_global_checkpoint\" : 1024,\n            \"leader_max_seq_no\" : 1536,\n            \"follower_global_checkpoint\" : 768,\n            \"follower_max_seq_no\" : 896,\n            \"last_requested_seq_no\" : 897,\n            \"outstanding_read_requests\" : 8,\n            \"outstanding_write_requests\" : 2,\n            \"write_buffer_operation_count\" : 64,\n            \"follower_mapping_version\" : 4,\n            \"follower_settings_version\" : 2,\n            \"follower_aliases_version\" : 8,\n            \"total_read_time_millis\" : 32768,\n            \"total_read_remote_exec_time_millis\" : 16384,\n            \"successful_read_requests\" : 32,\n            \"failed_read_requests\" : 0,\n            \"operations_read\" : 896,\n            \"bytes_read\" : 32768,\n            \"total_write_time_millis\" : 16384,\n            \"write_buffer_size_in_bytes\" : 1536,\n            \"successful_write_requests\" : 16,\n            \"failed_write_requests\" : 0,\n            \"operations_written\" : 832,\n            \"read_exceptions\" : [ ],\n            \"time_since_last_read_millis\" : 8\n          }\n        ]\n      }\n    ]\n  }\n}"
+   }
+  ]
+ },
+ "GET /_cluster/allocation/explain": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-cluster-allocation-explain",
+  "operation": "GET /_cluster/allocation/explain",
+  "request": [
+   {
+    "summary": "All parameters in the request body",
+    "value": "{\n  \"index\": \"my-index-000001\",\n  \"shard\": 0,\n  \"primary\": false,\n  \"current_node\": \"my-node\"\n}"
+   },
+   {
+    "summary": "Query Parameters",
+    "value": "{}"
+   }
+  ],
+  "response": [
+   {
+    "summary": "Conflicting settings",
+    "value": "{\n  \"index\" : \"my-index-000001\",\n  \"shard\" : 0,\n  \"primary\" : true,\n  \"current_state\" : \"unassigned\",\n  \"unassigned_info\" : {\n    \"reason\" : \"INDEX_CREATED\",\n    \"at\" : \"2017-01-04T18:08:16.600Z\",\n    \"last_allocation_status\" : \"no\"\n  },\n  \"can_allocate\" : \"no\",\n  \"allocate_explanation\" : \"Elasticsearch isn't allowed to allocate this shard to any of the nodes in the cluster. Choose a node to which you expect this shard to be allocated, find this node in the node-by-node explanation, and address the reasons which prevent Elasticsearch from allocating this shard there.\",\n  \"node_allocation_decisions\" : [\n    {\n      \"node_id\" : \"8qt2rY-pT6KNZB3-hGfLnw\",\n      \"node_name\" : \"node-0\",\n      \"transport_address\" : \"127.0.0.1:9401\",\n      \"roles\" : [\"data\", \"data_cold\", \"data_content\", \"data_frozen\", \"data_hot\", \"data_warm\", \"ingest\", \"master\", \"ml\", \"remote_cluster_client\", \"transform\"],\n      \"node_attributes\" : {},\n      \"node_decision\" : \"no\",\n      \"weight_ranking\" : 1,\n      \"deciders\" : [\n        {\n          \"decider\" : \"filter\",\n          \"decision\" : \"NO\",\n          \"explanation\" : \"node does not match index setting [index.routing.allocation.include] filters [_name:\\\"nonexistent_node\\\"]\"\n        }\n      ]\n    }\n  ]\n}"
+   },
+   {
+    "summary": "Maximum retries",
+    "value": "{\n  \"index\" : \"my-index-000001\",\n  \"shard\" : 0,\n  \"primary\" : true,\n  \"current_state\" : \"unassigned\",\n  \"unassigned_info\" : {\n    \"at\" : \"2017-01-04T18:03:28.464Z\",\n    \"failed shard on node [mEKjwwzLT1yJVb8UxT6anw]: failed recovery, failure RecoveryFailedException\",\n    \"reason\": \"ALLOCATION_FAILED\",\n    \"failed_allocation_attempts\": 5,\n    \"last_allocation_status\": \"no\",\n  },\n  \"can_allocate\": \"no\",\n  \"allocate_explanation\": \"cannot allocate because allocation is not permitted to any of the nodes\",\n  \"node_allocation_decisions\" : [\n    {\n      \"node_id\" : \"3sULLVJrRneSg0EfBB-2Ew\",\n      \"node_name\" : \"node_t0\",\n      \"transport_address\" : \"127.0.0.1:9400\",\n      \"roles\" : [\"data_content\", \"data_hot\"],\n      \"node_decision\" : \"no\",\n      \"store\" : {\n        \"matching_size\" : \"4.2kb\",\n        \"matching_size_in_bytes\" : 4325\n      },\n      \"deciders\" : [\n        {\n          \"decider\": \"max_retry\",\n          \"decision\" : \"NO\",\n          \"explanation\": \"shard has exceeded the maximum number of retries [5] on failed allocation attempts - manually call [POST /_cluster/reroute?retry_failed] to retry, [unassigned_info[[reason=ALLOCATION_FAILED], at[2024-07-30T21:04:12.166Z], failed_attempts[5], failed_nodes[[mEKjwwzLT1yJVb8UxT6anw]], delayed=false, details[failed shard on node [mEKjwwzLT1yJVb8UxT6anw]: failed recovery, failure RecoveryFailedException], allocation_status[deciders_no]]]\"\n        }\n      ]\n    }\n  ]\n}"
+   }
+  ]
+ },
+ "GET /_cluster/health": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-cluster-health",
+  "operation": "GET /_cluster/health",
+  "response": [
+   {
+    "summary": "A successful response from `GET _cluster/health`. It is the health status of a quiet si...",
+    "value": "{\n  \"cluster_name\" : \"testcluster\",\n  \"status\" : \"yellow\",\n  \"timed_out\" : false,\n  \"number_of_nodes\" : 1,\n  \"number_of_data_nodes\" : 1,\n  \"active_primary_shards\" : 1,\n  \"active_shards\" : 1,\n  \"relocating_shards\" : 0,\n  \"initializing_shards\" : 0,\n  \"unassigned_shards\" : 1,\n  \"delayed_unassigned_shards\": 0,\n  \"number_of_pending_tasks\" : 0,\n  \"number_of_in_flight_fetch\": 0,\n  \"task_max_waiting_in_queue_millis\": 0,\n  \"active_shards_percent_as_number\": 50.0\n}"
+   }
+  ]
+ },
+ "GET /_cluster/pending_tasks": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-cluster-pending-tasks",
+  "operation": "GET /_cluster/pending_tasks"
+ },
+ "GET /_cluster/settings": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-cluster-get-settings",
+  "operation": "GET /_cluster/settings"
+ },
+ "GET /_cluster/stats": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-cluster-stats",
+  "operation": "GET /_cluster/stats"
+ },
+ "GET /_component_template": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-cluster-get-component-template",
+  "operation": "GET /_component_template",
+  "response": [
+   {
+    "summary": "A successful response for retrieving information about a component template.",
+    "value": "{\n  \"component_templates\" : [\n    {\n      \"name\" : \"my-component-template\",\n      \"component_template\" : {\n        \"version\" : 1,\n        \"_meta\" : {\n          \"description\" : \"my custom component template\"\n        },\n        \"template\" : {\n          \"settings\" : {\n            \"index\" : {\n              \"number_of_shards\" : \"1\"\n            }\n          },\n          \"mappings\" : {\n            \"properties\" : {\n              \"@timestamp\" : {\n                \"type\" : \"date\"\n              },\n              \"message\" : {\n                \"type\" : \"text\"\n              }\n            }\n          }\n        },\n        \"created_date\" : \"2024-01-01T12:00:00.000Z\",\n        \"created_date_millis\" : 1704110400000,\n        \"modified_date\" : \"2025-01-01T12:00:00.000Z\",\n        \"modified_date_millis\" : 1735732800000\n      }\n    }\n  ]\n}"
+   }
+  ]
+ },
+ "GET /_data_stream": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-indices-get-data-stream",
+  "operation": "GET /_data_stream",
+  "response": [
+   {
+    "summary": "A successful response for retrieving information about a data stream.",
+    "value": "{\n  \"data_streams\": [\n    {\n      \"name\": \"my-data-stream\",\n      \"timestamp_field\": {\n        \"name\": \"@timestamp\"\n      },\n      \"indices\": [\n        {\n          \"index_name\": \".ds-my-data-stream-2099.03.07-000001\",\n          \"index_uuid\": \"xCEhwsp8Tey0-FLNFYVwSg\",\n          \"prefer_ilm\": true,\n          \"ilm_policy\": \"my-lifecycle-policy\",\n          \"managed_by\": \"Index Lifecycle Management\"\n        },\n        {\n          \"index_name\": \".ds-my-data-stream-2099.03.08-000002\",\n          \"index_uuid\": \"PA_JquKGSiKcAKBA8DJ5gw\",\n          \"prefer_ilm\": true,\n          \"ilm_policy\": \"my-lifecycle-policy\",\n          \"managed_by\": \"Index Lifecycle Management\"\n        }\n      ],\n      \"generation\": 2,\n      \"_meta\": {\n        \"my-meta-field\": \"foo\"\n      },\n      \"status\": \"GREEN\",\n      \"next_generation_managed_by\": \"Index Lifecycle Management\",\n      \"prefer_ilm\": true,\n      \"template\": \"my-index-template\",\n      \"ilm_policy\": \"my-lifecycle-policy\",\n      \"hidden\": false,\n      \"system\": false,\n      \"allow_custom_routing\": false,\n      \"replicated\": false,\n      \"rollover_on_write\": false\n    },\n    {\n      \"name\": \"my-data-stream-two\",\n      \"timestamp_field\": {\n        \"name\": \"@timestamp\"\n      },\n      \"indices\": [\n        {\n          \"index_name\": \".ds-my-data-stream-two-2099.03.08-000001\",\n          \"index_uuid\": \"3liBu2SYS5axasRt6fUIpA\",\n          \"prefer_ilm\": true,\n          \"ilm_policy\": \"my-lifecycle-policy\",\n          \"managed_by\": \"Index Lifecycle Management\"\n        }\n      ],\n      \"generation\": 1,\n      \"_meta\": {\n        \"my-meta-field\": \"foo\"\n      },\n      \"status\": \"YELLOW\",\n      \"next_generation_managed_by\": \"Index Lifecycle Management\",\n      \"prefer_ilm\": true,\n      \"template\": \"my-index-template\",\n      \"ilm_policy\": \"my-lifecycle-policy\",\n      \"hidden\": false,\n      \"system\": false,\n      \"allow_custom_routing\": false,\n      \"replicated\": false,\n      \"rollover_on_write\": false\n    }\n  ]\n}"
+   }
+  ]
+ },
+ "GET /_data_stream/_stats": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-indices-data-streams-stats",
+  "operation": "GET /_data_stream/_stats",
+  "response": [
+   {
+    "summary": "A successful response for retrieving statistics for a data stream.",
+    "value": "{\n  \"_shards\": {\n    \"total\": 10,\n    \"successful\": 5,\n    \"failed\": 0\n  },\n  \"data_stream_count\": 2,\n  \"backing_indices\": 5,\n  \"total_store_size\": \"7kb\",\n  \"total_store_size_bytes\": 7268,\n  \"data_streams\": [\n    {\n      \"data_stream\": \"my-data-stream\",\n      \"backing_indices\": 3,\n      \"store_size\": \"3.7kb\",\n      \"store_size_bytes\": 3772,\n      \"maximum_timestamp\": 1607512028000\n    },\n    {\n      \"data_stream\": \"my-data-stream-two\",\n      \"backing_indices\": 2,\n      \"store_size\": \"3.4kb\",\n      \"store_size_bytes\": 3496,\n      \"maximum_timestamp\": 1607425567000\n    }\n  ]\n}"
+   }
+  ]
+ },
+ "GET /_health_report": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-health-report",
+  "operation": "GET /_health_report"
+ },
+ "GET /_ilm/policy": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-ilm-get-lifecycle",
+  "operation": "GET /_ilm/policy",
+  "response": [
+   {
+    "summary": "A successful response when retrieving a lifecycle policy.",
+    "value": "{\n  \"my_policy\": {\n    \"version\": 1,\n    \"modified_date\": 82392349,\n    \"policy\": {\n      \"phases\": {\n        \"warm\": {\n          \"min_age\": \"10d\",\n          \"actions\": {\n            \"forcemerge\": {\n              \"max_num_segments\": 1\n            }\n          }\n        },\n        \"delete\": {\n          \"min_age\": \"30d\",\n          \"actions\": {\n            \"delete\": {\n              \"delete_searchable_snapshot\": true\n            }\n          }\n        }\n      }\n    },\n    \"in_use_by\" : {\n      \"indices\" : [],\n      \"data_streams\" : [],\n      \"composable_templates\" : []\n    }\n  }\n}"
+   }
+  ]
+ },
+ "GET /_ilm/policy/{{ilm_policy}}": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-ilm-get-lifecycle",
+  "operation": "GET /_ilm/policy/{policy}",
+  "response": [
+   {
+    "summary": "A successful response when retrieving a lifecycle policy.",
+    "value": "{\n  \"my_policy\": {\n    \"version\": 1,\n    \"modified_date\": 82392349,\n    \"policy\": {\n      \"phases\": {\n        \"warm\": {\n          \"min_age\": \"10d\",\n          \"actions\": {\n            \"forcemerge\": {\n              \"max_num_segments\": 1\n            }\n          }\n        },\n        \"delete\": {\n          \"min_age\": \"30d\",\n          \"actions\": {\n            \"delete\": {\n              \"delete_searchable_snapshot\": true\n            }\n          }\n        }\n      }\n    },\n    \"in_use_by\" : {\n      \"indices\" : [],\n      \"data_streams\" : [],\n      \"composable_templates\" : []\n    }\n  }\n}"
+   }
+  ]
+ },
+ "GET /_ilm/status": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-ilm-get-status",
+  "operation": "GET /_ilm/status",
+  "response": [
+   {
+    "summary": "A successful response when retrieving the current ILM status.",
+    "value": "{\n  \"operation_mode\": \"RUNNING\"\n}"
+   }
+  ]
+ },
+ "GET /_index_template": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-indices-get-index-template",
+  "operation": "GET /_index_template",
+  "response": [
+   {
+    "summary": "A successful response for retrieving information about an index template.",
+    "value": "{\n  \"index_templates\" : [\n    {\n      \"name\" : \"my-index-template\",\n      \"index_template\" : {\n        \"index_patterns\" : [ \"logs-*\" ],\n        \"template\" : {\n          \"settings\" : {\n            \"index\" : {\n              \"number_of_shards\" : \"1\",\n              \"number_of_replicas\" : \"1\"\n            }\n          },\n          \"mappings\" : {\n            \"properties\" : {\n              \"@timestamp\" : {\n                \"type\" : \"date\"\n              },\n              \"message\" : {\n                \"type\" : \"text\"\n              }\n            }\n          }\n        },\n        \"composed_of\" : [ \"my-component-template\" ],\n        \"priority\" : 200,\n        \"version\" : 1,\n        \"_meta\" : {\n          \"description\" : \"my custom index template\"\n        },\n        \"created_date\" : \"2024-01-01T12:00:00.000Z\",\n        \"created_date_millis\" : 1704110400000,\n        \"modified_date\" : \"2025-01-01T12:00:00.000Z\",\n        \"modified_date_millis\" : 1735732800000\n      }\n    }\n  ]\n}"
+   }
+  ]
+ },
+ "GET /_index_template/{{template_name}}": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-indices-get-index-template",
+  "operation": "GET /_index_template/{name}",
+  "response": [
+   {
+    "summary": "A successful response for retrieving information about an index template.",
+    "value": "{\n  \"index_templates\" : [\n    {\n      \"name\" : \"my-index-template\",\n      \"index_template\" : {\n        \"index_patterns\" : [ \"logs-*\" ],\n        \"template\" : {\n          \"settings\" : {\n            \"index\" : {\n              \"number_of_shards\" : \"1\",\n              \"number_of_replicas\" : \"1\"\n            }\n          },\n          \"mappings\" : {\n            \"properties\" : {\n              \"@timestamp\" : {\n                \"type\" : \"date\"\n              },\n              \"message\" : {\n                \"type\" : \"text\"\n              }\n            }\n          }\n        },\n        \"composed_of\" : [ \"my-component-template\" ],\n        \"priority\" : 200,\n        \"version\" : 1,\n        \"_meta\" : {\n          \"description\" : \"my custom index template\"\n        },\n        \"created_date\" : \"2024-01-01T12:00:00.000Z\",\n        \"created_date_millis\" : 1704110400000,\n        \"modified_date\" : \"2025-01-01T12:00:00.000Z\",\n        \"modified_date_millis\" : 1735732800000\n      }\n    }\n  ]\n}"
+   }
+  ]
+ },
+ "GET /_ingest/pipeline": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-ingest-get-pipeline",
+  "operation": "GET /_ingest/pipeline",
+  "response": [
+   {
+    "summary": "A successful response for retrieving information about an ingest pipeline.",
+    "value": "{\n  \"my-pipeline-id\" : {\n    \"description\" : \"describe pipeline\",\n    \"version\" : 123,\n    \"processors\" : [\n      {\n        \"set\" : {\n          \"field\" : \"foo\",\n          \"value\" : \"bar\"\n        }\n      }\n    ],\n    \"created_date\" : \"2024-01-01T12:00:00.000Z\",\n    \"created_date_millis\" : 1704110400000,\n    \"modified_date\" : \"2025-01-01T12:00:00.000Z\",\n    \"modified_date_millis\" : 1735732800000\n  }\n}"
+   }
+  ]
+ },
+ "GET /_ingest/pipeline/{{pipeline_id}}": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-ingest-get-pipeline",
+  "operation": "GET /_ingest/pipeline/{id}",
+  "response": [
+   {
+    "summary": "A successful response for retrieving information about an ingest pipeline.",
+    "value": "{\n  \"my-pipeline-id\" : {\n    \"description\" : \"describe pipeline\",\n    \"version\" : 123,\n    \"processors\" : [\n      {\n        \"set\" : {\n          \"field\" : \"foo\",\n          \"value\" : \"bar\"\n        }\n      }\n    ],\n    \"created_date\" : \"2024-01-01T12:00:00.000Z\",\n    \"created_date_millis\" : 1704110400000,\n    \"modified_date\" : \"2025-01-01T12:00:00.000Z\",\n    \"modified_date_millis\" : 1735732800000\n  }\n}"
+   }
+  ]
+ },
+ "GET /_license": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-license-get",
+  "operation": "GET /_license",
+  "response": [
+   {
+    "summary": "A successful response from `GET /_license`.",
+    "value": "{\n  \"license\" : {\n    \"status\" : \"active\",\n    \"uid\" : \"cbff45e7-c553-41f7-ae4f-9205eabd80xx\",\n    \"type\" : \"trial\",\n    \"issue_date\" : \"2018-10-20T22:05:12.332Z\",\n    \"issue_date_in_millis\" : 1540073112332,\n    \"expiry_date\" : \"2018-11-19T22:05:12.332Z\",\n    \"expiry_date_in_millis\" : 1542665112332,\n    \"max_nodes\" : 1000,\n    \"max_resource_units\" : null,\n    \"issued_to\" : \"test\",\n    \"issuer\" : \"elasticsearch\",\n    \"start_date_in_millis\" : -1\n  }\n}"
+   }
+  ]
+ },
+ "GET /_migration/deprecations": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-migration-deprecations",
+  "operation": "GET /_migration/deprecations",
+  "response": [
+   {
+    "summary": "An abbreviated response from `GET /_migration/deprecations`.",
+    "value": "{\n  \"cluster_settings\": [\n    {\n      \"level\": \"critical\",\n      \"message\": \"Cluster name cannot contain ':'\",\n      \"url\": \"https://www.elastic.co/guide/en/elasticsearch/reference/7.0/breaking-changes-7.0.html#_literal_literal_is_no_longer_allowed_in_cluster_name\",\n      \"details\": \"This cluster is named [mycompany:logging], which contains the illegal character ':'.\"\n    }\n  ],\n  \"node_settings\": [],\n  \"index_settings\": {\n    \"logs:apache\": [\n      {\n        \"level\": \"warning\",\n        \"message\": \"Index name cannot contain ':'\",\n        \"url\": \"https://www.elastic.co/guide/en/elasticsearch/reference/7.0/breaking-changes-7.0.html#_literal_literal_is_no_longer_allowed_in_index_name\",\n        \"details\": \"This index is named [logs:apache], which contains the illegal character ':'.\"\n      }\n    ]\n  },\n  \"ml_settings\": []\n}"
+   }
+  ]
+ },
+ "GET /_ml/anomaly_detectors": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-ml-get-jobs",
+  "operation": "GET /_ml/anomaly_detectors"
+ },
+ "GET /_ml/anomaly_detectors/_stats": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-ml-get-job-stats",
+  "operation": "GET /_ml/anomaly_detectors/_stats"
+ },
+ "GET /_nodes/hot_threads": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-nodes-hot-threads",
+  "operation": "GET /_nodes/hot_threads"
+ },
+ "GET /_nodes/stats": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-nodes-stats",
+  "operation": "GET /_nodes/stats"
+ },
+ "GET /_remote/info": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-cluster-remote-info",
+  "operation": "GET /_remote/info"
+ },
+ "GET /_resolve/index/{{index_pattern}}": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-indices-resolve-index",
+  "operation": "GET /_resolve/index/{name}",
+  "response": [
+   {
+    "summary": "A successful response from `GET /_resolve/index/f*,remoteCluster1:bar*?expand_wildcards...",
+    "value": "{\n  \"indices\": [\n    {\n      \"name\": \"foo_closed\",\n      \"attributes\": [\n        \"closed\"\n      ],\n      \"mode\": \"standard\"\n    },\n    {\n      \"name\": \"freeze-index\",\n      \"aliases\": [\n        \"f-alias\"\n      ],\n      \"attributes\": [\n        \"open\"\n      ]\n    },\n    {\n      \"name\": \"remoteCluster1:bar-01\",\n      \"attributes\": [\n        \"open\"\n      ]\n    }\n  ],\n  \"aliases\": [\n    {\n      \"name\": \"f-alias\",\n      \"indices\": [\n        \"freeze-index\",\n        \"my-index-000001\"\n      ]\n    }\n  ],\n  \"data_streams\": [\n    {\n      \"name\": \"foo\",\n      \"backing_indices\": [\n        \".ds-foo-2099.03.07-000001\"\n      ],\n      \"timestamp_field\": \"@timestamp\"\n    }\n  ]\n}"
+   }
+  ]
+ },
+ "GET /_security/_authenticate": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-security-authenticate",
+  "operation": "GET /_security/_authenticate",
+  "response": [
+   {
+    "summary": "A successful response from `GET /_security/_authenticate`.",
+    "value": "{\n  \"username\": \"rdeniro\",\n  \"roles\": [\n    \"admin\"\n  ],\n  \"full_name\": null,\n  \"email\":  null,\n  \"metadata\": { },\n  \"enabled\": true,\n  \"authentication_realm\": {\n    \"name\" : \"file\",\n    \"type\" : \"file\"\n  },\n  \"lookup_realm\": {\n    \"name\" : \"file\",\n    \"type\" : \"file\"\n  },\n  \"authentication_type\": \"realm\"\n}"
+   },
+   {
+    "summary": "A successful response from `GET /_security/_authenticate` for access token authentication.",
+    "value": "{\n  \"username\": \"0000000001\",\n  \"roles\": [\n    \"admin\"\n  ],\n  \"full_name\": \"Peter Parker\",\n  \"email\": \"spider-man@marvel.com\",\n  \"metadata\": {},\n  \"enabled\": true,\n  \"authentication_realm\": {\n    \"name\": \"cloud-saml-kibana\",\n    \"type\": \"saml\"\n  },\n  \"lookup_realm\": {\n    \"name\": \"cloud-saml-kibana\",\n    \"type\": \"saml\"\n  },\n  \"authentication_type\": \"token\",\n  \"token\": {\n    \"managed_by\": \"cloud\"\n  }\n}"
+   },
+   {
+    "summary": "A successful response from `GET /_security/_authenticate` for service account token aut...",
+    "value": "{\n  \"username\": \"elastic/fleet-server\",\n  \"roles\": [ ],\n  \"full_name\": \"Service account - elastic/fleet-server\",\n  \"email\": null,\n  \"metadata\": {\n    \"_elastic_service_account\": true\n  },\n  \"enabled\": true,\n  \"authentication_realm\": {\n    \"name\": \"_service_account\",\n    \"type\": \"_service_account\"\n  },\n  \"lookup_realm\": {\n    \"name\": \"_service_account\",\n    \"type\": \"_service_account\"\n  },\n  \"authentication_type\": \"token\",\n  \"token\": {\n    \"type\": \"_service_account_index\",\n    \"name\": \"token_abcd1234\",\n    \"managed_by\": \"elasticsearch\"\n  }\n}"
+   }
+  ]
+ },
+ "GET /_security/api_key": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-security-get-api-key",
+  "operation": "GET /_security/api_key",
+  "response": [
+   {
+    "summary": "Get a key by ID",
+    "value": "{\n  \"api_keys\": [ \n    {\n      \"id\": \"VuaCfGcBCdbkQm-e5aOx\", \n      \"name\": \"my-api-key\", \n      \"creation\": 1548550550158, \n      \"expiration\": 1548551550158, \n      \"invalidated\": false, \n      \"username\": \"myuser\", \n      \"realm\": \"native1\", \n      \"realm_type\": \"native\",\n      \"metadata\": { \n        \"application\": \"myapp\"\n      },\n      \"role_descriptors\": { }, \n      \"limited_by\": [  \n        {\n          \"role-power-user\": {\n            \"cluster\": [\n              \"monitor\"\n            ],\n            \"indices\": [\n              {\n                \"names\": [\n                  \"*\"\n                ],\n                \"privileges\": [\n                  \"read\"\n                ],\n                \"allow_restricted_indices\": false\n              }\n            ],\n            \"applications\": [ ],\n            \"run_as\": [ ],\n            \"metadata\": { },\n            \"transient_metadata\": {\n              \"enabled\": true\n            }\n          }\n        }\n      ]\n    }\n  ]\n}"
+   },
+   {
+    "summary": "Get all keys for a user",
+    "value": "{\n  \"api_keys\": [\n    {\n      \"id\": \"0GF5GXsBCXxz2eDxWwFN\",\n      \"name\": \"hadoop_myuser_key\",\n      \"creation\": 1548550550158,\n      \"expiration\": 1548551550158,\n      \"invalidated\": false,\n      \"username\": \"myuser\",\n      \"realm\": \"native1\",\n      \"realm_type\": \"native\",\n      \"metadata\": {\n        \"application\": \"myapp\"\n      },\n      \"role_descriptors\": {\n        \"role-a\": {\n          \"cluster\": [\n            \"monitor\"\n          ],\n          \"indices\": [\n            {\n              \"names\": [\n                \"index-a\"\n              ],\n              \"privileges\": [\n                \"read\"\n              ],\n              \"allow_restricted_indices\": false\n            }\n          ],\n          \"applications\": [ ],\n          \"run_as\": [ ],\n          \"metadata\": { },\n          \"transient_metadata\": {\n            \"enabled\": true\n          }\n        }\n      }\n    },\n    {\n      \"id\": \"6wHJmcQpReKBa42EHV5SBw\",\n      \"name\": \"api-key-name-2\",\n      \"creation\": 1548550550158,\n      \"invalidated\": false,\n      \"username\": \"user-y\",\n      \"realm\": \"realm-2\",\n      \"metadata\": {},\n      \"role_descriptors\": { }\n    }\n  ]\n}"
+   }
+  ]
+ },
+ "GET /_security/role": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-security-get-role",
+  "operation": "GET /_security/role",
+  "response": [
+   {
+    "summary": "A successful response from `GET /_security/role/my_admin_role`. The response contains i...",
+    "value": "{\n  \"my_admin_role\": {\n    \"description\": \"Grants full access to all management features within the cluster.\",\n    \"cluster\" : [ \"all\" ],\n    \"indices\" : [\n      {\n        \"names\" : [ \"index1\", \"index2\" ],\n        \"privileges\" : [ \"all\" ],\n        \"allow_restricted_indices\" : false,\n        \"field_security\" : {\n          \"grant\" : [ \"title\", \"body\" ]}\n      }\n    ],\n    \"applications\" : [ ],\n    \"run_as\" : [ \"other_user\" ],\n    \"metadata\" : {\n      \"version\" : 1\n    },\n    \"transient_metadata\": {\n      \"enabled\": true\n    }\n  }\n}"
+   }
+  ]
+ },
+ "GET /_security/role/{{role_name}}": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-security-get-role",
+  "operation": "GET /_security/role/{name}",
+  "response": [
+   {
+    "summary": "A successful response from `GET /_security/role/my_admin_role`. The response contains i...",
+    "value": "{\n  \"my_admin_role\": {\n    \"description\": \"Grants full access to all management features within the cluster.\",\n    \"cluster\" : [ \"all\" ],\n    \"indices\" : [\n      {\n        \"names\" : [ \"index1\", \"index2\" ],\n        \"privileges\" : [ \"all\" ],\n        \"allow_restricted_indices\" : false,\n        \"field_security\" : {\n          \"grant\" : [ \"title\", \"body\" ]}\n      }\n    ],\n    \"applications\" : [ ],\n    \"run_as\" : [ \"other_user\" ],\n    \"metadata\" : {\n      \"version\" : 1\n    },\n    \"transient_metadata\": {\n      \"enabled\": true\n    }\n  }\n}"
+   }
+  ]
+ },
+ "GET /_security/role_mapping": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-security-get-role-mapping",
+  "operation": "GET /_security/role_mapping",
+  "response": [
+   {
+    "summary": "A successful response from `GET /_security/role_mapping/mapping1`.",
+    "value": "{\n  \"mapping1\": {\n    \"enabled\": true,\n    \"roles\": [\n      \"user\"\n    ],\n    \"rules\": {\n      \"field\": {\n        \"username\": \"*\"\n      }\n    },\n    \"metadata\": {}\n  }\n}"
+   }
+  ]
+ },
+ "GET /_security/role_mapping/{{mapping_name}}": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-security-get-role-mapping",
+  "operation": "GET /_security/role_mapping/{name}",
+  "response": [
+   {
+    "summary": "A successful response from `GET /_security/role_mapping/mapping1`.",
+    "value": "{\n  \"mapping1\": {\n    \"enabled\": true,\n    \"roles\": [\n      \"user\"\n    ],\n    \"rules\": {\n      \"field\": {\n        \"username\": \"*\"\n      }\n    },\n    \"metadata\": {}\n  }\n}"
+   }
+  ]
+ },
+ "GET /_security/user": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-security-get-user",
+  "operation": "GET /_security/user",
+  "response": [
+   {
+    "summary": "A successful response from `GET /_security/user/jacknich?with_profile_uid=true`. It inc...",
+    "value": "{\n  \"jacknich\": {\n    \"username\": \"jacknich\",\n    \"roles\": [\n      \"admin\", \"other_role1\"\n    ],\n    \"full_name\": \"Jack Nicholson\",\n    \"email\": \"jacknich@example.com\",\n    \"metadata\": { \"intelligence\" : 7 },\n    \"enabled\": true,\n    \"profile_uid\": \"u_79HkWkwmnBH5gqFKwoxggWPjEBOur1zLPXQPEl1VBW0_0\"\n  }\n}"
+   }
+  ]
+ },
+ "GET /_slm/policy": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-slm-get-lifecycle",
+  "operation": "GET /_slm/policy",
+  "response": [
+   {
+    "summary": "A successful response from `GET _slm/policy/daily-snapshots?human`.",
+    "value": "{\n  \"daily-snapshots\": {\n    \"version\": 1,\n    \"modified_date\": \"2099-05-06T01:30:00.000Z\",\n    \"modified_date_millis\": 4081757400000,\n    \"policy\" : {\n      \"schedule\": \"0 30 1 * * ?\",\n      \"name\": \"<daily-snap-{now/d}>\",\n      \"repository\": \"my_repository\",\n      \"config\": {\n        \"indices\": [\"data-*\", \"important\"],\n        \"ignore_unavailable\": false,\n        \"include_global_state\": false\n      },\n      \"retention\": {\n        \"expire_after\": \"30d\",\n        \"min_count\": 5,\n        \"max_count\": 50\n      }\n    },\n    \"stats\": {\n      \"policy\": \"daily-snapshots\",\n      \"snapshots_taken\": 0,\n      \"snapshots_failed\": 0,\n      \"snapshots_deleted\": 0,\n      \"snapshot_deletion_failures\": 0\n    },\n    \"next_execution\": \"2099-05-07T01:30:00.000Z\",\n    \"next_execution_millis\": 4081843800000\n  }\n}"
+   }
+  ]
+ },
+ "GET /_slm/stats": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-slm-get-stats",
+  "operation": "GET /_slm/stats",
+  "response": [
+   {
+    "summary": "A successful response from `GET /_slm/stats`.",
+    "value": "{\n  \"retention_runs\": 13,\n  \"retention_failed\": 0,\n  \"retention_timed_out\": 0,\n  \"retention_deletion_time\": \"1.4s\",\n  \"retention_deletion_time_millis\": 1404,\n  \"policy_stats\": [ ],\n  \"total_snapshots_taken\": 1,\n  \"total_snapshots_failed\": 1,\n  \"total_snapshots_deleted\": 0,\n  \"total_snapshot_deletion_failures\": 0\n}"
+   }
+  ]
+ },
+ "GET /_slm/status": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-slm-get-status",
+  "operation": "GET /_slm/status",
+  "response": [
+   {
+    "summary": "A successful response from `GET _slm/status`.",
+    "value": "{\n  \"operation_mode\": \"RUNNING\"\n}"
+   }
+  ]
+ },
+ "GET /_snapshot": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-snapshot-get-repository",
+  "operation": "GET /_snapshot",
+  "response": [
+   {
+    "summary": "A successful response from `GET /_snapshot/my_repository`.",
+    "value": "{\n  \"my_repository\" : {\n    \"type\" : \"fs\",\n    \"uuid\" : \"0JLknrXbSUiVPuLakHjBrQ\",\n    \"settings\" : {\n      \"location\" : \"my_backup_location\"\n    }\n  }\n}"
+   }
+  ]
+ },
+ "GET /_snapshot/_status": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-snapshot-status",
+  "operation": "GET /_snapshot/_status",
+  "response": [
+   {
+    "summary": "All shard stats present",
+    "value": "{\n  \"snapshots\" : [\n    {\n      \"snapshot\" : \"snapshot_2\",\n      \"repository\" : \"my_repository\",\n      \"uuid\" : \"lNeQD1SvTQCqqJUMQSwmGg\",\n      \"state\" : \"SUCCESS\",\n      \"include_global_state\" : false,\n      \"shards_stats\" : {\n        \"initializing\" : 0,\n        \"started\" : 0,\n        \"finalizing\" : 0,\n        \"done\" : 1,\n        \"failed\" : 0,\n        \"total\" : 1\n      },\n      \"stats\" : {\n        \"incremental\" : {\n          \"file_count\" : 3,\n          \"size_in_bytes\" : 5969\n        },\n        \"total\" : {\n          \"file_count\" : 4,\n          \"size_in_bytes\" : 6024\n        },\n        \"start_time_in_millis\" : 1594829326691,\n        \"time_in_millis\" : 205\n      },\n      \"indices\" : {\n        \"index_1\" : {\n          \"shards_stats\" : {\n            \"initializing\" : 0,\n            \"started\" : 0,\n            \"finalizing\" : 0,\n            \"done\" : 1,\n            \"failed\" : 0,\n            \"total\" : 1\n          },\n          \"stats\" : {\n            \"incremental\" : {\n              \"file_count\" : 3,\n              \"size_in_bytes\" : 5969\n            },\n            \"total\" : {\n              \"file_count\" : 4,\n              \"size_in_bytes\" : 6024\n            },\n            \"start_time_in_millis\" : 1594829326896,\n            \"time_in_millis\" : 0\n          },\n          \"shards\" : {\n            \"0\" : {\n              \"stage\" : \"DONE\",\n              \"stats\" : {\n                \"incremental\" : {\n                  \"file_count\" : 3,\n                  \"size_in_bytes\" : 5969\n                },\n                \"total\" : {\n                  \"file_count\" : 4,\n                  \"size_in_bytes\" : 6024\n                },\n                \"start_time_in_millis\" : 1594829326896,\n                \"time_in_millis\" : 0\n              }\n            }\n          }\n        }\n      }\n    }\n  ]\n}"
+   },
+   {
+    "summary": "Missing shard stats",
+    "value": "{\n  \"snapshots\" : [\n    {\n      \"snapshot\" : \"snapshot_2\",\n      \"repository\" : \"my_repository\",\n      \"uuid\" : \"lNeQD1SvTQCqqJUMQSwmGg\",\n      \"state\" : \"STARTED\",\n      \"include_global_state\" : true,\n      \"shards_stats\" : {\n        \"initializing\" : 0,\n        \"started\" : 1,\n        \"finalizing\" : 0,\n        \"done\" : 1,\n        \"failed\" : 0,\n        \"total\" : 2\n      },\n      \"stats\" : {\n        \"incremental\" : {\n          \"file_count\" : 4,\n          \"size_in_bytes\" : 5412\n        },\n        \"processed\" : {\n          \"file_count\" : 2,\n          \"size_in_bytes\" : 658\n        },\n        \"total\" : {\n          \"file_count\" : 4,\n          \"size_in_bytes\" : 5412\n        },\n        \"start_time_in_millis\" : 1750452674327,\n        \"time_in_millis\" : 189\n      },\n      \"indices\" : {\n        \"index-1\" : {\n          \"shards_stats\" : {\n            \"initializing\" : 0,\n            \"started\" : 1,\n            \"finalizing\" : 0,\n            \"done\" : 0,\n            \"failed\" : 0,\n            \"total\" : 1\n          },\n          \"stats\" : {\n            \"incremental\" : {\n              \"file_count\" : 4,\n              \"size_in_bytes\" : 5412\n            },\n            \"processed\" : {\n              \"file_count\" : 2,\n              \"size_in_bytes\" : 658\n            },\n            \"total\" : {\n              \"file_count\" : 4,\n              \"size_in_bytes\" : 5412\n            },\n            \"start_time_in_millis\" : 1750452674379,\n            \"time_in_millis\" : 0\n          },\n          \"shards\" : {\n            \"0\" : {\n              \"stage\" : \"STARTED\",\n              \"stats\" : {\n                \"incremental\" : {\n                  \"file_count\" : 4,\n                  \"size_in_bytes\" : 5412\n                },\n                \"processed\" : {\n                  \"file_count\" : 2,\n                  \"size_in_bytes\" : 658\n                },\n                \"total\" : {\n                  \"file_count\" : 4,\n                  \"size_in_bytes\" : 5412\n                },\n                \"start_time_in_millis\" : 1750452674379,\n                \"time_in_millis\" : 0\n              },\n              \"node\" : \"VJzy6aKJSVKwcfjIFBPXxw\"\n            }\n          }\n        },\n        \"index-2\" : {\n          \"shards_stats\" : {\n            \"initializing\" : 0,\n            \"started\" : 0,\n            \"finalizing\" : 0,\n            \"done\" : 1,\n            \"failed\" : 0,\n            \"total\" : 1\n          },\n          \"stats\" : {\n            \"incremental\" : {\n              \"file_count\" : 0,\n              \"size_in_bytes\" : 0\n            },\n            \"total\" : {\n              \"file_count\" : 0,\n              \"size_in_bytes\" : 0\n            },\n            \"start_time_in_millis\" : 0,\n            \"time_in_millis\" : 0\n          },\n          \"shards\" : {\n            \"0\" : {\n              \"stage\" : \"DONE\",\n              \"stats\" : {\n                \"incremental\" : {\n                  \"file_count\" : -1,\n                  \"size_in_bytes\" : -1\n                },\n                \"total\" : {\n                  \"file_count\" : -1,\n                  \"size_in_bytes\" : -1\n                },\n                \"start_time_in_millis\" : 0,\n                \"time_in_millis\" : 0\n              },\n              \"description\" : \"Snapshot shard stats missing from a currently running snapshot due to a node leaving the cluster after completing the shard snapshot; retry once the snapshot has completed to load all shard stats from the repository.\"\n            }\n          }\n        }\n      }\n    }\n  ]\n}"
+   }
+  ]
+ },
+ "GET /_tasks": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-tasks-list",
+  "operation": "GET /_tasks",
+  "response": [
+   {
+    "summary": "A successful response from `GET _tasks?actions=*search&detailed` The `detailed` paramet...",
+    "value": "{\n  \"nodes\" : {\n    \"oTUltX4IQMOUUVeiohTt8A\" : {\n      \"name\" : \"H5dfFeA\",\n      \"transport_address\" : \"127.0.0.1:9300\",\n      \"host\" : \"127.0.0.1\",\n      \"ip\" : \"127.0.0.1:9300\",\n      \"tasks\" : {\n        \"oTUltX4IQMOUUVeiohTt8A:464\" : {\n          \"node\" : \"oTUltX4IQMOUUVeiohTt8A\",\n          \"id\" : 464,\n          \"type\" : \"transport\",\n          \"action\" : \"indices:data/read/search\",\n          \"description\" : \"indices[test], types[test], search_type[QUERY_THEN_FETCH], source[{\\\"query\\\":...}]\",\n          \"start_time_in_millis\" : 1483478610008,\n          \"running_time_in_nanos\" : 13991383,\n          \"cancellable\" : true,\n          \"cancelled\" : false\n        }\n      }\n    }\n  }\n}"
+   }
+  ]
+ },
+ "GET /_transform": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-transform-get-transform",
+  "operation": "GET /_transform",
+  "response": [
+   {
+    "summary": "A successful response that contains configuration information for a transform.",
+    "value": "{\n  \"count\": 1,\n  \"transforms\": [\n    {\n      \"id\": \"ecommerce_transform1\",\n      \"authorization\": {\n        \"roles\": [\n          \"superuser\"\n        ]\n      },\n      \"version\": \"8.4.0\",\n      \"create_time\": 1656023416565,\n      \"source\": {\n        \"index\": [\n          \"kibana_sample_data_ecommerce\"\n        ],\n        \"query\": {\n          \"term\": {\n            \"geoip.continent_name\": {\n              \"value\": \"Asia\"\n            }\n          }\n        }\n      },\n      \"dest\": {\n        \"index\": \"kibana_sample_data_ecommerce_transform1\",\n        \"pipeline\": \"add_timestamp_pipeline\"\n      },\n      \"frequency\": \"5m\",\n      \"sync\": {\n        \"time\": {\n          \"field\": \"order_date\",\n          \"delay\": \"60s\"\n        }\n      },\n      \"pivot\": {\n        \"group_by\": {\n          \"customer_id\": {\n            \"terms\": {\n              \"field\": \"customer_id\"\n            }\n          }\n        },\n        \"aggregations\": {\n          \"max_price\": {\n            \"max\": {\n              \"field\": \"taxful_total_price\"\n            }\n          }\n        }\n      },\n      \"description\": \"Maximum priced ecommerce data by customer_id in Asia\",\n      \"settings\": {},\n      \"retention_policy\": {\n        \"time\": {\n          \"field\": \"order_date\",\n          \"max_age\": \"30d\"\n        }\n      }\n    }\n  ]\n}"
+   }
+  ]
+ },
+ "GET /_transform/_all/_stats": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-transform-get-transform-stats",
+  "operation": "GET /_transform/{transform_id}/_stats",
+  "response": [
+   {
+    "summary": "A successful response that contains usage information for a transform.",
+    "value": "{\n  \"count\": 1,\n  \"transforms\": [\n    {\n      \"id\": \"ecommerce-customer-transform\",\n      \"state\": \"started\",\n      \"node\": {\n        \"id\": \"cpTIGMsVQ8Gqwqlxxxxxxx\",\n        \"name\": \"my.home\",\n        \"ephemeral_id\": \"5-L21nFsQxxxxxxxxxx-xx\",\n        \"transport_address\": \"127.0.0.1:9300\",\n        \"attributes\": {}\n      },\n      \"stats\": {\n        \"pages_processed\": 78,\n        \"documents_processed\": 6027,\n        \"documents_indexed\": 68,\n        \"documents_deleted\": 22,\n        \"delete_time_in_ms\": 214,\n        \"trigger_count\": 168,\n        \"index_time_in_ms\": 412,\n        \"index_total\": 20,\n        \"index_failures\": 0,\n        \"search_time_in_ms\": 353,\n        \"search_total\": 78,\n        \"search_failures\": 0,\n        \"processing_time_in_ms\": 8,\n        \"processing_total\": 78,\n        \"exponential_avg_checkpoint_duration_ms\": 97.30637923893185,\n        \"exponential_avg_documents_indexed\": 2.2064915040974062,\n        \"exponential_avg_documents_processed\": 179.89419945785045\n      },\n      \"checkpointing\": {\n        \"last\": {\n          \"checkpoint\": 20,\n          \"timestamp_millis\": 1585344558220,\n          \"time_upper_bound_millis\": 1585344498220\n        },\n        \"changes_last_detected_at\": 1585344558219\n      },\n      \"health\": {\n        \"status\": \"green\"\n      }\n    }\n  ]\n}"
+   }
+  ]
+ },
+ "GET /_watcher/stats": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-watcher-stats",
+  "operation": "GET /_watcher/stats",
+  "response": [
+   {
+    "summary": "Basic metrics",
+    "value": "{\n  \"watcher_state\": \"started\",  \n  \"watch_count\": 1, \n  \"execution_thread_pool\": {\n    \"size\": 1000, \n    \"max_size\": 1 \n  }\n}"
+   },
+   {
+    "summary": "Current watch metrics",
+    "value": "{\n  \"watcher_state\": \"started\",\n  \"watch_count\": 2,\n  \"execution_thread_pool\": {\n      \"queue_size\": 1000,\n      \"max_size\": 20\n  },\n  \"current_watches\": [ \n      {\n        \"watch_id\": \"slow_condition\", \n        \"watch_record_id\": \"slow_condition_3-2015-05-13T07:42:32.179Z\", \n        \"triggered_time\": \"2015-05-12T11:53:51.800Z\", \n        \"execution_time\": \"2015-05-13T07:42:32.179Z\", \n        \"execution_phase\": \"condition\" \n      }\n  ]\n}"
+   },
+   {
+    "summary": "Queued watch metrics",
+    "value": "{\n  \"watcher_state\": \"started\",\n  \"watch_count\": 10,\n  \"execution_thread_pool\": {\n      \"queue_size\": 1000,\n      \"max_size\": 20\n  },\n  \"queued_watches\": [ \n        {\n            \"watch_id\": \"slow_condition4\", \n            \"watch_record_id\": \"slow_condition4_223-2015-05-21T11:59:59.811Z\", \n            \"triggered_time\": \"2015-05-21T11:59:59.811Z\", \n            \"execution_time\": \"2015-05-21T11:59:59.811Z\" \n        }\n  ]\n}"
+   }
+  ]
+ },
+ "GET /api/actions/connector_types": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/kibana/operation/operation-get-actions-connector-types",
+  "operation": "GET /api/actions/connector_types",
+  "response": [
+   {
+    "summary": "A list of connector types for the `generativeAI` feature.",
+    "value": "[\n  {\n    \"id\": \".gen-ai\",\n    \"name\": \"OpenAI\",\n    \"enabled\": true,\n    \"enabled_in_config\": true,\n    \"enabled_in_license\": true,\n    \"minimum_license_required\": \"enterprise\",\n    \"supported_feature_ids\": [\n      \"generativeAIForSecurity\",\n      \"generativeAIForObservability\"\n    ],\n    \"is_system_action_type\": false\n  },\n  {\n    \"id\": \".bedrock\",\n    \"name\": \"AWS Bedrock\",\n    \"enabled\": true,\n    \"enabled_in_config\": true,\n    \"enabled_in_license\": true,\n    \"minimum_license_required\": \"enterprise\",\n    \"supported_feature_ids\": [\n      \"generativeAIForSecurity\",\n      \"generativeAIForObservability\"\n    ],\n    \"is_system_action_type\": false\n  },\n  {\n    \"id\": \".gemini\",\n    \"name\": \"Google Gemini\",\n    \"enabled\": true,\n    \"enabled_in_config\": true,\n    \"enabled_in_license\": true,\n    \"minimum_license_required\": \"enterprise\",\n    \"supported_feature_ids\": [\n      \"generativeAIForSecurity\"\n    ],\n    \"is_system_action_type\": false\n  }\n]"
+   }
+  ]
+ },
+ "GET /api/actions/connectors": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/kibana/operation/operation-get-actions-connectors",
+  "operation": "GET /api/actions/connectors",
+  "response": [
+   {
+    "summary": "A list of connectors",
+    "value": "[\n  {\n    \"id\": \"preconfigured-email-connector\",\n    \"name\": \"my-preconfigured-email-notification\",\n    \"connector_type_id\": \".email\",\n    \"is_preconfigured\": true,\n    \"is_deprecated\": false,\n    \"referenced_by_count\": 0,\n    \"is_system_action\": false\n  },\n  {\n    \"id\": \"e07d0c80-8b8b-11ed-a780-3b746c987a81\",\n    \"name\": \"my-index-connector\",\n    \"config\": {\n      \"index\": \"test-index\",\n      \"refresh\": false,\n      \"executionTimeField\": null\n    },\n    \"connector_type_id\": \".index\",\n    \"is_preconfigured\": false,\n    \"is_deprecated\": false,\n    \"referenced_by_count\": 2,\n    \"is_missing_secrets\": false,\n    \"is_system_action\": false\n  }\n]"
+   }
+  ]
+ },
+ "GET /api/alerting/_health": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/kibana/operation/operation-getalertinghealth",
+  "operation": "GET /api/alerting/_health",
+  "response": [
+   {
+    "summary": "Retrieve information about the health of the alerting framework.",
+    "value": "{\n  \"alerting_framework_health\": {\n    \"decryption_health\": {\n      \"status\": \"ok\",\n      \"timestamp\": \"2023-01-13T01:28:00.280Z\"\n    },\n    \"execution_health\": {\n      \"status\": \"ok\",\n      \"timestamp\": \"2023-01-13T01:28:00.280Z\"\n    },\n    \"read_health\": {\n      \"status\": \"ok\",\n      \"timestamp\": \"2023-01-13T01:28:00.280Z\"\n    }\n  },\n  \"has_permanent_encryption_key\": true,\n  \"is_sufficiently_secure\": true\n}"
+   }
+  ]
+ },
+ "GET /api/alerting/rule/{{rule_id}}": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/kibana/operation/operation-get-alerting-rule-id",
+  "operation": "GET /api/alerting/rule/{id}",
+  "response": [
+   {
+    "summary": "Get an index threshold rule",
+    "value": "{\n  \"actions\": [],\n  \"api_key_owner\": \"elastic\",\n  \"consumer\": \"alerts\",\n  \"created_at\": \"2022-12-05T23:40:33.132Z\",\n  \"created_by\": \"elastic\",\n  \"enabled\": true,\n  \"id\": \"3583a470-74f6-11ed-9801-35303b735aef\",\n  \"mute_all\": false,\n  \"muted_alert_ids\": [],\n  \"name\": \"my alert\",\n  \"notify_when\": \"onActionGroupChange\",\n  \"params\": {\n    \"aggField\": \"sheet.version\",\n    \"aggType\": \"avg\",\n    \"groupBy\": \"top\",\n    \"index\": [\n      \"test-index\"\n    ],\n    \"termField\": \"name.keyword\",\n    \"termSize\": 6,\n    \"threshold\": [\n      1000\n    ],\n    \"thresholdComparator\": \">\",\n    \"timeField\": \"@timestamp\",\n    \"timeWindowSize\": 5,\n    \"timeWindowUnit\": \"m\"\n  },\n  \"revision\": 0,\n  \"rule_type_id\": \".index-threshold\",\n  \"schedule\": {\n    \"interval\": \"1m\"\n  },\n  \"tags\": [\n    \"cpu\"\n  ],\n  \"throttle\": null,\n  \"updated_at\": \"2022-12-05T23:40:33.132Z\",\n  \"updated_by\": \"elastic\"\n}"
+   }
+  ]
+ },
+ "GET /api/alerting/rule_types": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/kibana/operation/operation-getruletypes",
+  "operation": "GET /api/alerting/rule_types"
+ },
+ "GET /api/alerting/rules/_find": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/kibana/operation/operation-get-alerting-rules-find",
+  "operation": "GET /api/alerting/rules/_find",
+  "response": [
+   {
+    "summary": "Index threshold rule",
+    "value": "{\n  \"data\": [\n    {\n      \"actions\": [\n        {\n          \"frequency\": {\n            \"notify_when\": \"onActionGroupChange\",\n            \"summary\": false,\n            \"throttle\": null\n          },\n          \"group\": \"threshold met\",\n          \"id\": \"9dca3e00-74f5-11ed-9801-35303b735aef\",\n          \"params\": {\n            \"connector_type_id\": \".server-log\",\n            \"level\": \"info\",\n            \"message\": \"Rule {{rule.name}} is active for group {{context.group}}:\\n\\n- Value: {{context.value}}\\n- Conditions Met: {{context.conditions}} over {{rule.params.timeWindowSize}}{{rule.params.timeWindowUnit}}\\n- Timestamp: {{context.date}}\"\n          },\n          \"uuid\": \"1c7a1280-f28c-4e06-96b2-e4e5f05d1d61\"\n        }\n      ],\n      \"api_key_created_by_user\": false,\n      \"api_key_owner\": \"elastic\",\n      \"consumer\": \"alerts\",\n      \"created_at\": \"2022-12-05T23:40:33.132Z\",\n      \"created_by\": \"elastic\",\n      \"enabled\": true,\n      \"execution_status\": {\n        \"last_duration\": 48,\n        \"last_execution_date\": \"2022-12-06T01:44:23.983Z\",\n        \"status\": \"ok\"\n      },\n      \"id\": \"3583a470-74f6-11ed-9801-35303b735aef\",\n      \"last_run\": {\n        \"alerts_count\": {\n          \"active\": 0,\n          \"ignored\": 0,\n          \"new\": 0,\n          \"recovered\": 0\n        },\n        \"outcome\": \"succeeded\",\n        \"outcome_msg\": null,\n        \"warning\": null\n      },\n      \"mute_all\": false,\n      \"muted_alert_ids\": [],\n      \"name\": \"my alert\",\n      \"next_run\": \"2022-12-06T01:45:23.912Z\",\n      \"params\": {\n        \"aggField\": \"sheet.version\",\n        \"aggType\": \"avg\",\n        \"groupBy\": \"top\",\n        \"index\": [\n          \"test-index\"\n        ],\n        \"termField\": \"name.keyword\",\n        \"termSize\": 6,\n        \"threshold\": [\n          1000\n        ],\n        \"thresholdComparator\": \">\",\n        \"timeField\": \"@timestamp\",\n        \"timeWindowSize\": 5,\n        \"timeWindowUnit\": \"m\"\n      },\n      \"revision\": 1,\n      \"rule_type_id\": \".index-threshold\",\n      \"schedule\": {\n        \"interval\": \"1m\"\n      },\n      \"scheduled_task_id\": \"3583a470-74f6-11ed-9801-35303b735aef\",\n      \"tags\": [\n        \"cpu\"\n      ],\n      \"throttle\": null,\n      \"updated_at\": \"2022-12-05T23:40:33.132Z\",\n      \"updated_by\": \"elastic\"\n    }\n  ],\n  \"page\": 1,\n  \"per_page\": 10,\n  \"total\": 1\n}"
+   },
+   {
+    "summary": "Security rule",
+    "value": "{\n  \"data\": [\n    {\n      \"actions\": [\n        {\n          \"alerts_filter\": {\n            \"query\": {\n              \"filters\": [\n                {\n                  \"$state\": {\n                    \"store\": \"appState\"\n                  },\n                  \"meta\": {\n                    \"alias\": null,\n                    \"disabled\": false,\n                    \"field\": \"client.geo.region_iso_code\",\n                    \"index\": \"c4bdca79-e69e-4d80-82a1-e5192c621bea\",\n                    \"key\": \"client.geo.region_iso_code\",\n                    \"negate\": false,\n                    \"params\": {\n                      \"query\": \"CA-QC\",\n                      \"type\": \"phrase\"\n                    }\n                  },\n                  \"query\": {\n                    \"match_phrase\": {\n                      \"client.geo.region_iso_code\": \"CA-QC\"\n                    }\n                  }\n                }\n              ],\n              \"kql\": \"\"\n            },\n            \"timeframe\": {\n              \"days\": [\n                7\n              ],\n              \"hours\": {\n                \"end\": \"17:00\",\n                \"start\": \"08:00\"\n              },\n              \"timezone\": \"UTC\"\n            }\n          },\n          \"connector_type_id\": \".index\",\n          \"frequency\": {\n            \"notify_when\": \"onActiveAlert\",\n            \"summary\": true,\n            \"throttle\": null\n          },\n          \"group\": \"default\",\n          \"id\": \"49eae970-f401-11ed-9f8e-399c75a2deeb\",\n          \"params\": {\n            \"documents\": [\n              {\n                \"alert_id\": {\n                  \"[object Object]\": null\n                },\n                \"context_message\": {\n                  \"[object Object]\": null\n                },\n                \"rule_id\": {\n                  \"[object Object]\": null\n                },\n                \"rule_name\": {\n                  \"[object Object]\": null\n                }\n              }\n            ]\n          },\n          \"uuid\": \"1c7a1280-f28c-4e06-96b2-e4e5f05d1d61\"\n        }\n      ],\n      \"api_key_created_by_user\": false,\n      \"api_key_owner\": \"elastic\",\n      \"consumer\": \"siem\",\n      \"created_at\": \"2023-05-16T15:50:28.358Z\",\n      \"created_by\": \"elastic\",\n      \"enabled\": true,\n      \"execution_status\": {\n        \"last_duration\": 166,\n        \"last_execution_date\": \"2023-05-16T20:26:49.590Z\",\n        \"status\": \"ok\"\n      },\n      \"id\": \"6107a8f0-f401-11ed-9f8e-399c75a2deeb\",\n      \"last_run\": {\n        \"alerts_count\": {\n          \"active\": 0,\n          \"ignored\": 0,\n          \"new\": 0,\n          \"recovered\": 0\n        },\n        \"outcome\": \"succeeded\",\n        \"outcome_msg\": [\n          \"Rule execution completed successfully\"\n        ],\n        \"outcome_order\": 0,\n        \"warning\": null\n      },\n      \"mute_all\": false,\n      \"muted_alert_ids\": [],\n      \"name\": \"security_rule\",\n      \"next_run\": \"2023-05-16T20:27:49.507Z\",\n      \"notify_when\": null,\n      \"params\": {\n        \"author\": [],\n        \"description\": \"A security threshold rule.\",\n        \"exceptionsList\": [],\n        \"falsePositives\": [],\n        \"filters\": [],\n        \"from\": \"now-3660s\",\n        \"immutable\": false,\n        \"index\": [\n          \"kibana_sample_data_logs\"\n        ],\n        \"language\": \"kuery\",\n        \"license\": \"\",\n        \"maxSignals\": 100,\n        \"meta\": {\n          \"from\": \"1h\",\n          \"kibana_siem_app_url\": \"https://localhost:5601/app/security\"\n        },\n        \"outputIndex\": \"\",\n        \"query\": \"*\",\n        \"references\": [],\n        \"riskScore\": 21,\n        \"riskScoreMapping\": [],\n        \"ruleId\": \"an_internal_rule_id\",\n        \"severity\": \"low\",\n        \"severityMapping\": [],\n        \"threat\": [],\n        \"threshold\": {\n          \"cardinality\": [],\n          \"field\": [\n            \"bytes\"\n          ],\n          \"value\": 1\n        },\n        \"to\": \"now\",\n        \"type\": \"threshold\",\n        \"version\": 1\n      },\n      \"revision\": 1,\n      \"rule_type_id\": \"siem.thresholdRule\",\n      \"running\": false,\n      \"schedule\": {\n        \"interval\": \"1m\"\n      },\n      \"scheduled_task_id\": \"6107a8f0-f401-11ed-9f8e-399c75a2deeb\",\n      \"tags\": [],\n      \"throttle\": null,\n      \"updated_at\": \"2023-05-16T20:25:42.559Z\",\n      \"updated_by\": \"elastic\"\n    }\n  ],\n  \"page\": 1,\n  \"per_page\": 10,\n  \"total\": 1\n}"
+   }
+  ]
+ },
+ "GET /api/cases/_find": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/kibana/operation/operation-findcasesdefaultspace",
+  "operation": "GET /api/cases/_find",
+  "response": [
+   {
+    "summary": "Retrieve the first five cases with the `tag-1` tag, in ascending order by last update t...",
+    "value": "{\n  \"cases\": [\n    {\n      \"assignees\": [],\n      \"category\": null,\n      \"closed_at\": null,\n      \"closed_by\": null,\n      \"comments\": [],\n      \"connector\": {\n        \"fields\": null,\n        \"id\": \"none\",\n        \"name\": \"none\",\n        \"type\": \".none\"\n      },\n      \"created_at\": \"2023-10-12T00:16:36.371Z\",\n      \"created_by\": {\n        \"email\": null,\n        \"full_name\": null,\n        \"profile_uid\": \"u_mGBROF_q5bmFCATbLXAcCwKa0k8JvONAwSruelyKA5E_0\",\n        \"username\": \"elastic\"\n      },\n      \"customFields\": [\n        {\n          \"key\": \"d312efda-ec2b-42ec-9e2c-84981795c581\",\n          \"type\": \"text\",\n          \"value\": \"My field value\"\n        },\n        {\n          \"key\": \"fcc6840d-eb14-42df-8aaf-232201a705ec\",\n          \"type\": \"toggle\",\n          \"value\": null\n        }\n      ],\n      \"description\": \"Case description\",\n      \"duration\": null,\n      \"external_service\": null,\n      \"id\": \"abed3a70-71bd-11ea-a0b2-c51ea50a58e2\",\n      \"incremental_id\": 1,\n      \"observables\": [],\n      \"owner\": \"cases\",\n      \"settings\": {\n        \"extractObservables\": false,\n        \"syncAlerts\": true\n      },\n      \"severity\": \"low\",\n      \"status\": \"open\",\n      \"tags\": [\n        \"tag-1\"\n      ],\n      \"title\": \"Case title\",\n      \"total_observables\": 0,\n      \"totalAlerts\": 0,\n      \"totalComment\": 1,\n      \"totalEvents\": 0,\n      \"updated_at\": \"2023-10-12T00:27:58.162Z\",\n      \"updated_by\": {\n        \"email\": null,\n        \"full_name\": null,\n        \"profile_uid\": \"u_mGBROF_q5bmFCATbLXAcCwKa0k8JvONAwSruelyKA5E_0\",\n        \"username\": \"elastic\"\n      },\n      \"version\": \"WzExMCwxXQ==\"\n    }\n  ],\n  \"count_closed_cases\": 0,\n  \"count_in_progress_cases\": 0,\n  \"count_open_cases\": 1,\n  \"page\": 1,\n  \"per_page\": 5,\n  \"total\": 1\n}"
+   }
+  ]
+ },
+ "GET /api/data_views": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/kibana/operation/operation-getalldataviewsdefault",
+  "operation": "GET /api/data_views",
+  "response": [
+   {
+    "summary": "The get all data views API returns a list of data views.",
+    "value": "{\n  \"data_view\": [\n    {\n      \"id\": \"ff959d40-b880-11e8-a6d9-e546fe2bba5f\",\n      \"name\": \"Kibana Sample Data eCommerce\",\n      \"namespaces\": [\n        \"default\"\n      ],\n      \"title\": \"kibana_sample_data_ecommerce\",\n      \"typeMeta\": {}\n    },\n    {\n      \"id\": \"d3d7af60-4c81-11e8-b3d7-01146121b73d\",\n      \"name\": \"Kibana Sample Data Flights\",\n      \"namespaces\": [\n        \"default\"\n      ],\n      \"title\": \"kibana_sample_data_flights\"\n    },\n    {\n      \"id\": \"90943e30-9a47-11e8-b64d-95841ca0b247\",\n      \"name\": \"Kibana Sample Data Logs\",\n      \"namespaces\": [\n        \"default\"\n      ],\n      \"title\": \"kibana_sample_data_logs\"\n    }\n  ]\n}"
+   }
+  ]
+ },
+ "GET /api/data_views/data_view/{{data_view_id}}": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/kibana/operation/operation-getdataviewdefault",
+  "operation": "GET /api/data_views/data_view/{viewId}"
+ },
+ "GET /api/data_views/default": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/kibana/operation/operation-getdefaultdataviewdefault",
+  "operation": "GET /api/data_views/default",
+  "response": [
+   {
+    "summary": "The get default data view API returns the default data view identifier.",
+    "value": "{\n  \"data_view_id\": \"ff959d40-b880-11e8-a6d9-e546fe2bba5f\"\n}"
+   }
+  ]
+ },
+ "GET /api/detection_engine/rules/_find": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/kibana/operation/operation-findrules",
+  "operation": "GET /api/detection_engine/rules/_find",
+  "response": [
+   {
+    "summary": "example1",
+    "value": "{\n  \"data\": [\n    {\n      \"created_at\": \"2020-02-02T10:05:19.613Z\",\n      \"created_by\": \"elastic\",\n      \"description\": \"Identifies a PowerShell process launched by either cscript.exe or wscript.exe. Observing Windows scripting processes executing a PowerShell script, may be indicative of malicious activity.\",\n      \"enabled\": false,\n      \"execution_summary\": {\n        \"last_execution\": {\n          \"date\": \"2022-03-23T16:06:12.787Z\",\n          \"message\": \"This rule attempted to query data from Elasticsearch indices listed in the \\\"Index pattern\\\" section of the rule definition, but no matching index was found.\",\n          \"metrics\": {\n            \"execution_gap_duration_s\": 0,\n            \"total_indexing_duration_ms\": 15,\n            \"total_search_duration_ms\": 135\n          },\n          \"status\": \"partial failure\",\n          \"status_order\": 20\n        }\n      },\n      \"false_positives\": [],\n      \"from\": \"now-6m\",\n      \"id\": \"89761517-fdb0-4223-b67b-7621acc48f9e\",\n      \"immutable\": true,\n      \"index\": [\n        \"winlogbeat-*\"\n      ],\n      \"interval\": \"5m\",\n      \"language\": \"kuery\",\n      \"max_signals\": 33,\n      \"name\": \"Windows Script Executing PowerShell\",\n      \"query\": \"event.action:\\\"Process Create (rule: ProcessCreate)\\\" and process.parent.name:(\\\"wscript.exe\\\" or \\\"cscript.exe\\\") and process.name:\\\"powershell.exe\\\"\",\n      \"references\": [],\n      \"related_integrations\": [\n        {\n          \"package\": \"o365\",\n          \"version\": \"^2.3.2\"\n        }\n      ],\n      \"required_fields\": [\n        {\n          \"ecs\": true,\n          \"name\": \"event.action\",\n          \"type\": \"keyword\"\n        },\n        {\n          \"ecs\": true,\n          \"name\": \"process.name\",\n          \"type\": \"keyword\"\n        },\n        {\n          \"ecs\": true,\n          \"name\": \"process.parent.name\",\n          \"type\": \"keyword\"\n        }\n      ],\n      \"risk_score\": 21,\n      \"rule_id\": \"f545ff26-3c94-4fd0-bd33-3c7f95a3a0fc\",\n      \"setup\": \"\",\n      \"severity\": \"low\",\n      \"tags\": [\n        \"Elastic\",\n        \"Windows\"\n      ],\n      \"threat\": [\n        {\n          \"framework\": \"MITRE ATT&CK\",\n          \"tactic\": {\n            \"id\": \"TA0002\",\n            \"name\": \"Execution\",\n            \"reference\": \"https://attack.mitre.org/tactics/TA0002/\"\n          },\n          \"technique\": [\n            {\n              \"id\": \"T1193\",\n              \"name\": \"Spearphishing Attachment\",\n              \"reference\": \"https://attack.mitre.org/techniques/T1193/\"\n            }\n          ]\n        }\n      ],\n      \"to\": \"now\",\n      \"type\": \"query\",\n      \"updated_at\": \"2020-02-02T10:05:19.830Z\",\n      \"updated_by\": \"elastic\"\n    }\n  ],\n  \"page\": 1,\n  \"perPage\": 5,\n  \"total\": 4\n}"
+   }
+  ]
+ },
+ "GET /api/features": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/kibana/operation/operation-get-features",
+  "operation": "GET /api/features",
+  "response": [
+   {
+    "summary": "getFeaturesExample",
+    "value": "{\n  \"features\": [\n    {\n      \"name\": \"tasks\",\n      \"description\": \"Manages task results\"\n    },\n    {\n      \"name\": \"security\",\n      \"description\": \"Manages configuration for Security features, such as users and roles\"\n    },\n    {\n      \"name\": \"searchable_snapshots\",\n      \"description\": \"Manages caches and configuration for searchable snapshots\"\n    },\n    {\n      \"name\": \"logstash_management\",\n      \"description\": \"Enables Logstash Central Management pipeline storage\"\n    },\n    {\n      \"name\": \"transform\",\n      \"description\": \"Manages configuration and state for transforms\"\n    },\n    {\n      \"name\": \"kibana\",\n      \"description\": \"Manages Kibana configuration and reports\"\n    },\n    {\n      \"name\": \"synonyms\",\n      \"description\": \"Manages synonyms\"\n    },\n    {\n      \"name\": \"async_search\",\n      \"description\": \"Manages results of async searches\"\n    },\n    {\n      \"name\": \"ent_search\",\n      \"description\": \"Manages configuration for Enterprise Search features\"\n    },\n    {\n      \"name\": \"machine_learning\",\n      \"description\": \"Provides anomaly detection and forecasting functionality\"\n    },\n    {\n      \"name\": \"geoip\",\n      \"description\": \"Manages data related to GeoIP database downloader\"\n    },\n    {\n      \"name\": \"watcher\",\n      \"description\": \"Manages Watch definitions and state\"\n    },\n    {\n      \"name\": \"fleet\",\n      \"description\": \"Manages configuration for Fleet\"\n    },\n    {\n      \"name\": \"enrich\",\n      \"description\": \"Manages data related to Enrich policies\"\n    },\n    {\n      \"name\": \"inference_plugin\",\n      \"description\": \"Inference plugin for managing inference services and inference\"\n    }\n  ]\n}"
+   }
+  ]
+ },
+ "GET /api/fleet/agent_policies": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/kibana/operation/operation-get-fleet-agent-policies",
+  "operation": "GET /api/fleet/agent_policies",
+  "response": [
+   {
+    "summary": "List of agent policies",
+    "value": "{\n  \"items\": [\n    {\n      \"description\": \"A sample agent policy\",\n      \"id\": \"agent-policy-id-1\",\n      \"is_managed\": false,\n      \"is_protected\": false,\n      \"name\": \"My agent policy\",\n      \"namespace\": \"default\",\n      \"revision\": 1,\n      \"status\": \"active\",\n      \"updated_at\": \"2024-01-15T10:00:00.000Z\",\n      \"updated_by\": \"user1\"\n    }\n  ],\n  \"page\": 1,\n  \"perPage\": 20,\n  \"total\": 1\n}"
+   }
+  ]
+ },
+ "GET /api/fleet/agent_policies/{{agent_policy_id}}": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/kibana/operation/operation-get-fleet-agent-policies-agentpolicyid",
+  "operation": "GET /api/fleet/agent_policies/{agentPolicyId}",
+  "response": [
+   {
+    "summary": "An agent policy",
+    "value": "{\n  \"item\": {\n    \"description\": \"A sample agent policy\",\n    \"id\": \"agent-policy-id-1\",\n    \"is_managed\": false,\n    \"is_protected\": false,\n    \"name\": \"My agent policy\",\n    \"namespace\": \"default\",\n    \"revision\": 1,\n    \"status\": \"active\",\n    \"updated_at\": \"2024-01-15T10:00:00.000Z\",\n    \"updated_by\": \"user1\"\n  }\n}"
+   }
+  ]
+ },
+ "GET /api/fleet/agent_policies/{{agent_policy_id}}/full": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/kibana/operation/operation-get-fleet-agent-policies-agentpolicyid-full",
+  "operation": "GET /api/fleet/agent_policies/{agentPolicyId}/full",
+  "response": [
+   {
+    "summary": "The full agent policy configuration",
+    "value": "{\n  \"item\": {\n    \"agent\": {\n      \"monitoring\": {\n        \"logs\": true,\n        \"metrics\": true\n      }\n    },\n    \"id\": \"agent-policy-id-1\",\n    \"inputs\": [],\n    \"outputs\": {\n      \"default\": {\n        \"hosts\": [\n          \"https://elasticsearch.example.com:9200\"\n        ],\n        \"type\": \"elasticsearch\"\n      }\n    },\n    \"revision\": 1\n  }\n}"
+   }
+  ]
+ },
+ "GET /api/fleet/agent_status": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/kibana/operation/operation-get-fleet-agent-status",
+  "operation": "GET /api/fleet/agent_status",
+  "response": [
+   {
+    "summary": "Agent status summary for an agent policy",
+    "value": "{\n  \"results\": {\n    \"error\": 1,\n    \"offline\": 2,\n    \"online\": 5,\n    \"other\": 0,\n    \"updating\": 0\n  },\n  \"totalInactive\": 0\n}"
+   }
+  ]
+ },
+ "GET /api/fleet/agents": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/kibana/operation/operation-get-fleet-agents",
+  "operation": "GET /api/fleet/agents",
+  "response": [
+   {
+    "summary": "List of agents",
+    "value": "{\n  \"items\": [\n    {\n      \"active\": true,\n      \"enrolled_at\": \"2024-01-01T00:00:00.000Z\",\n      \"id\": \"agent-id-1\",\n      \"policy_id\": \"agent-policy-id-1\",\n      \"policy_revision\": 1,\n      \"status\": \"online\",\n      \"type\": \"PERMANENT\",\n      \"updated_at\": \"2024-01-01T00:00:00.000Z\"\n    }\n  ],\n  \"page\": 1,\n  \"perPage\": 20,\n  \"total\": 1\n}"
+   }
+  ]
+ },
+ "GET /api/fleet/agents/setup": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/kibana/operation/operation-get-fleet-agents-setup",
+  "operation": "GET /api/fleet/agents/setup",
+  "response": [
+   {
+    "summary": "Fleet is not ready — a Fleet Server and API keys are required",
+    "value": "{\n  \"is_action_secrets_storage_enabled\": false,\n  \"is_secrets_storage_enabled\": false,\n  \"is_space_awareness_enabled\": false,\n  \"is_ssl_secrets_storage_enabled\": false,\n  \"isReady\": false,\n  \"missing_optional_features\": [\n    \"encrypted_saved_object_encryption_key_required\"\n  ],\n  \"missing_requirements\": [\n    \"fleet_server\",\n    \"api_keys\"\n  ]\n}"
+   },
+   {
+    "summary": "Fleet is ready to enroll agents — all requirements are met",
+    "value": "{\n  \"is_action_secrets_storage_enabled\": true,\n  \"is_secrets_storage_enabled\": true,\n  \"is_space_awareness_enabled\": false,\n  \"is_ssl_secrets_storage_enabled\": false,\n  \"isReady\": true,\n  \"missing_optional_features\": [],\n  \"missing_requirements\": [],\n  \"package_verification_key_id\": \"D88DB4CC\"\n}"
+   }
+  ]
+ },
+ "GET /api/fleet/agents/{{agent_id}}": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/kibana/operation/operation-get-fleet-agents-agentid",
+  "operation": "GET /api/fleet/agents/{agentId}",
+  "response": [
+   {
+    "summary": "Agent details",
+    "value": "{\n  \"item\": {\n    \"active\": true,\n    \"agent_id\": \"agent-id-1\",\n    \"enrolled_at\": \"2024-01-01T00:00:00.000Z\",\n    \"id\": \"agent-id-1\",\n    \"local_metadata\": {\n      \"elastic\": {\n        \"agent\": {\n          \"version\": \"8.17.0\"\n        }\n      },\n      \"host\": {\n        \"hostname\": \"my-host\"\n      },\n      \"os\": {\n        \"name\": \"linux\"\n      }\n    },\n    \"policy_id\": \"agent-policy-id-1\",\n    \"policy_revision\": 1,\n    \"status\": \"online\",\n    \"type\": \"PERMANENT\",\n    \"updated_at\": \"2024-01-01T00:00:00.000Z\"\n  }\n}"
+   }
+  ]
+ },
+ "GET /api/fleet/enrollment_api_keys": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/kibana/operation/operation-get-fleet-enrollment-api-keys",
+  "operation": "GET /api/fleet/enrollment_api_keys",
+  "response": [
+   {
+    "summary": "List of enrollment API keys",
+    "value": "{\n  \"items\": [\n    {\n      \"active\": true,\n      \"api_key\": \"api-key-value-1\",\n      \"api_key_id\": \"api-key-id-1\",\n      \"created_at\": \"2024-01-01T00:00:00.000Z\",\n      \"id\": \"key-id-1\",\n      \"name\": \"Default policy enrollment key\",\n      \"policy_id\": \"policy-id-1\"\n    }\n  ],\n  \"list\": [\n    {\n      \"active\": true,\n      \"api_key\": \"api-key-value-1\",\n      \"api_key_id\": \"api-key-id-1\",\n      \"created_at\": \"2024-01-01T00:00:00.000Z\",\n      \"id\": \"key-id-1\",\n      \"name\": \"Default policy enrollment key\",\n      \"policy_id\": \"policy-id-1\"\n    }\n  ],\n  \"page\": 1,\n  \"perPage\": 20,\n  \"total\": 1\n}"
+   }
+  ]
+ },
+ "GET /api/fleet/epm/packages": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/kibana/operation/operation-get-fleet-epm-packages",
+  "operation": "GET /api/fleet/epm/packages",
+  "response": [
+   {
+    "summary": "List of available integration packages",
+    "value": "{\n  \"items\": [\n    {\n      \"categories\": [\n        \"cloud\"\n      ],\n      \"description\": \"Collect logs and metrics from Amazon Web Services\",\n      \"id\": \"aws\",\n      \"name\": \"aws\",\n      \"status\": \"not_installed\",\n      \"title\": \"AWS\",\n      \"version\": \"2.10.0\"\n    }\n  ],\n  \"searchExcluded\": 0,\n  \"total\": 1\n}"
+   }
+  ]
+ },
+ "GET /api/fleet/epm/packages/installed": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/kibana/operation/operation-get-fleet-epm-packages-installed",
+  "operation": "GET /api/fleet/epm/packages/installed",
+  "response": [
+   {
+    "summary": "List of installed integration packages",
+    "value": "{\n  \"items\": [\n    {\n      \"name\": \"system\",\n      \"status\": \"installed\",\n      \"title\": \"System\",\n      \"version\": \"1.55.0\"\n    },\n    {\n      \"name\": \"elastic_agent\",\n      \"status\": \"installed\",\n      \"title\": \"Elastic Agent\",\n      \"version\": \"1.15.0\"\n    }\n  ],\n  \"searchExcluded\": 0,\n  \"total\": 2\n}"
+   }
+  ]
+ },
+ "GET /api/fleet/epm/packages/{{package_name}}": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/kibana/operation/operation-get-fleet-epm-packages-pkgname",
+  "operation": "GET /api/fleet/epm/packages/{pkgName}",
+  "response": [
+   {
+    "summary": "Package details and installation status",
+    "value": "{\n  \"item\": {\n    \"assets\": {\n      \"kibana\": {\n        \"dashboard\": [],\n        \"index_pattern\": []\n      }\n    },\n    \"categories\": [\n      \"cloud\"\n    ],\n    \"description\": \"Collect logs and metrics from Amazon Web Services\",\n    \"name\": \"aws\",\n    \"status\": \"installed\",\n    \"title\": \"AWS\",\n    \"version\": \"2.10.0\"\n  }\n}"
+   }
+  ]
+ },
+ "GET /api/fleet/fleet_server_hosts": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/kibana/operation/operation-get-fleet-fleet-server-hosts",
+  "operation": "GET /api/fleet/fleet_server_hosts",
+  "response": [
+   {
+    "summary": "List of Fleet Server hosts",
+    "value": "{\n  \"items\": [\n    {\n      \"host_urls\": [\n        \"https://fleet-server.example.com:8220\"\n      ],\n      \"id\": \"fleet-server-host-id-1\",\n      \"is_default\": true,\n      \"is_preconfigured\": false,\n      \"name\": \"Default Fleet Server\"\n    }\n  ],\n  \"page\": 1,\n  \"perPage\": 20,\n  \"total\": 1\n}"
+   }
+  ]
+ },
+ "GET /api/fleet/outputs": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/kibana/operation/operation-get-fleet-outputs",
+  "operation": "GET /api/fleet/outputs",
+  "response": [
+   {
+    "summary": "List of Fleet outputs",
+    "value": "{\n  \"items\": [\n    {\n      \"hosts\": [\n        \"https://elasticsearch.example.com:9200\"\n      ],\n      \"id\": \"output-id-1\",\n      \"is_default\": true,\n      \"is_default_monitoring\": true,\n      \"name\": \"Default output\",\n      \"type\": \"elasticsearch\"\n    }\n  ],\n  \"page\": 1,\n  \"perPage\": 20,\n  \"total\": 1\n}"
+   }
+  ]
+ },
+ "GET /api/fleet/package_policies": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/kibana/operation/operation-get-fleet-package-policies",
+  "operation": "GET /api/fleet/package_policies",
+  "response": [
+   {
+    "summary": "List of package policies",
+    "value": "{\n  \"items\": [\n    {\n      \"created_at\": \"2024-01-15T10:00:00.000Z\",\n      \"enabled\": true,\n      \"id\": \"package-policy-id-1\",\n      \"inputs\": [],\n      \"name\": \"nginx-1\",\n      \"namespace\": \"default\",\n      \"package\": {\n        \"name\": \"nginx\",\n        \"title\": \"Nginx\",\n        \"version\": \"1.20.0\"\n      },\n      \"policy_ids\": [\n        \"agent-policy-id-1\"\n      ],\n      \"updated_at\": \"2024-01-15T10:00:00.000Z\"\n    }\n  ],\n  \"page\": 1,\n  \"perPage\": 20,\n  \"total\": 1\n}"
+   }
+  ]
+ },
+ "GET /api/fleet/package_policies/{{package_policy_id}}": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/kibana/operation/operation-get-fleet-package-policies-packagepolicyid",
+  "operation": "GET /api/fleet/package_policies/{packagePolicyId}",
+  "response": [
+   {
+    "summary": "A package policy",
+    "value": "{\n  \"item\": {\n    \"created_at\": \"2024-01-15T10:00:00.000Z\",\n    \"enabled\": true,\n    \"id\": \"package-policy-id-1\",\n    \"inputs\": [],\n    \"name\": \"nginx-1\",\n    \"namespace\": \"default\",\n    \"package\": {\n      \"name\": \"nginx\",\n      \"title\": \"Nginx\",\n      \"version\": \"1.20.0\"\n    },\n    \"policy_ids\": [\n      \"agent-policy-id-1\"\n    ],\n    \"updated_at\": \"2024-01-15T10:00:00.000Z\"\n  }\n}"
+   }
+  ]
+ },
+ "GET /api/saved_objects/_find": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/kibana/operation/operation-get-saved-objects-find",
+  "operation": "GET /api/saved_objects/_find",
+  "response": [
+   {
+    "summary": "A page of saved objects",
+    "value": "{\n  \"page\": 1,\n  \"per_page\": 20,\n  \"saved_objects\": [\n    {\n      \"attributes\": {\n        \"title\": \"Example dashboard 1\"\n      },\n      \"id\": \"example-dashboard-1\",\n      \"managed\": false,\n      \"namespaces\": [\n        \"default\"\n      ],\n      \"references\": [],\n      \"type\": \"dashboard\",\n      \"updated_at\": \"2026-04-17T12:00:00.000Z\",\n      \"version\": \"WzEsMV0=\"\n    }\n  ],\n  \"total\": 1\n}"
+   }
+  ]
+ },
+ "GET /api/security/role": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/kibana/operation/operation-get-security-role",
+  "operation": "GET /api/security/role",
+  "response": [
+   {
+    "summary": "getAllRolesResponse",
+    "value": "[\n  {\n    \"_unrecognized_applications\": [],\n    \"description\": \"My custom Kibana role.\",\n    \"elasticsearch\": {\n      \"cluster\": [\n        \"monitor\"\n      ],\n      \"indices\": [\n        {\n          \"names\": [\n            \"logs-*\"\n          ],\n          \"privileges\": [\n            \"read\"\n          ]\n        }\n      ],\n      \"run_as\": []\n    },\n    \"kibana\": [\n      {\n        \"base\": [\n          \"read\"\n        ],\n        \"feature\": {},\n        \"spaces\": [\n          \"default\"\n        ]\n      }\n    ],\n    \"metadata\": {},\n    \"name\": \"my_kibana_role\",\n    \"transient_metadata\": {\n      \"enabled\": true\n    }\n  }\n]"
+   },
+   {
+    "summary": "Get all role details",
+    "value": "[\n  {\n    \"name\": \"my_kibana_role\",\n    \"description\": \"My kibana role description\",\n    \"metadata\": {\n      \"version\": 1\n    },\n    \"transient_metadata\": {\n      \"enabled\": true\n    },\n    \"elasticsearch\": {\n      \"indices\": [],\n      \"cluster\": [],\n      \"run_as\": []\n    },\n    \"kibana\": [\n      {\n        \"base\": [\n          \"all\"\n        ],\n        \"feature\": {},\n        \"spaces\": [\n          \"*\"\n        ]\n      }\n    ]\n  },\n  {\n    \"name\": \"my_admin_role\",\n    \"description\": \"My admin role description\",\n    \"metadata\": {\n      \"version\": 1\n    },\n    \"transient_metadata\": {\n      \"enabled\": true\n    },\n    \"elasticsearch\": {\n      \"cluster\": [\n        \"all\"\n      ],\n      \"indices\": [\n        {\n          \"names\": [\n            \"index1\",\n            \"index2\"\n          ],\n          \"privileges\": [\n            \"all\"\n          ],\n          \"field_security\": {\n            \"grant\": [\n              \"title\",\n              \"body\"\n            ]\n          },\n          \"query\": \"{\\\\\\\"match\\\\\\\": {\\\\\\\"title\\\\\\\": \\\\\\\"foo\\\\\\\"}}\"\n        }\n      ]\n    },\n    \"kibana\": []\n  }\n]"
+   }
+  ]
+ },
+ "GET /api/spaces/space": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/kibana/operation/operation-get-spaces-space",
+  "operation": "GET /api/spaces/space",
+  "response": [
+   {
+    "summary": "Get all spaces",
+    "value": "[\n  {\n    \"id\": \"default\",\n    \"name\": \"Default\",\n    \"description\": \"This is the Default Space\",\n    \"disabledFeatures\": [],\n    \"imageUrl\": \"\",\n    \"_reserved\": true\n  },\n  {\n    \"id\": \"marketing\",\n    \"name\": \"Marketing\",\n    \"description\": \"This is the Marketing Space\",\n    \"color\": null,\n    \"disabledFeatures\": [\n      \"apm\"\n    ],\n    \"initials\": \"MK\",\n    \"imageUrl\": \"data:image/png;base64,iVBORw0KGgoAAAANSU\"\n  },\n  {\n    \"id\": \"sales\",\n    \"name\": \"Sales\",\n    \"initials\": \"MK\",\n    \"disabledFeatures\": [\n      \"discover\"\n    ],\n    \"imageUr\\\"\": \"\",\n    \"solution\": \"oblt\"\n  }\n]"
+   },
+   {
+    "summary": "Get all spaces with custom options",
+    "value": "[\n  {\n    \"id\": \"default\",\n    \"name\": \"Default\",\n    \"description\": \"This is the Default Space\",\n    \"disabledFeatures\": [],\n    \"imageUrl\": \"\",\n    \"_reserved\": true,\n    \"authorizedPurposes\": {\n      \"any\": true,\n      \"copySavedObjectsIntoSpace\": true,\n      \"findSavedObjects\": true,\n      \"shareSavedObjectsIntoSpace\": true\n    }\n  },\n  {\n    \"id\": \"marketing\",\n    \"name\": \"Marketing\",\n    \"description\": \"This is the Marketing Space\",\n    \"color\": null,\n    \"disabledFeatures\": [\n      \"apm\"\n    ],\n    \"initials\": \"MK\",\n    \"imageUrl\": \"data:image/png;base64,iVBORw0KGgoAAAANSU\",\n    \"authorizedPurposes\": {\n      \"any\": true,\n      \"copySavedObjectsIntoSpace\": true,\n      \"findSavedObjects\": true,\n      \"shareSavedObjectsIntoSpace\": true\n    }\n  },\n  {\n    \"id\": \"sales\",\n    \"name\": \"Sales\",\n    \"initials\": \"MK\",\n    \"disabledFeatures\": [\n      \"discover\"\n    ],\n    \"imageUrl\": \"\",\n    \"authorizedPurposes\": {\n      \"any\": true,\n      \"copySavedObjectsIntoSpace\": false,\n      \"findSavedObjects\": true,\n      \"shareSavedObjectsIntoSpace\": false\n    }\n  }\n]"
+   }
+  ]
+ },
+ "GET /api/spaces/space/{{space_id}}": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/kibana/operation/operation-get-spaces-space-id",
+  "operation": "GET /api/spaces/space/{id}",
+  "response": [
+   {
+    "summary": "Get details about a marketing space",
+    "value": "{\n  \"color\": \"#aabbcc\",\n  \"description\": \"This is the Marketing Space\",\n  \"disabledFeatures\": [],\n  \"id\": \"marketing\",\n  \"imageUrl\": \"\",\n  \"initials\": \"MK\",\n  \"name\": \"Marketing\",\n  \"solution\": \"es\"\n}"
+   }
+  ]
+ },
+ "GET /api/status": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/kibana/operation/operation-get-status",
+  "operation": "GET /api/status",
+  "response": [
+   {
+    "summary": "Kibana is available",
+    "value": "{\n  \"metrics\": {\n    \"collection_interval_in_millis\": 5000,\n    \"elasticsearch_client\": {\n      \"totalActiveSockets\": 4,\n      \"totalIdleSockets\": 2,\n      \"totalQueuedRequests\": 0\n    },\n    \"last_updated\": \"2026-04-30T12:00:05.000Z\"\n  },\n  \"name\": \"kibana\",\n  \"status\": {\n    \"core\": {\n      \"elasticsearch\": {\n        \"level\": \"available\",\n        \"summary\": \"Elasticsearch is available\"\n      },\n      \"savedObjects\": {\n        \"level\": \"available\",\n        \"summary\": \"SavedObjects service has completed migrations and is available\"\n      }\n    },\n    \"overall\": {\n      \"level\": \"available\",\n      \"summary\": \"All services are available\"\n    },\n    \"plugins\": {}\n  },\n  \"uuid\": \"5b2de169-2785-441b-ae8c-186a1936b17d\",\n  \"version\": {\n    \"build_date\": \"2026-04-30T12:00:00.000Z\",\n    \"build_flavor\": \"traditional\",\n    \"build_hash\": \"ad8f0fa4d5022f56bbe2c4d51e9d0fcfa1ee67fc\",\n    \"build_number\": 100200,\n    \"build_snapshot\": false,\n    \"number\": \"9.3.0\"\n  }\n}"
+   },
+   {
+    "summary": "Kibana is available (redacted)",
+    "value": "{\n  \"status\": {\n    \"overall\": {\n      \"level\": \"available\"\n    }\n  }\n}"
+   }
+  ]
+ },
+ "GET /api/synthetics/monitors": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/kibana/operation/operation-get-synthetic-monitors",
+  "operation": "GET /api/synthetics/monitors",
+  "response": [
+   {
+    "summary": "A successful response from `GET /api/synthetics/monitors?tags=prod&monitorTypes=http&lo...",
+    "value": "{\n  \"absoluteTotal\": 24,\n  \"monitors\": [\n    {\n      \"alert\": {\n        \"status\": {\n          \"enabled\": true\n        },\n        \"tls\": {\n          \"enabled\": true\n        }\n      },\n      \"config_id\": \"e59142e5-1fe3-4aae-b0b0-19d6345e65a1\",\n      \"created_at\": \"2023-11-07T09:57:04.152Z\",\n      \"enabled\": false,\n      \"host\": \"8.8.8.8:80\",\n      \"id\": \"e59142e5-1fe3-4aae-b0b0-19d6345e65a1\",\n      \"ipv4\": true,\n      \"ipv6\": true,\n      \"locations\": [\n        {\n          \"geo\": {\n            \"lat\": 41.25,\n            \"lon\": -95.86\n          },\n          \"id\": \"us_central\",\n          \"isServiceManaged\": true,\n          \"label\": \"North America - US Central\"\n        }\n      ],\n      \"max_attempts\": 2,\n      \"mode\": \"all\",\n      \"name\": \"8.8.8.8:80\",\n      \"namespace\": \"default\",\n      \"origin\": \"ui\",\n      \"revision\": 3,\n      \"schedule\": {\n        \"number\": \"3\",\n        \"unit\": \"m\"\n      },\n      \"timeout\": \"16\",\n      \"type\": \"icmp\",\n      \"updated_at\": \"2023-12-04T19:19:34.039Z\",\n      \"wait\": \"7\"\n    }\n  ],\n  \"page\": 1,\n  \"perPage\": 10,\n  \"total\": 24\n}"
+   }
+  ]
+ },
+ "GET /api/task_manager/_health": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/kibana/operation/operation-task-manager-health",
+  "operation": "GET /api/task_manager/_health"
+ },
+ "GET /s/{{space_id}}/api/observability/slos": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/kibana/operation/operation-findslosop",
+  "operation": "GET /api/observability/slos",
+  "response": [
+   {
+    "summary": "A paginated list of SLOs",
+    "value": "{\n  \"page\": 1,\n  \"perPage\": 25,\n  \"results\": [\n    {\n      \"budgetingMethod\": \"occurrences\",\n      \"createdAt\": \"2025-01-12T10:03:19.000Z\",\n      \"description\": \"Availability of my web service\",\n      \"enabled\": true,\n      \"groupBy\": \"*\",\n      \"id\": \"8853df00-ae2e-11ed-90af-09bb6422b258\",\n      \"indicator\": {\n        \"params\": {\n          \"filter\": \"field.environment : \\\"production\\\" and service.name : \\\"my-service\\\"\",\n          \"good\": \"request.status_code : \\\"2xx\\\"\",\n          \"index\": \"logs-*\",\n          \"timestampField\": \"@timestamp\",\n          \"total\": \"request.status_code : *\"\n        },\n        \"type\": \"sli.kql.custom\"\n      },\n      \"instanceId\": \"*\",\n      \"name\": \"My Service Availability\",\n      \"objective\": {\n        \"target\": 0.99\n      },\n      \"revision\": 1,\n      \"settings\": {\n        \"frequency\": \"5m\",\n        \"syncDelay\": \"5m\"\n      },\n      \"summary\": {\n        \"errorBudget\": {\n          \"consumed\": 0.17,\n          \"initial\": 0.01,\n          \"isEstimated\": false,\n          \"remaining\": 0.83\n        },\n        \"sliValue\": 0.9983,\n        \"status\": \"HEALTHY\"\n      },\n      \"tags\": [\n        \"production\",\n        \"web-service\"\n      ],\n      \"timeWindow\": {\n        \"duration\": \"30d\",\n        \"type\": \"rolling\"\n      },\n      \"updatedAt\": \"2025-01-12T10:03:19.000Z\",\n      \"version\": 2\n    }\n  ],\n  \"total\": 42\n}"
+   }
+  ]
+ },
+ "GET /{{index}}/_count": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-count",
+  "operation": "GET /{index}/_count",
+  "request": [
+   {
+    "summary": "Run `GET /my-index-000001/_count?q=user:kimchy`. Alternatively, run `GET /my-index-0000...",
+    "value": "{\n  \"query\" : {\n    \"term\" : { \"user.id\" : \"kimchy\" }\n  }\n}"
+   }
+  ],
+  "response": [
+   {
+    "summary": "A successful response from `GET /my-index-000001/_count?q=user:kimchy`.",
+    "value": "{\n  \"count\": 1,\n  \"_shards\": {\n    \"total\": 1,\n    \"successful\": 1,\n    \"skipped\": 0,\n    \"failed\": 0\n  }\n}"
+   }
+  ]
+ },
+ "GET /{{index}}/_ilm/explain": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-ilm-explain-lifecycle",
+  "operation": "GET /{index}/_ilm/explain",
+  "response": [
+   {
+    "summary": "A successful response when retrieving the current ILM status for an index.",
+    "value": "{\n  \"indices\": {\n    \"my-index-000001\": {\n      \"index\": \"my-index-000001\",\n      \"index_creation_date_millis\": 1538475653281,\n      \"index_creation_date\": \"2018-10-15T13:45:21.981Z\",\n      \"time_since_index_creation\": \"15s\",\n      \"managed\": true,\n      \"policy\": \"my_policy\",\n      \"lifecycle_date_millis\": 1538475653281,\n      \"lifecycle_date\": \"2018-10-15T13:45:21.981Z\",\n      \"age\": \"15s\",\n      \"phase\": \"new\",\n      \"phase_time_millis\": 1538475653317,\n      \"phase_time\": \"2018-10-15T13:45:22.577Z\",\n      \"action\": \"complete\"\n      \"action_time_millis\": 1538475653317,\n      \"action_time\": \"2018-10-15T13:45:22.577Z\",\n      \"step\": \"complete\",\n      \"step_time_millis\": 1538475653317,\n      \"step_time\": \"2018-10-15T13:45:22.577Z\"\n    }\n  }\n}"
+   }
+  ]
+ },
+ "GET /{{index}}/_mapping": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-indices-get-mapping",
+  "operation": "GET /{index}/_mapping"
+ },
+ "GET /{{index}}/_settings": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-indices-get-settings",
+  "operation": "GET /{index}/_settings"
+ },
+ "GET /{{index}}/_stats": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-indices-stats",
+  "operation": "GET /{index}/_stats"
+ },
+ "POST /_aliases": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-indices-update-aliases",
+  "operation": "POST /_aliases",
+  "request": [
+   {
+    "summary": "Add a data stream or index to an alias",
+    "value": "{\n  \"actions\": [\n    {\n      \"add\": {\n        \"index\": \"logs-nginx.access-*\",\n        \"alias\": \"logs\"\n      }\n    }\n  ]\n}"
+   },
+   {
+    "summary": "Remove a data stream or index from an alias",
+    "value": "{\n  \"actions\": [\n    {\n      \"remove\": {\n        \"index\": \"logs-nginx.access-prod\",\n        \"alias\": \"logs\"\n      }\n    }\n  ]\n}"
+   },
+   {
+    "summary": "Remove an index and update an alias",
+    "value": "{\n  \"actions\": [\n    {\n      \"remove_index\": {\n        \"index\": \"my-index-1\"\n      }\n    },\n    {\n      \"add\": {\n        \"index\": \"my-index-2\",\n        \"alias\": \"my-alias\"\n      }\n    }\n  ]\n}"
+   }
+  ],
+  "response": [
+   {
+    "summary": "A partially successful response",
+    "value": "{\n  \"acknowledged\": true,\n  \"errors\": true,\n  \"action_results\": [\n    {\n      \"action\": {\n        \"type\": \"remove\",\n        \"indices\": [\n          \"logs-nginx.access-prod\"\n        ],\n        \"aliases\": [\n          \"logs-non-existing\"\n        ]\n      },\n      \"status\": 404,\n      \"error\": {\n        \"type\": \"aliases_not_found_exception\",\n        \"reason\": \"aliases [logs-non-existing] missing\",\n        \"resource.type\": \"aliases\",\n        \"resource.id\": \"logs-non-existing\"\n      }\n    },\n    {\n      \"action\": {\n        \"type\": \"add\",\n        \"indices\": [\n          \"logs-nginx.access-default\"\n        ],\n        \"aliases\": [\n          \"logs-non-existing\"\n        ]\n      },\n      \"status\": 200\n    }\n  ]\n}"
+   }
+  ]
+ },
+ "POST /_cache/clear": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-indices-clear-cache",
+  "operation": "POST /_cache/clear"
+ },
+ "POST /_cluster/reroute": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-cluster-reroute",
+  "operation": "POST /_cluster/reroute",
+  "request": [
+   {
+    "summary": "Run `POST /_cluster/reroute?metric=none` to changes the allocation of shards in a cluster.",
+    "value": "{\n  \"commands\": [\n    {\n      \"move\": {\n        \"index\": \"test\", \"shard\": 0,\n        \"from_node\": \"node1\", \"to_node\": \"node2\"\n      }\n    },\n    {\n      \"allocate_replica\": {\n        \"index\": \"test\", \"shard\": 1,\n        \"node\": \"node3\"\n      }\n    }\n  ]\n}"
+   }
+  ]
+ },
+ "POST /_ingest/pipeline/{{pipeline_id}}/_simulate": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-ingest-simulate",
+  "operation": "POST /_ingest/pipeline/{id}/_simulate",
+  "request": [
+   {
+    "summary": "Run an ingest pipeline against a set of provided documents.",
+    "value": "{\n  \"pipeline\" :\n  {\n    \"description\": \"_description\",\n    \"processors\": [\n      {\n        \"set\" : {\n          \"field\" : \"field2\",\n          \"value\" : \"_value\"\n        }\n      }\n    ]\n  },\n  \"docs\": [\n    {\n      \"_index\": \"index\",\n      \"_id\": \"id\",\n      \"_source\": {\n        \"foo\": \"bar\"\n      }\n    },\n    {\n      \"_index\": \"index\",\n      \"_id\": \"id\",\n      \"_source\": {\n        \"foo\": \"rab\"\n      }\n    }\n  ]\n}"
+   }
+  ],
+  "response": [
+   {
+    "summary": "A successful response for running an ingest pipeline against a set of provided documents.",
+    "value": "{\n   \"docs\": [\n      {\n         \"doc\": {\n            \"_id\": \"id\",\n            \"_index\": \"index\",\n            \"_version\": \"-3\",\n            \"_source\": {\n               \"field2\": \"_value\",\n               \"foo\": \"bar\"\n            },\n            \"_ingest\": {\n               \"timestamp\": \"2017-05-04T22:30:03.187Z\"\n            }\n         }\n      },\n      {\n         \"doc\": {\n            \"_id\": \"id\",\n            \"_index\": \"index\",\n            \"_version\": \"-3\",\n            \"_source\": {\n               \"field2\": \"_value\",\n               \"foo\": \"rab\"\n            },\n            \"_ingest\": {\n               \"timestamp\": \"2017-05-04T22:30:03.188Z\"\n            }\n         }\n      }\n   ]\n}"
+   }
+  ]
+ },
+ "POST /_query": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-esql-query",
+  "operation": "POST /_query",
+  "request": [
+   {
+    "summary": "Run `POST /_query` to get results for an ES|QL query.",
+    "value": "{\n  \"query\": \"\"\"\n    FROM library,remote-*:library\n    | EVAL year = DATE_TRUNC(1 YEARS, release_date)\n    | STATS MAX(page_count) BY year\n    | SORT year\n    | LIMIT 5\n  \"\"\",\n  \"include_ccs_metadata\": true\n}"
+   }
+  ]
+ },
+ "POST /_reindex": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-reindex",
+  "operation": "POST /_reindex",
+  "request": [
+   {
+    "summary": "Reindex multiple sources",
+    "value": "{\n  \"source\": {\n    \"index\": [\"my-index-000001\", \"my-index-000002\"]\n  },\n  \"dest\": {\n    \"index\": \"my-new-index-000002\"\n  }\n}"
+   },
+   {
+    "summary": "Reindex with Painless",
+    "value": "{\n  \"source\": {\n    \"index\": \"metricbeat-*\"\n  },\n  \"dest\": {\n    \"index\": \"metricbeat\"\n  },\n  \"script\": {\n    \"lang\": \"painless\",\n    \"source\": \"ctx._index = 'metricbeat-' + (ctx._index.substring('metricbeat-'.length(), ctx._index.length())) + '-1'\"\n  }\n}"
+   },
+   {
+    "summary": "Reindex a random subset",
+    "value": "{\n  \"max_docs\": 10,\n  \"source\": {\n    \"index\": \"my-index-000001\",\n    \"query\": {\n      \"function_score\" : {\n        \"random_score\" : {},\n        \"min_score\" : 0.9\n      }\n    }\n  },\n  \"dest\": {\n    \"index\": \"my-new-index-000001\"\n  }\n}"
+   },
+   {
+    "summary": "Reindex modified documents",
+    "value": "{\n  \"source\": {\n    \"index\": \"my-index-000001\"\n  },\n  \"dest\": {\n    \"index\": \"my-new-index-000001\",\n    \"version_type\": \"external\"\n  },\n  \"script\": {\n    \"source\": \"if (ctx._source.foo == 'bar') {ctx._version++; ctx._source.remove('foo')}\",\n    \"lang\": \"painless\"\n  }\n}"
+   }
+  ]
+ },
+ "POST /_security/api_key": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-security-create-api-key",
+  "operation": "POST /_security/api_key",
+  "request": [
+   {
+    "summary": "Run `POST /_security/api_key` to create an API key. If `expiration` is not provided, th...",
+    "value": "{\n  \"name\": \"my-api-key\",\n  \"expiration\": \"1d\",   \n  \"role_descriptors\": { \n    \"role-a\": {\n      \"cluster\": [\"all\"],\n      \"indices\": [\n        {\n          \"names\": [\"index-a*\"],\n          \"privileges\": [\"read\"]\n        }\n      ]\n    },\n    \"role-b\": {\n      \"cluster\": [\"all\"],\n      \"indices\": [\n        {\n          \"names\": [\"index-b*\"],\n          \"privileges\": [\"all\"]\n        }\n      ]\n    }\n  },\n  \"metadata\": {\n    \"application\": \"my-application\",\n    \"environment\": {\n      \"level\": 1,\n      \"trusted\": true,\n      \"tags\": [\"dev\", \"staging\"]\n    }\n  }\n}"
+   }
+  ],
+  "response": [
+   {
+    "summary": "A successful response from `POST /_security/api_key`.",
+    "value": "{\n  \"id\": \"VuaCfGcBCdbkQm-e5aOx\",        \n  \"name\": \"my-api-key\",\n  \"expiration\": 1544068612110,         \n  \"api_key\": \"ui2lp2axTNmsyakw9tvNnw\", \n  \"encoded\": \"VnVhQ2ZHY0JDZGJrUW0tZTVhT3g6dWkybHAyYXhUTm1zeWFrdzl0dk5udw==\"  \n}"
+   }
+  ]
+ },
+ "POST /_security/user/{{username}}": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-security-put-user",
+  "operation": "POST /_security/user/{username}",
+  "request": [
+   {
+    "summary": "Run `POST /_security/user/jacknich` to activate a user profile.",
+    "value": "{\n  \"password\" : \"l0ng-r4nd0m-p@ssw0rd\",\n  \"roles\" : [ \"admin\", \"other_role1\" ],\n  \"full_name\" : \"Jack Nicholson\",\n  \"email\" : \"jacknich@example.com\",\n  \"metadata\" : {\n    \"intelligence\" : 7\n  }\n}"
+   }
+  ],
+  "response": [
+   {
+    "summary": "A successful response from `POST /_security/user/jacknich`. When an existing user is up...",
+    "value": "{\n  \"created\": true \n}"
+   }
+  ]
+ },
+ "POST /_snapshot/{{repo_name}}/_verify": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-snapshot-verify-repository",
+  "operation": "POST /_snapshot/{repository}/_verify"
+ },
+ "POST /_snapshot/{{repo_name}}/{{snapshot_name}}/_restore": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-snapshot-restore",
+  "operation": "POST /_snapshot/{repository}/{snapshot}/_restore",
+  "request": [
+   {
+    "summary": "Restore with rename pattern",
+    "value": "{\n  \"indices\": \"index_1,index_2\",\n  \"ignore_unavailable\": true,\n  \"include_global_state\": false,\n  \"rename_pattern\": \"index_(.+)\",\n  \"rename_replacement\": \"restored_index_$1\",\n  \"include_aliases\": false\n}"
+   },
+   {
+    "summary": "Restore in-place",
+    "value": "{\n  \"indices\": \"index_1\"\n}"
+   }
+  ]
+ },
+ "POST /_sql": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-sql-query",
+  "operation": "POST /_sql",
+  "request": [
+   {
+    "summary": "Run `POST _sql?format=txt` to get results for an SQL search.",
+    "value": "{\n  \"query\": \"SELECT * FROM library ORDER BY page_count DESC LIMIT 5\"\n}"
+   }
+  ]
+ },
+ "POST /_tasks/{{task_id}}/_cancel": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-tasks-cancel",
+  "operation": "POST /_tasks/{task_id}/_cancel"
+ },
+ "POST /_transform/{{transform_id}}/_start": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-transform-start-transform",
+  "operation": "POST /_transform/{transform_id}/_start",
+  "response": [
+   {
+    "summary": "A successful response when a transform starts.",
+    "value": "{\n  \"acknowledged\": true\n}"
+   }
+  ]
+ },
+ "POST /_transform/{{transform_id}}/_stop": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-transform-stop-transform",
+  "operation": "POST /_transform/{transform_id}/_stop",
+  "response": [
+   {
+    "summary": "A successful response when a transform stops.",
+    "value": "{\n  \"acknowledged\": true\n}"
+   }
+  ]
+ },
+ "POST /api/alerting/rule/{{rule_id}}/_disable": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/kibana/operation/operation-post-alerting-rule-id-disable",
+  "operation": "POST /api/alerting/rule/{id}/_disable",
+  "request": [
+   {
+    "summary": "Disable a rule and untrack its alerts",
+    "value": "{\n  \"untrack\": true\n}"
+   }
+  ]
+ },
+ "POST /api/alerting/rule/{{rule_id}}/_enable": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/kibana/operation/operation-post-alerting-rule-id-enable",
+  "operation": "POST /api/alerting/rule/{id}/_enable"
+ },
+ "POST /api/cases": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/kibana/operation/operation-createcasedefaultspace",
+  "operation": "POST /api/cases",
+  "request": [
+   {
+    "summary": "Create a security case that uses a Jira connector.",
+    "value": "{\n  \"connector\": {\n    \"fields\": {\n      \"issueType\": \"10006\",\n      \"parent\": null,\n      \"priority\": \"High\"\n    },\n    \"id\": \"131d4448-abe0-4789-939d-8ef60680b498\",\n    \"name\": \"My connector\",\n    \"type\": \".jira\"\n  },\n  \"customFields\": [\n    {\n      \"key\": \"d312efda-ec2b-42ec-9e2c-84981795c581\",\n      \"type\": \"text\",\n      \"value\": \"My field value\"\n    }\n  ],\n  \"description\": \"A case description.\",\n  \"owner\": \"cases\",\n  \"settings\": {\n    \"extractObservables\": false,\n    \"syncAlerts\": true\n  },\n  \"tags\": [\n    \"tag-1\"\n  ],\n  \"title\": \"Case title 1\"\n}"
+   }
+  ],
+  "response": [
+   {
+    "summary": "The create case API returns a JSON object that contains details about the case.",
+    "value": "{\n  \"assignees\": [],\n  \"closed_at\": null,\n  \"closed_by\": null,\n  \"comments\": [],\n  \"connector\": {\n    \"fields\": {\n      \"issueType\": \"10006\",\n      \"parent\": null,\n      \"priority\": \"High\"\n    },\n    \"id\": \"131d4448-abe0-4789-939d-8ef60680b498\",\n    \"name\": \"My connector\",\n    \"type\": \".jira\"\n  },\n  \"created_at\": \"2022-10-13T15:33:50.604Z\",\n  \"created_by\": {\n    \"email\": null,\n    \"full_name\": null,\n    \"profile_uid\": \"u_mGBROF_q5bmFCATbLXAcCwKa0k8JvONAwSruelyKA5E_0\",\n    \"username\": \"elastic\"\n  },\n  \"customFields\": [\n    {\n      \"key\": \"d312efda-ec2b-42ec-9e2c-84981795c581\",\n      \"type\": \"text\",\n      \"value\": \"My field value\"\n    },\n    {\n      \"key\": \"fcc6840d-eb14-42df-8aaf-232201a705ec\",\n      \"type\": \"toggle\",\n      \"value\": null\n    }\n  ],\n  \"description\": \"A case description.\",\n  \"duration\": null,\n  \"external_service\": null,\n  \"id\": \"66b9aa00-94fa-11ea-9f74-e7e108796192\",\n  \"observables\": [],\n  \"owner\": \"cases\",\n  \"settings\": {\n    \"extractObservables\": false,\n    \"syncAlerts\": true\n  },\n  \"severity\": \"low\",\n  \"status\": \"open\",\n  \"tags\": [\n    \"tag 1\"\n  ],\n  \"title\": \"Case title 1\",\n  \"total_observables\": 0,\n  \"totalAlerts\": 0,\n  \"totalComment\": 0,\n  \"totalEvents\": 0,\n  \"updated_at\": null,\n  \"updated_by\": null,\n  \"version\": \"WzUzMiwxXQ==\"\n}"
+   }
+  ]
+ },
+ "POST /api/data_views/data_view": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/kibana/operation/operation-createdataviewdefaultw",
+  "operation": "POST /api/data_views/data_view",
+  "request": [
+   {
+    "summary": "Create a data view with runtime fields.",
+    "value": "{\n  \"data_view\": {\n    \"name\": \"My Logstash data view\",\n    \"runtimeFieldMap\": {\n      \"runtime_shape_name\": {\n        \"script\": {\n          \"source\": \"emit(doc['shape_name'].value)\"\n        },\n        \"type\": \"keyword\"\n      }\n    },\n    \"title\": \"logstash-*\"\n  }\n}"
+   }
+  ],
+  "response": [
+   {
+    "summary": "The create data view API returns a JSON object that contains details about the new data...",
+    "value": "{\n  \"data_view\": {\n    \"allowNoIndex\": false,\n    \"fieldAttrs\": {},\n    \"fieldFormats\": {},\n    \"fields\": {\n      \"runtime_shape_name\": {\n        \"aggregatable\": true,\n        \"count\": 0,\n        \"esTypes\": [\n          \"keyword\"\n        ],\n        \"format\": {\n          \"id\": \"string\"\n        },\n        \"name\": \"runtime_shape_name\",\n        \"readFromDocValues\": false,\n        \"runtimeField\": {\n          \"script\": {\n            \"source\": \"emit(doc['shape_name'].value)\"\n          },\n          \"type\": \"keyword\"\n        },\n        \"scripted\": false,\n        \"searchable\": true,\n        \"shortDotsEnable\": false,\n        \"type\": \"string\"\n      }\n    },\n    \"id\": \"b561acfb-0181-455e-84a3-ce8980b2272f\",\n    \"name\": \"My Logstash data view\",\n    \"namespaces\": [\n      \"default\"\n    ],\n    \"runtimeFieldMap\": {\n      \"runtime_shape_name\": {\n        \"script\": {\n          \"source\": \"emit(doc['shape_name'].value)\"\n        },\n        \"type\": \"keyword\"\n      }\n    },\n    \"sourceFilters\": [],\n    \"title\": \"logstash-*\",\n    \"typeMeta\": {},\n    \"version\": \"WzQ5LDJd\"\n  }\n}"
+   }
+  ]
+ },
+ "POST /api/data_views/data_view/{{data_view_id}}": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/kibana/operation/operation-updatedataviewdefault",
+  "operation": "POST /api/data_views/data_view/{viewId}",
+  "request": [
+   {
+    "summary": "Update some properties for a data view.",
+    "value": "{\n  \"data_view\": {\n    \"allowNoIndex\": false,\n    \"name\": \"Kibana Sample Data eCommerce\",\n    \"timeFieldName\": \"order_date\",\n    \"title\": \"kibana_sample_data_ecommerce\"\n  },\n  \"refresh_fields\": true\n}"
+   }
+  ]
+ },
+ "POST /api/data_views/data_view/{{data_view_id}}/runtime_field": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/kibana/operation/operation-createruntimefielddefault",
+  "operation": "POST /api/data_views/data_view/{viewId}/runtime_field",
+  "request": [
+   {
+    "summary": "Create a runtime field.",
+    "value": "{\n  \"name\": \"runtimeFoo\",\n  \"runtimeField\": {\n    \"script\": {\n      \"source\": \"emit(doc[\\\"foo\\\"].value)\"\n    },\n    \"type\": \"long\"\n  }\n}"
+   }
+  ],
+  "response": [
+   {
+    "summary": "The API returns created runtime field object array and updated data view object.",
+    "value": "{\n  \"data_view\": {\n    \"...\": null\n  },\n  \"fields\": [\n    \"...\"\n  ]\n}"
+   }
+  ]
+ },
+ "POST /api/data_views/default": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/kibana/operation/operation-setdefaultdatailviewdefault",
+  "operation": "POST /api/data_views/default",
+  "request": [
+   {
+    "summary": "Set the default data view identifier.",
+    "value": "{\n  \"data_view_id\": \"ff959d40-b880-11e8-a6d9-e546fe2bba5f\",\n  \"force\": true\n}"
+   }
+  ],
+  "response": [
+   {
+    "summary": "The default data view was set successfully.",
+    "value": "{\n  \"acknowledged\": true\n}"
+   }
+  ]
+ },
+ "POST /api/fleet/agent_policies": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/kibana/operation/operation-post-fleet-agent-policies",
+  "operation": "POST /api/fleet/agent_policies",
+  "request": [
+   {
+    "summary": "Create a new agent policy",
+    "value": "{\n  \"description\": \"A sample agent policy\",\n  \"monitoring_enabled\": [\n    \"logs\",\n    \"metrics\"\n  ],\n  \"name\": \"My agent policy\",\n  \"namespace\": \"default\"\n}"
+   }
+  ],
+  "response": [
+   {
+    "summary": "The created agent policy",
+    "value": "{\n  \"item\": {\n    \"description\": \"A sample agent policy\",\n    \"id\": \"agent-policy-id-2\",\n    \"is_managed\": false,\n    \"is_protected\": false,\n    \"name\": \"My agent policy\",\n    \"namespace\": \"default\",\n    \"revision\": 1,\n    \"status\": \"active\",\n    \"updated_at\": \"2024-01-15T10:00:00.000Z\",\n    \"updated_by\": \"user1\"\n  }\n}"
+   }
+  ]
+ },
+ "POST /api/fleet/agent_policies/delete": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/kibana/operation/operation-post-fleet-agent-policies-delete",
+  "operation": "POST /api/fleet/agent_policies/delete",
+  "request": [
+   {
+    "summary": "Delete an agent policy by ID",
+    "value": "{\n  \"agentPolicyId\": \"agent-policy-id-1\"\n}"
+   }
+  ],
+  "response": [
+   {
+    "summary": "The agent policy was successfully deleted",
+    "value": "{\n  \"id\": \"agent-policy-id-1\",\n  \"name\": \"My agent policy\"\n}"
+   }
+  ]
+ },
+ "POST /api/fleet/agent_policies/{{agent_policy_id}}/copy": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/kibana/operation/operation-post-fleet-agent-policies-agentpolicyid-copy",
+  "operation": "POST /api/fleet/agent_policies/{agentPolicyId}/copy",
+  "request": [
+   {
+    "summary": "Copy an agent policy with a new name",
+    "value": "{\n  \"description\": \"A copy of the original agent policy\",\n  \"name\": \"Copy of my agent policy\"\n}"
+   }
+  ],
+  "response": [
+   {
+    "summary": "The copied agent policy",
+    "value": "{\n  \"item\": {\n    \"description\": \"A copy of the original agent policy\",\n    \"id\": \"agent-policy-id-copy-1\",\n    \"is_managed\": false,\n    \"is_protected\": false,\n    \"name\": \"Copy of my agent policy\",\n    \"namespace\": \"default\",\n    \"revision\": 1,\n    \"status\": \"active\",\n    \"updated_at\": \"2024-01-15T11:00:00.000Z\",\n    \"updated_by\": \"user1\"\n  }\n}"
+   }
+  ]
+ },
+ "POST /api/fleet/agents/{{agent_id}}/reassign": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/kibana/operation/operation-post-fleet-agents-agentid-reassign",
+  "operation": "POST /api/fleet/agents/{agentId}/reassign",
+  "request": [
+   {
+    "summary": "Reassign an agent to a different policy",
+    "value": "{\n  \"policy_id\": \"agent-policy-id-2\"\n}"
+   }
+  ],
+  "response": [
+   {
+    "summary": "Agent successfully reassigned",
+    "value": "{}"
+   }
+  ]
+ },
+ "POST /api/fleet/agents/{{agent_id}}/unenroll": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/kibana/operation/operation-post-fleet-agents-agentid-unenroll",
+  "operation": "POST /api/fleet/agents/{agentId}/unenroll",
+  "request": [
+   {
+    "summary": "Unenroll an agent, optionally revoking the enrollment API key",
+    "value": "{\n  \"revoke\": false\n}"
+   }
+  ],
+  "response": [
+   {
+    "summary": "Agent successfully unenrolled",
+    "value": "{}"
+   }
+  ]
+ },
+ "POST /api/fleet/agents/{{agent_id}}/upgrade": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/kibana/operation/operation-post-fleet-agents-agentid-upgrade",
+  "operation": "POST /api/fleet/agents/{agentId}/upgrade",
+  "request": [
+   {
+    "summary": "Upgrade an agent to a specific version",
+    "value": "{\n  \"version\": \"8.17.0\"\n}"
+   }
+  ],
+  "response": [
+   {
+    "summary": "Agent upgrade initiated",
+    "value": "{}"
+   }
+  ]
+ },
+ "POST /api/fleet/enrollment_api_keys": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/kibana/operation/operation-post-fleet-enrollment-api-keys",
+  "operation": "POST /api/fleet/enrollment_api_keys",
+  "request": [
+   {
+    "summary": "Create an enrollment API key for an agent policy",
+    "value": "{\n  \"expiration\": \"2025-01-01T00:00:00.000Z\",\n  \"name\": \"My enrollment key\",\n  \"policy_id\": \"policy-id-1\"\n}"
+   }
+  ],
+  "response": [
+   {
+    "summary": "The created enrollment API key",
+    "value": "{\n  \"action\": \"created\",\n  \"item\": {\n    \"active\": true,\n    \"api_key\": \"api-key-value-1\",\n    \"api_key_id\": \"api-key-id-1\",\n    \"created_at\": \"2024-01-01T00:00:00.000Z\",\n    \"id\": \"key-id-1\",\n    \"name\": \"My enrollment key\",\n    \"policy_id\": \"policy-id-1\"\n  }\n}"
+   }
+  ]
+ },
+ "POST /api/fleet/epm/packages/{{package_name}}/{{package_version}}": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/kibana/operation/operation-post-fleet-epm-packages-pkgname-pkgversion",
+  "operation": "POST /api/fleet/epm/packages/{pkgName}/{pkgVersion}",
+  "request": [
+   {
+    "summary": "Install a package, optionally ignoring constraints",
+    "value": "{\n  \"ignore_constraints\": false\n}"
+   }
+  ],
+  "response": [
+   {
+    "summary": "Package successfully installed",
+    "value": "{\n  \"_meta\": {\n    \"install_source\": \"registry\"\n  },\n  \"items\": [\n    {\n      \"id\": \"aws-logs-aws.cloudwatch_logs-default\",\n      \"type\": \"index_template\"\n    }\n  ]\n}"
+   }
+  ]
+ },
+ "POST /api/fleet/package_policies": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/kibana/operation/operation-post-fleet-package-policies",
+  "operation": "POST /api/fleet/package_policies",
+  "request": [
+   {
+    "summary": "Create a new nginx package policy",
+    "value": "{\n  \"inputs\": {},\n  \"name\": \"nginx-1\",\n  \"namespace\": \"default\",\n  \"package\": {\n    \"name\": \"nginx\",\n    \"version\": \"1.20.0\"\n  },\n  \"policy_ids\": [\n    \"agent-policy-id-1\"\n  ]\n}"
+   }
+  ],
+  "response": [
+   {
+    "summary": "The created package policy",
+    "value": "{\n  \"item\": {\n    \"created_at\": \"2024-01-15T10:00:00.000Z\",\n    \"enabled\": true,\n    \"id\": \"package-policy-id-2\",\n    \"inputs\": [],\n    \"name\": \"nginx-1\",\n    \"namespace\": \"default\",\n    \"package\": {\n      \"name\": \"nginx\",\n      \"title\": \"Nginx\",\n      \"version\": \"1.20.0\"\n    },\n    \"policy_ids\": [\n      \"agent-policy-id-1\"\n    ],\n    \"updated_at\": \"2024-01-15T10:00:00.000Z\"\n  }\n}"
+   }
+  ]
+ },
+ "POST /api/fleet/package_policies/delete": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/kibana/operation/operation-post-fleet-package-policies-delete",
+  "operation": "POST /api/fleet/package_policies/delete",
+  "request": [
+   {
+    "summary": "Delete multiple package policies by ID",
+    "value": "{\n  \"packagePolicyIds\": [\n    \"package-policy-id-1\",\n    \"package-policy-id-2\"\n  ]\n}"
+   }
+  ],
+  "response": [
+   {
+    "summary": "Results of the bulk delete operation",
+    "value": "[\n  {\n    \"id\": \"package-policy-id-1\",\n    \"success\": true\n  },\n  {\n    \"id\": \"package-policy-id-2\",\n    \"success\": true\n  }\n]"
+   }
+  ]
+ },
+ "POST /api/fleet/package_policies/upgrade": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/kibana/operation/operation-post-fleet-package-policies-upgrade",
+  "operation": "POST /api/fleet/package_policies/upgrade",
+  "request": [
+   {
+    "summary": "Upgrade package policies to the latest version",
+    "value": "{\n  \"packagePolicyIds\": [\n    \"package-policy-id-1\"\n  ]\n}"
+   }
+  ],
+  "response": [
+   {
+    "summary": "Results of the upgrade operation",
+    "value": "[\n  {\n    \"id\": \"package-policy-id-1\",\n    \"name\": \"nginx-1\",\n    \"success\": true\n  }\n]"
+   }
+  ]
+ },
+ "POST /api/fleet/package_policies/upgrade/dryrun": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/kibana/operation/operation-post-fleet-package-policies-upgrade-dryrun",
+  "operation": "POST /api/fleet/package_policies/upgrade/dryrun",
+  "request": [
+   {
+    "summary": "Dry run an upgrade of a package policy",
+    "value": "{\n  \"packagePolicyIds\": [\n    \"package-policy-id-1\"\n  ]\n}"
+   }
+  ],
+  "response": [
+   {
+    "summary": "Preview of the package policy upgrade diff",
+    "value": "[\n  {\n    \"diff\": [\n      {\n        \"id\": \"package-policy-id-1\",\n        \"name\": \"nginx-1\",\n        \"package\": {\n          \"name\": \"nginx\",\n          \"version\": \"1.20.0\"\n        }\n      },\n      {\n        \"name\": \"nginx-1\",\n        \"package\": {\n          \"name\": \"nginx\",\n          \"version\": \"1.21.0\"\n        }\n      }\n    ],\n    \"hasErrors\": false,\n    \"name\": \"nginx-1\"\n  }\n]"
+   }
+  ]
+ },
+ "POST /api/saved_objects/_export": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/kibana/operation/operation-post-saved-objects-export",
+  "operation": "POST /api/saved_objects/_export",
+  "request": [
+   {
+    "summary": "Export a specific saved object",
+    "value": "{\n  \"excludeExportDetails\": true,\n  \"includeReferencesDeep\": false,\n  \"objects\": [\n    {\n      \"id\": \"example-dashboard-1\",\n      \"type\": \"dashboard\"\n    }\n  ]\n}"
+   }
+  ],
+  "response": [
+   {
+    "summary": "The export response contains an NDJSON record for each exported object",
+    "value": "{\"id\":\"example-dashboard-1\",\"type\":\"dashboard\",\"attributes\":{\"title\":\"Example dashboard 1\"},\"references\":[],\"managed\":false}\n{\"exportedCount\":1,\"missingRefCount\":0,\"missingReferences\":[]}"
+   }
+  ]
+ },
+ "POST /api/saved_objects/dashboard/my-dashboard-id": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/kibana/operation/operation-post-saved-objects-type-id",
+  "operation": "POST /api/saved_objects/{type}/{id}",
+  "request": [
+   {
+    "summary": "Create a dashboard saved object",
+    "value": "{\n  \"attributes\": {\n    \"title\": \"Example dashboard\"\n  },\n  \"references\": []\n}"
+   }
+  ],
+  "response": [
+   {
+    "summary": "A created saved object",
+    "value": "{\n  \"attributes\": {\n    \"title\": \"Example dashboard\"\n  },\n  \"id\": \"example-dashboard-id\",\n  \"managed\": false,\n  \"namespaces\": [\n    \"default\"\n  ],\n  \"references\": [],\n  \"type\": \"dashboard\",\n  \"updated_at\": \"2026-04-17T12:00:00.000Z\",\n  \"version\": \"WzEsMV0=\"\n}"
+   }
+  ]
+ },
+ "POST /api/spaces/_copy_saved_objects": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/kibana/operation/operation-post-spaces-copy-saved-objects",
+  "operation": "POST /api/spaces/_copy_saved_objects",
+  "request": [
+   {
+    "summary": "Copy with createNewCopies",
+    "value": "{\n  \"objects\": [\n    {\n      \"type\": \"dashboard\",\n      \"id\": \"my-dashboard\"\n    }\n  ],\n  \"spaces\": [\n    \"marketing\"\n  ],\n  \"includeReferences\": true\n}"
+   },
+   {
+    "summary": "Copy without createNewCopies",
+    "value": "{\n  \"objects\": [\n    {\n      \"type\": \"dashboard\",\n      \"id\": \"my-dashboard\"\n    }\n  ],\n  \"spaces\": [\n    \"marketing\"\n  ],\n  \"includeReferences\": true,\n  \"createNewCopies\": false\n}"
+   }
+  ],
+  "response": [
+   {
+    "summary": "Copy with createNewCopies",
+    "value": "{\n  \"marketing\": {\n    \"success\": true,\n    \"successCount\": 3,\n    \"successResults\": [\n      {\n        \"id\": \"my-dashboard\",\n        \"type\": \"dashboard\",\n        \"destinationId\": \"1e127098-5b80-417f-b0f1-c60c8395358f\",\n        \"meta\": {\n          \"icon\": \"dashboardApp\",\n          \"title\": \"Look at my dashboard\"\n        }\n      },\n      {\n        \"id\": \"my-vis\",\n        \"type\": \"visualization\",\n        \"destinationId\": \"a610ed80-1c73-4507-9e13-d3af736c8e04\",\n        \"meta\": {\n          \"icon\": \"visualizeApp\",\n          \"title\": \"Look at my visualization\"\n        }\n      },\n      {\n        \"id\": \"my-index-pattern\",\n        \"type\": \"index-pattern\",\n        \"destinationId\": \"bc3c9c70-bf6f-4bec-b4ce-f4189aa9e26b\",\n        \"meta\": {\n          \"icon\": \"indexPatternApp\",\n          \"title\": \"my-pattern-*\"\n        }\n      }\n    ]\n  }\n}"
+   },
+   {
+    "summary": "Copy without createNewCopies",
+    "value": "{\n  \"marketing\": {\n    \"success\": true,\n    \"successCount\": 3,\n    \"successResults\": [\n      {\n        \"id\": \"my-dashboard\",\n        \"type\": \"dashboard\",\n        \"meta\": {\n          \"icon\": \"dashboardApp\",\n          \"title\": \"Look at my dashboard\"\n        }\n      },\n      {\n        \"id\": \"my-vis\",\n        \"type\": \"visualization\",\n        \"meta\": {\n          \"icon\": \"visualizeApp\",\n          \"title\": \"Look at my visualization\"\n        }\n      },\n      {\n        \"id\": \"my-index-pattern\",\n        \"type\": \"index-pattern\",\n        \"meta\": {\n          \"icon\": \"indexPatternApp\",\n          \"title\": \"my-pattern-*\"\n        }\n      }\n    ]\n  }\n}"
+   },
+   {
+    "summary": "Failed copy response with conflict errors",
+    "value": "{\n  \"marketing\": {\n    \"success\": true,\n    \"successCount\": 4,\n    \"successResults\": [\n      {\n        \"id\": \"my-dashboard\",\n        \"type\": \"dashboard\",\n        \"meta\": {\n          \"icon\": \"dashboardApp\",\n          \"title\": \"Look at my dashboard\"\n        }\n      },\n      {\n        \"id\": \"my-vis\",\n        \"type\": \"visualization\",\n        \"meta\": {\n          \"icon\": \"visualizeApp\",\n          \"title\": \"Look at my visualization\"\n        }\n      },\n      {\n        \"id\": \"my-canvas\",\n        \"type\": \"canvas-workpad\",\n        \"meta\": {\n          \"icon\": \"canvasApp\",\n          \"title\": \"Look at my canvas\"\n        }\n      },\n      {\n        \"id\": \"my-index-pattern\",\n        \"type\": \"index-pattern\",\n        \"meta\": {\n          \"icon\": \"indexPatternApp\",\n          \"title\": \"my-pattern-*\"\n        }\n      }\n    ]\n  },\n  \"sales\": {\n    \"success\": false,\n    \"successCount\": \"1,\",\n    \"errors\": [\n      {\n        \"id\": \"my-pattern\",\n        \"type\": \"index-pattern\",\n        \"title\": \"my-pattern-*\",\n        \"error\": {\n          \"type\": \"conflict\"\n        },\n        \"meta\": {\n          \"icon\": \"indexPatternApp\",\n          \"title\": \"my-pattern-*\"\n        }\n      },\n      {\n        \"id\": \"my-visualization\",\n        \"type\": \"my-vis\",\n        \"title\": \"Look at my visualization\",\n        \"error\": {\n          \"type\": \"conflict\",\n          \"destinationId\": \"another-vis\"\n        },\n        \"meta\": {\n          \"icon\": \"visualizeApp\",\n          \"title\": \"Look at my visualization\"\n        }\n      },\n      {\n        \"id\": \"my-canvas\",\n        \"type\": \"canvas-workpad\",\n        \"title\": \"Look at my canvas\",\n        \"error\": {\n          \"type\": \"ambiguous_conflict\",\n          \"destinations\": [\n            {\n              \"id\": \"another-canvas\",\n              \"title\": \"Look at another canvas\",\n              \"updatedAt\": \"2020-07-08T16:36:32.377Z\"\n            },\n            {\n              \"id\": \"yet-another-canvas\",\n              \"title\": \"Look at yet another canvas\",\n              \"updatedAt\": \"2020-07-05T12:29:54.849Z\"\n            }\n          ]\n        },\n        \"meta\": {\n          \"icon\": \"canvasApp\",\n          \"title\": \"Look at my canvas\"\n        }\n      }\n    ],\n    \"successResults\\\"\": [\n      {\n        \"id\": \"my-dashboard\",\n        \"type\": \"dashboard\",\n        \"meta\": {\n          \"icon\": \"dashboardApp\",\n          \"title\": \"Look at my dashboard\"\n        }\n      }\n    ]\n  }\n}"
+   },
+   {
+    "summary": "Failed copy with missing reference errors",
+    "value": "{\n  \"marketing\": {\n    \"success\": false,\n    \"successCount\": 2,\n    \"errors\": [\n      {\n        \"id\": \"my-vis\",\n        \"type\": \"visualization\",\n        \"title\": \"Look at my visualization\",\n        \"error\": {\n          \"type\": \"missing_references\",\n          \"references\": [\n            {\n              \"type\": \"index-pattern\",\n              \"id\": \"my-pattern-*\"\n            }\n          ]\n        },\n        \"meta\": {\n          \"icon\": \"visualizeApp\",\n          \"title\": \"Look at my visualization\"\n        }\n      }\n    ],\n    \"successResults\": [\n      {\n        \"id\": \"my-dashboard\",\n        \"type\": \"dashboard\",\n        \"meta\": {\n          \"icon\": \"dashboardApp\",\n          \"title\": \"Look at my dashboard\"\n        }\n      },\n      {\n        \"id\": \"my-canvas\",\n        \"type\": \"canvas-workpad\",\n        \"meta\": {\n          \"icon\": \"canvasApp\",\n          \"title\": \"Look at my canvas\"\n        }\n      }\n    ]\n  }\n}"
+   }
+  ]
+ },
+ "POST /api/spaces/space": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/kibana/operation/operation-post-spaces-space",
+  "operation": "POST /api/spaces/space",
+  "request": [
+   {
+    "summary": "Create a marketing space",
+    "value": "{\n  \"id\": \"marketing\",\n  \"name\": \"Marketing\",\n  \"description\": \"This is the Marketing Space\",\n  \"color\": null,\n  \"initials\": \"MK\",\n  \"disabledFeatures\": [],\n  \"imageUrl\": \"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAD4AAABACAYAAABC6cT1AAAGf0lEQVRoQ+3abYydRRUH8N882xYo0IqagEVjokQJKAiKBjXExC9G/aCkGowCIghCkRcrVSSKIu/FEiqgGL6gBIlAYrAqUTH6hZgQFVEMKlQFfItWoQWhZe8z5uzMLdvbfbkLxb13d+fbvfe588x/zpn/+Z9zJpmnI81T3BaAzzfLL1h8weLzZAcWXH2eGHo7zAWLL1h8nuzAjFw9G1N6Kzq8HnuM36MR8iibF3Fv4q+7cv8yDV6K13bYq2furSP8Ag8ncr/vnSnwRViJT2GfCV7yL1yHGxLb+l3EdM9lluNEnIC9xz+f2ZL4Er6Z2DrdXN3fZwp8CU7OfDHxggle8lTLbQ1nJ/7Z7yKmey5zYGZt4h2IzR8/trRc2PDlxJPTzfVcgJ+CC0wMPOa9F6cm7up3EVM9V9386MxliVdM8GwAv6hh/awCz/w7lY25OtF5ruBz4ZLP42NYNrDAFbC3YPWuILnMAfgq3oaRQQYea/stViV+sgssvjKzLvGySeaaNVfP4d7Btokgvxj/bblgpueuF1hmWcyTCmfE3J3M1lTcv0vMswM88zR+jpw4osu6me8kzkpsfLZWzxyRuabO22buxxOJ12FxnXfWgEe83pB5sOE47BsLymzscOoi7nw2JJfZreUjiUsTyzKPZm5NvBDvSuw268AzNzV8H5/Am+qCnsAXgpgSW2Zq9cyKlksbPlTd+te4quWNieMHBfiNDdciYnwsdI/MaOaWhnMTf54J8CqNj8x8JXFIZltYu+HqlmNT8YSBsHgAPw/vxvlVV4du/s0oaxbxg0TbL/jMni0nNcVjQq7+HZfgtpbzBg342TgQ63AkmsymxBW4IjE6A+D7Vzd/fyWxIM/VuCe+HzTgZ2Jpy/kNJ2FJLmLm24mPJ/42A+Bvrxt4SISwlhsaPodH26LZB8rVA3inwwebsrixJCZzX+KMxI/7AV61eVh3DV6Mx3EOvh4kN6jAg8nfUCXm4d1wE66OyxNPTQc+s3/o/MoXizL3JE5O3F3P/uBZPPF4Zr+Wi5uSO48ZPRdyCwn7YB/A35m5KhWNHox4fcNnIs0ddOCRSBxf8+cQG+Huf0l8NJVYP+nI7NXy2ar4QqIGm69JfKPOE2w/mBavCzwM11R2D+ChsUO7hyUfmwx55qDM1xJvqZ7y08TpifuGBfjeURVJnNIVGpkNiXNS0ds7jcySDitDCCWW56LJ10fRo8sNA+3qXUSZD2CtQlZh9T+1rB7h9oliembflnMbzqgSNZKbKGHdPm7OwXb1CvQ1metSETMpszmzvikCJNh/h5E5PHNl4qga/+/cxqrdeWDYgIe7X5L4cGJPJX2940lOX8pD41FnFnc4riluvQKbK0dcHJFi2IBHNTQSlguru4d2/wPOTNzRA3x5y+U1E1uqWDkETOT026XuUJzx6u7ReLhSYenQ7uHua0fKZmwfmcPqsQjxE5WVONcRxn7X89zgn/EKPMRMxOVQXmP18Mx3q3b/Y/0cQE/IhFtHESMsHFlZ1Ml3CH3DZPHImY+pxcKumNmYirtvqMBfhMuU6s3iqOQkTsMPe1tCQwO8Ajs0lxr7W+vnp1MJc9EgCNd/cy6x+9D4veXmprj5wxMw/3C4egW6zzgZOlYZzfwo3F2J7ael0pJamvlPKgWNKFft1AAcKotXoFEbD7kaoSoQPVKB35+5KHF0lai/rJo+up87jWEE/qqqwY+qrL21LWLm95lPJ16ppKw31XC3PXYPJauPEx7B6BHCgrSizRs18qiaRp8tlN3ueCTYPHH9RNaunjI8Z7wLYpT3jZSCYXQ8e9vTsRE/q+no3XMKeObgGtaintbb/AvXj4JDkNw/5hrwYPfIvlZFUbLn7G5q+eQIN09Vnho6cqvnM/Lt99RixH49wO8K0ZL41WTWHoQzvsNVkOheZqKhEGpsp3SzB+BBtZAYve7uOR9tuTaaB6l0XScdYfEQPpkTUyHEGP+XqyDBzu+NBCITUjNWHynkrbWKOuWFn1xKzqsyx0bdvS78odp0+N503Zao0uCsWuSIDku8/7EO60b41vN5+Ses9BKlTdvd8bhp9EBvJjWJAIn/vxwHe6b3tSk6JFPV4nq85oAOrx555v/x/rh3E6Lo+bnuNS4uB4Cuq0ZfvO8X1rM6q/+vnjLVqZq7v83onttc2oYF4HPJmv1gWbB4P7s0l55ZsPhcsmY/WBYs3s8uzaVn5q3F/wf70mRuBCtbjQAAAABJRU5ErkJggg==\"\n}"
+   }
+  ],
+  "response": [
+   {
+    "summary": "Get details about a marketing space",
+    "value": "{\n  \"id\": \"marketing\",\n  \"name\": \"Marketing\",\n  \"description\": \"This is the Marketing Space\",\n  \"color\": null,\n  \"initials\": \"MK\",\n  \"disabledFeatures\": [],\n  \"imageUrl\": \"\",\n  \"solution\": \"es\"\n}"
+   }
+  ]
+ },
+ "POST /{{alias}}/_rollover": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-indices-rollover",
+  "operation": "POST /{alias}/_rollover",
+  "request": [
+   {
+    "summary": "Stack request",
+    "value": "{\n  \"conditions\": {\n    \"max_age\": \"7d\",\n    \"max_docs\": 1000,\n    \"max_primary_shard_size\": \"50gb\",\n    \"max_primary_shard_docs\": \"2000\"\n  }\n}"
+   }
+  ],
+  "response": [
+   {
+    "summary": "An abbreviated response from `GET /_segments`.",
+    "value": "{\n  \"_shards\": {},\n  \"indices\": {\n    \"test\": {\n      \"shards\": {\n        \"0\": [\n          {\n            \"routing\": {\n              \"state\": \"STARTED\",\n              \"primary\": true,\n              \"node\": \"zDC_RorJQCao9xf9pg3Fvw\"\n            },\n            \"num_committed_segments\": 0,\n            \"num_search_segments\": 1,\n            \"segments\": {\n              \"_0\": {\n                \"generation\": 0,\n                \"num_docs\": 1,\n                \"deleted_docs\": 0,\n                \"size_in_bytes\": 3800,\n                \"committed\": false,\n                \"search\": true,\n                \"version\": \"7.0.0\",\n                \"compound\": true,\n                \"attributes\": {}\n              }\n            }\n          }\n        ]\n      }\n    }\n  }\n}"
+   }
+  ]
+ },
+ "POST /{{data_stream}}/_rollover": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-indices-rollover",
+  "operation": "POST /{alias}/_rollover",
+  "request": [
+   {
+    "summary": "Stack request",
+    "value": "{\n  \"conditions\": {\n    \"max_age\": \"7d\",\n    \"max_docs\": 1000,\n    \"max_primary_shard_size\": \"50gb\",\n    \"max_primary_shard_docs\": \"2000\"\n  }\n}"
+   }
+  ],
+  "response": [
+   {
+    "summary": "An abbreviated response from `GET /_segments`.",
+    "value": "{\n  \"_shards\": {},\n  \"indices\": {\n    \"test\": {\n      \"shards\": {\n        \"0\": [\n          {\n            \"routing\": {\n              \"state\": \"STARTED\",\n              \"primary\": true,\n              \"node\": \"zDC_RorJQCao9xf9pg3Fvw\"\n            },\n            \"num_committed_segments\": 0,\n            \"num_search_segments\": 1,\n            \"segments\": {\n              \"_0\": {\n                \"generation\": 0,\n                \"num_docs\": 1,\n                \"deleted_docs\": 0,\n                \"size_in_bytes\": 3800,\n                \"committed\": false,\n                \"search\": true,\n                \"version\": \"7.0.0\",\n                \"compound\": true,\n                \"attributes\": {}\n              }\n            }\n          }\n        ]\n      }\n    }\n  }\n}"
+   }
+  ]
+ },
+ "POST /{{index}}/_delete_by_query": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-delete-by-query",
+  "operation": "POST /{index}/_delete_by_query",
+  "request": [
+   {
+    "summary": "Delete all documents",
+    "value": "{\n  \"query\": {\n    \"match_all\": {}\n  }\n}"
+   },
+   {
+    "summary": "Delete a single document",
+    "value": "{\n  \"query\": {\n    \"term\": {\n      \"user.id\": \"kimchy\"\n    }\n  },\n  \"max_docs\": 1\n}"
+   },
+   {
+    "summary": "Slice manually",
+    "value": "{\n  \"slice\": {\n    \"id\": 0,\n    \"max\": 2\n  },\n  \"query\": {\n    \"range\": {\n      \"http.response.bytes\": {\n        \"lt\": 2000000\n      }\n    }\n  }\n}"
+   },
+   {
+    "summary": "Automatic slicing",
+    "value": "{\n  \"query\": {\n    \"range\": {\n      \"http.response.bytes\": {\n        \"lt\": 2000000\n      }\n    }\n  }\n}"
+   }
+  ],
+  "response": [
+   {
+    "summary": "A successful response from `POST /my-index-000001/_delete_by_query`.",
+    "value": "{\n  \"took\" : 147,\n  \"timed_out\": false,\n  \"total\": 119,\n  \"deleted\": 119,\n  \"batches\": 1,\n  \"version_conflicts\": 0,\n  \"noops\": 0,\n  \"retries\": {\n    \"bulk\": 0,\n    \"search\": 0\n  },\n  \"throttled_millis\": 0,\n  \"requests_per_second\": -1.0,\n  \"throttled_until_millis\": 0,\n  \"failures\" : [ ]\n}"
+   }
+  ]
+ },
+ "POST /{{index}}/_forcemerge": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-indices-forcemerge",
+  "operation": "POST /{index}/_forcemerge"
+ },
+ "POST /{{index}}/_ilm/retry": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-ilm-retry",
+  "operation": "POST /{index}/_ilm/retry"
+ },
+ "POST /{{index}}/_refresh": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-indices-refresh",
+  "operation": "POST /{index}/_refresh"
+ },
+ "POST /{{index}}/_search": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-search",
+  "operation": "POST /{index}/_search",
+  "request": [
+   {
+    "summary": "A simple term search",
+    "value": "{\n  \"query\": {\n    \"term\": {\n      \"user.id\": \"kimchy\"\n    }\n  }\n}"
+   },
+   {
+    "summary": "A point in time search",
+    "value": "{\n    \"size\": 100,  \n    \"query\": {\n        \"match\" : {\n            \"title\" : \"elasticsearch\"\n        }\n    },\n    \"pit\": {\n      \"id\":  \"46ToAwMDaWR5BXV1aWQyKwZub2RlXzMAAAAAAAAAACoBYwADaWR4BXV1aWQxAgZub2RlXzEAAAAAAAAAAAEBYQADaWR5BXV1aWQyKgZub2RlXzIAAAAAAAAAAAwBYgACBXV1aWQyAAAFdXVpZDEAAQltYXRjaF9hbGw_gAAAAA==\", \n      \"keep_alive\": \"1m\"  \n    }\n}"
+   },
+   {
+    "summary": "Search slicing",
+    "value": "{\n  \"slice\": {\n    \"id\": 0,                      \n    \"max\": 2                      \n  },\n  \"query\": {\n    \"match\": {\n      \"message\": \"foo\"\n    }\n  },\n  \"pit\": {\n    \"id\": \"46ToAwMDaWR5BXV1aWQyKwZub2RlXzMAAAAAAAAAACoBYwADaWR4BXV1aWQxAgZub2RlXzEAAAAAAAAAAAEBYQADaWR5BXV1aWQyKgZub2RlXzIAAAAAAAAAAAwBYgACBXV1aWQyAAAFdXVpZDEAAQltYXRjaF9hbGw_gAAAAA==\"\n  }\n}"
+   }
+  ],
+  "response": [
+   {
+    "summary": "An abbreviated response from `GET /my-index-000001/_search?from=40&size=20` with a simp...",
+    "value": "{\n  \"took\": 5,\n  \"timed_out\": false,\n  \"_shards\": {\n    \"total\": 1,\n    \"successful\": 1,\n    \"skipped\": 0,\n    \"failed\": 0\n  },\n  \"hits\": {\n    \"total\": {\n      \"value\": 20,\n      \"relation\": \"eq\"\n    },\n    \"max_score\": 1.3862942,\n    \"hits\": [\n      {\n        \"_index\": \"my-index-000001\",\n        \"_id\": \"0\",\n        \"_score\": 1.3862942,\n        \"_source\": {\n          \"@timestamp\": \"2099-11-15T14:12:12\",\n          \"http\": {\n            \"request\": {\n              \"method\": \"get\"\n            },\n            \"response\": {\n              \"status_code\": 200,\n              \"bytes\": 1070000\n            },\n            \"version\": \"1.1\"\n          },\n          \"source\": {\n            \"ip\": \"127.0.0.1\"\n          },\n          \"message\": \"GET /search HTTP/1.1 200 1070000\",\n          \"user\": {\n            \"id\": \"kimchy\"\n          }\n        }\n      }\n    ]\n  }\n}"
+   }
+  ]
+ },
+ "POST /{{index}}/_shrink/{{shrunk_index}}": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-indices-shrink",
+  "operation": "POST /{index}/_shrink/{target}",
+  "request": [
+   {
+    "summary": "Shrink an existing index into a new index with fewer primary shards.",
+    "value": "{\n  \"settings\": {\n    \"index.routing.allocation.require._name\": null,\n    \"index.blocks.write\": null\n  }\n}"
+   }
+  ]
+ },
+ "PUT /_cluster/settings": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-cluster-put-settings",
+  "operation": "PUT /_cluster/settings",
+  "request": [
+   {
+    "summary": "A simple setting",
+    "value": "{\n  \"persistent\" : {\n    \"indices.recovery.max_bytes_per_sec\" : \"50mb\"\n  }\n}"
+   },
+   {
+    "summary": "A setting with multiple patterns",
+    "value": "{\n  \"persistent\": {\n    \"action.auto_create_index\": \"my-index-000001,index10,-index1*,+ind*\" \n  }\n}"
+   }
+  ]
+ },
+ "PUT /_component_template/{{component_name}}": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-cluster-put-component-template",
+  "operation": "PUT /_component_template/{name}",
+  "request": [
+   {
+    "summary": "Create a template",
+    "value": "{\n  \"template\": {\n    \"settings\": {\n      \"number_of_shards\": 1\n    },\n    \"mappings\": {\n      \"_source\": {\n        \"enabled\": false\n      },\n      \"properties\": {\n        \"host_name\": {\n          \"type\": \"keyword\"\n        },\n        \"created_at\": {\n          \"type\": \"date\",\n          \"format\": \"EEE MMM dd HH:mm:ss Z yyyy\"\n        }\n      }\n    }\n  }\n}"
+   },
+   {
+    "summary": "Create a template with aliases",
+    "value": "{\n  \"template\": {\n    \"settings\": {\n      \"number_of_shards\": 1\n    },\n    \"aliases\": {\n      \"alias1\": {},\n      \"alias2\": {\n        \"filter\": {\n          \"term\": {\n            \"user.id\": \"kimchy\"\n          }\n        },\n        \"routing\": \"shard-1\"\n      },\n      \"{index}-alias\": {}\n    }\n  }\n}"
+   }
+  ]
+ },
+ "PUT /_data_stream/{{data_stream}}": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-indices-create-data-stream",
+  "operation": "PUT /_data_stream/{name}"
+ },
+ "PUT /_ilm/policy/{{ilm_policy}}": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-ilm-put-lifecycle",
+  "operation": "PUT /_ilm/policy/{policy}",
+  "request": [
+   {
+    "summary": "Run `PUT _ilm/policy/my_policy` to create a new policy with arbitrary metadata.",
+    "value": "{\n  \"policy\": {\n    \"_meta\": {\n      \"description\": \"used for nginx log\",\n      \"project\": {\n        \"name\": \"myProject\",\n        \"department\": \"myDepartment\"\n      }\n    },\n    \"phases\": {\n      \"warm\": {\n        \"min_age\": \"10d\",\n        \"actions\": {\n          \"forcemerge\": {\n            \"max_num_segments\": 1\n          }\n        }\n      },\n      \"delete\": {\n        \"min_age\": \"30d\",\n        \"actions\": {\n          \"delete\": {}\n        }\n      }\n    }\n  }\n}"
+   }
+  ],
+  "response": [
+   {
+    "summary": "A successful response when creating a new lifecycle policy.",
+    "value": "{\n  \"acknowledged\": true\n}"
+   }
+  ]
+ },
+ "PUT /_index_template/{{template_name}}": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-indices-put-index-template",
+  "operation": "PUT /_index_template/{name}",
+  "request": [
+   {
+    "summary": "Create a template",
+    "value": "{\n  \"index_patterns\" : [\"template*\"],\n  \"priority\" : 1,\n  \"template\": {\n    \"settings\" : {\n      \"number_of_shards\" : 2\n    }\n  }\n}"
+   },
+   {
+    "summary": "Create a template with aliases",
+    "value": "{\n  \"index_patterns\": [\n    \"template*\"\n  ],\n  \"template\": {\n    \"settings\": {\n      \"number_of_shards\": 1\n    },\n    \"aliases\": {\n      \"alias1\": {},\n      \"alias2\": {\n        \"filter\": {\n          \"term\": {\n            \"user.id\": \"kimchy\"\n          }\n        },\n        \"routing\": \"shard-1\"\n      },\n      \"{index}-alias\": {}\n    }\n  }\n}"
+   }
+  ]
+ },
+ "PUT /_ingest/pipeline/{{pipeline_id}}": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-ingest-put-pipeline",
+  "operation": "PUT /_ingest/pipeline/{id}",
+  "request": [
+   {
+    "summary": "Create an ingest pipeline.",
+    "value": "{\n  \"description\" : \"My optional pipeline description\",\n  \"processors\" : [\n    {\n      \"set\" : {\n        \"description\" : \"My optional processor description\",\n        \"field\": \"my-keyword-field\",\n        \"value\": \"foo\"\n      }\n    }\n  ]\n}"
+   },
+   {
+    "summary": "Create an ingest pipeline with metadata.",
+    "value": "{\n  \"description\" : \"My optional pipeline description\",\n  \"processors\" : [\n    {\n      \"set\" : {\n        \"description\" : \"My optional processor description\",\n        \"field\": \"my-keyword-field\",\n        \"value\": \"foo\"\n      }\n    }\n  ],\n  \"_meta\": {\n    \"reason\": \"set my-keyword-field to foo\",\n    \"serialization\": {\n      \"class\": \"MyPipeline\",\n      \"id\": 10\n    }\n  }\n}"
+   }
+  ]
+ },
+ "PUT /_security/role/{{role_name}}": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-security-put-role",
+  "operation": "PUT /_security/role/{name}",
+  "request": [
+   {
+    "summary": "Role example 1",
+    "value": "{\n  \"description\": \"Grants full access to all management features within the cluster.\",\n  \"cluster\": [\"all\"],\n  \"indices\": [\n    {\n      \"names\": [ \"index1\", \"index2\" ],\n      \"privileges\": [\"all\"],\n      \"field_security\" : { // optional\n        \"grant\" : [ \"title\", \"body\" ]\n      },\n      \"query\": \"{\\\"match\\\": {\\\"title\\\": \\\"foo\\\"}}\" // optional\n    }\n  ],\n  \"applications\": [\n    {\n      \"application\": \"myapp\",\n      \"privileges\": [ \"admin\", \"read\" ],\n      \"resources\": [ \"*\" ]\n    }\n  ],\n  \"run_as\": [ \"other_user\" ], // optional\n  \"metadata\" : { // optional\n    \"version\" : 1\n  }\n}"
+   },
+   {
+    "summary": "Role example 2",
+    "value": "{\n  \"cluster\": [\"cluster:monitor/main\"],\n  \"indices\": [\n    {\n      \"names\": [\"test\"],\n      \"privileges\": [\"read\", \"indices:admin/get\"]\n    }\n  ]\n}"
+   },
+   {
+    "summary": "Role example 3",
+    "value": "{\n  \"remote_indices\": [\n    {\n      \"clusters\": [\"my_remote\"], \n      \"names\": [\"logs*\"], \n      \"privileges\": [\"read\", \"read_cross_cluster\", \"view_index_metadata\"] \n    }\n  ],\n  \"remote_cluster\": [\n    {\n      \"clusters\": [\"my_remote\"], \n      \"privileges\": [\"monitor_stats\"]  \n    }\n  ]\n}"
+   }
+  ],
+  "response": [
+   {
+    "summary": "A successful response from `POST /_security/role/my_admin_role`.",
+    "value": "{\n  \"role\": {\n    \"created\": true \n  }\n}"
+   }
+  ]
+ },
+ "PUT /_slm/policy/{{slm_policy}}": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-slm-put-lifecycle",
+  "operation": "PUT /_slm/policy/{policy_id}",
+  "request": [
+   {
+    "summary": "Create a policy",
+    "value": "{\n  \"schedule\": \"0 30 1 * * ?\",\n  \"name\": \"<daily-snap-{now/d}>\",\n  \"repository\": \"my_repository\",\n  \"config\": {\n    \"indices\": [\"data-*\", \"important\"],\n    \"ignore_unavailable\": false,\n    \"include_global_state\": false\n  },\n  \"retention\": {\n    \"expire_after\": \"30d\",\n    \"min_count\": 5,\n    \"max_count\": 50\n  }\n}"
+   },
+   {
+    "summary": "Create a policy with intevals",
+    "value": "{\n  \"schedule\": \"1h\",\n  \"name\": \"<hourly-snap-{now/d}>\",\n  \"repository\": \"my_repository\",\n  \"config\": {\n    \"indices\": [\"data-*\", \"important\"]\n  }\n}"
+   }
+  ]
+ },
+ "PUT /_slm/policy/{{slm_policy}}/_execute": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-slm-execute-lifecycle",
+  "operation": "PUT /_slm/policy/{policy_id}/_execute",
+  "response": [
+   {
+    "summary": "Run `POST /_slm/policy/daily-snapshots/_execute` to take an immediate snapshot accordin...",
+    "value": "{\n  \"snapshot_name\": \"daily-snap-2019.04.24-gwrqoo2xtea3q57vvg0uea\"\n}"
+   }
+  ]
+ },
+ "PUT /_snapshot/{{repo_name}}": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-snapshot-create-repository",
+  "operation": "PUT /_snapshot/{repository}",
+  "request": [
+   {
+    "summary": "A shared file system repository",
+    "value": "{\n  \"type\": \"fs\",\n  \"settings\": {\n    \"location\": \"my_backup_location\"\n  }\n}"
+   },
+   {
+    "summary": "An Azure repository",
+    "value": "{\n  \"type\": \"azure\",\n  \"settings\": {\n    \"client\": \"secondary\"\n  }\n}"
+   },
+   {
+    "summary": "A Google Cloud Storage repository",
+    "value": "{\n  \"type\": \"gcs\",\n  \"settings\": {\n    \"bucket\": \"my_other_bucket\",\n    \"base_path\": \"dev\"\n  }\n}"
+   },
+   {
+    "summary": "An S3 repository",
+    "value": "{\n  \"type\": \"s3\",\n  \"settings\": {\n    \"bucket\": \"my-bucket\"\n  }\n}"
+   }
+  ]
+ },
+ "PUT /_snapshot/{{repo_name}}/{{snapshot_name}}": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-snapshot-create",
+  "operation": "PUT /_snapshot/{repository}/{snapshot}",
+  "request": [
+   {
+    "summary": "Run `PUT /_snapshot/my_repository/snapshot_2?wait_for_completion=true` to take a snapsh...",
+    "value": "{\n  \"partial\": true,\n  \"indices\": \"index_1,index_2\",\n  \"ignore_unavailable\": true,\n  \"include_global_state\": false,\n  \"metadata\": {\n    \"taken_by\": \"user123\",\n    \"taken_because\": \"backup before upgrading\"\n  }\n}"
+   }
+  ],
+  "response": [
+   {
+    "summary": "A successful response from `PUT /_snapshot/my_repository/snapshot_2?wait_for_completion...",
+    "value": "{\n  \"snapshot\": {\n    \"snapshot\": \"snapshot_2\",\n    \"uuid\": \"vdRctLCxSketdKb54xw67g\",\n    \"repository\": \"my_repository\",\n    \"version_id\": <version_id>,\n    \"version\": <version>,\n    \"indices\": [],\n    \"data_streams\": [],\n    \"feature_states\": [],\n    \"include_global_state\": false,\n    \"metadata\": {\n      \"taken_by\": \"user123\",\n      \"taken_because\": \"backup before upgrading\"\n    },\n    \"state\": \"SUCCESS\",\n    \"start_time\": \"2020-06-25T14:00:28.850Z\",\n    \"start_time_in_millis\": 1593093628850,\n    \"end_time\": \"2020-06-25T14:00:28.850Z\",\n    \"end_time_in_millis\": 1593094752018,\n    \"duration_in_millis\": 0,\n    \"failures\": [],\n    \"shards\": {\n      \"total\": 0,\n      \"failed\": 0,\n      \"successful\": 0\n    }\n  }\n}"
+   }
+  ]
+ },
+ "PUT /api/fleet/agent_policies/{{agent_policy_id}}": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/kibana/operation/operation-put-fleet-agent-policies-agentpolicyid",
+  "operation": "PUT /api/fleet/agent_policies/{agentPolicyId}",
+  "request": [
+   {
+    "summary": "Update an agent policy",
+    "value": "{\n  \"description\": \"An updated agent policy description\",\n  \"monitoring_enabled\": [\n    \"logs\"\n  ],\n  \"name\": \"Updated agent policy\",\n  \"namespace\": \"default\"\n}"
+   }
+  ],
+  "response": [
+   {
+    "summary": "The updated agent policy",
+    "value": "{\n  \"item\": {\n    \"description\": \"An updated agent policy description\",\n    \"id\": \"agent-policy-id-1\",\n    \"is_managed\": false,\n    \"is_protected\": false,\n    \"name\": \"Updated agent policy\",\n    \"namespace\": \"default\",\n    \"revision\": 2,\n    \"status\": \"active\",\n    \"updated_at\": \"2024-01-15T11:00:00.000Z\",\n    \"updated_by\": \"user1\"\n  }\n}"
+   }
+  ]
+ },
+ "PUT /api/fleet/package_policies/{{package_policy_id}}": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/kibana/operation/operation-put-fleet-package-policies-packagepolicyid",
+  "operation": "PUT /api/fleet/package_policies/{packagePolicyId}",
+  "request": [
+   {
+    "summary": "Update a package policy",
+    "value": "{\n  \"enabled\": true,\n  \"inputs\": {},\n  \"name\": \"nginx-1-updated\",\n  \"namespace\": \"default\",\n  \"package\": {\n    \"name\": \"nginx\",\n    \"version\": \"1.20.0\"\n  },\n  \"policy_ids\": [\n    \"agent-policy-id-1\"\n  ]\n}"
+   }
+  ],
+  "response": [
+   {
+    "summary": "The updated package policy",
+    "value": "{\n  \"item\": {\n    \"created_at\": \"2024-01-15T10:00:00.000Z\",\n    \"enabled\": true,\n    \"id\": \"package-policy-id-1\",\n    \"inputs\": [],\n    \"name\": \"nginx-1-updated\",\n    \"namespace\": \"default\",\n    \"package\": {\n      \"name\": \"nginx\",\n      \"title\": \"Nginx\",\n      \"version\": \"1.20.0\"\n    },\n    \"policy_ids\": [\n      \"agent-policy-id-1\"\n    ],\n    \"updated_at\": \"2024-01-15T11:00:00.000Z\"\n  }\n}"
+   }
+  ]
+ },
+ "PUT /{{index}}": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-indices-create",
+  "operation": "PUT /{index}",
+  "request": [
+   {
+    "summary": "Create an index.",
+    "value": "{\n  \"settings\": {\n    \"number_of_shards\": 3,\n    \"number_of_replicas\": 2\n  }\n}"
+   },
+   {
+    "summary": "Create an index with mappings.",
+    "value": "{\n  \"settings\": {\n    \"number_of_shards\": 1\n  },\n  \"mappings\": {\n    \"properties\": {\n      \"field1\": { \"type\": \"text\" }\n    }\n  }\n}"
+   },
+   {
+    "summary": "Create an index with aliases.",
+    "value": "{\n  \"aliases\": {\n    \"alias_1\": {},\n    \"alias_2\": {\n      \"filter\": {\n        \"term\": {\n          \"user.id\": \"kimchy\"\n        }\n      },\n      \"routing\": \"shard-1\"\n    }\n  }\n}"
+   }
+  ]
+ },
+ "PUT /{{index}}/_settings": {
+  "doc_url": "https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-indices-put-settings",
+  "operation": "PUT /{index}/_settings",
+  "request": [
+   {
+    "summary": "Change a dynamic index setting",
+    "value": "{\n  \"index\" : {\n    \"number_of_replicas\" : 2\n  }\n}"
+   },
+   {
+    "summary": "Reset an index setting",
+    "value": "{\n  \"index\" : {\n    \"refresh_interval\" : null\n  }\n}"
+   },
+   {
+    "summary": "Update index analysis",
+    "value": "{\n  \"analysis\": {\n    \"analyzer\": {\n      \"content\": {\n        \"type\": \"custom\",\n        \"tokenizer\": \"whitespace\"\n      }\n    }\n  }\n}"
+   }
+  ]
+ }
+}

@@ -1,4 +1,6 @@
+pub mod api_examples;
 pub mod appearance;
+pub mod assistant_tools;
 pub mod clusters;
 pub mod console;
 pub mod dashboard;

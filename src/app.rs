@@ -20,8 +20,7 @@ use crate::modules::god_console::{
 };
 use crate::modules::indices::{IndicesState, render_indices_module};
 use crate::modules::llm_assistant::{
-    self, AssistantState, ClusterContext, SendRequest, build_cluster_context, build_llm_messages,
-    spawn_stream,
+    self, AssistantState, ClusterContext, SendRequest, build_cluster_context, spawn_stream,
 };
 use crate::modules::logs::{LogsState, render_logs_module};
 use crate::modules::observability::{ObservabilityState, render_observability_module};
@@ -40,7 +39,7 @@ use crate::ui::toasts::Toasts;
 use crate::ui::vfx;
 use serde_json::Value;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Tab {
     Clusters,
     Snapshot,
@@ -168,7 +167,7 @@ pub struct DrasticSmurfApp {
     pub painless_send: Option<(String, String)>,
     pub indices_refresh: Option<(String, bool)>,
     pub observability_refresh: Option<(String, String)>,
-    pub osquery_request: Option<OsqueryRequest>,
+    pub osquery_requests: Vec<OsqueryRequest>,
     pub clusters_import: Option<crate::core::config::AppConfig>,
     pub theme: crate::ui::theme::AppTheme,
     pub vfx: crate::core::config::VfxSettings,
@@ -341,7 +340,7 @@ impl DrasticSmurfApp {
             painless_send: None,
             indices_refresh: None,
             observability_refresh: None,
-            osquery_request: None,
+            osquery_requests: Vec::new(),
             clusters_import: None,
             theme: config.theme,
             vfx: config.vfx,
@@ -822,6 +821,7 @@ impl DrasticSmurfApp {
                     }
 
                     self.console_state.response = text;
+                    self.console_state.response_is_example = false;
                     self.console_state.is_loading = false;
                 }
                 RefreshMsg::GodConsoleResult(run_id, result) => {
@@ -1675,41 +1675,46 @@ impl DrasticSmurfApp {
     }
 
     fn render_tabs(&mut self, ui: &mut egui::Ui) {
-        egui::ScrollArea::horizontal()
-            .id_salt("tabs")
-            .show(ui, |ui| {
-                ui.horizontal(|ui| {
-                    for (label, tab) in [
-                        ("Clusters", Tab::Clusters),
-                        ("Snapshot", Tab::Snapshot),
-                        ("Status", Tab::Status),
-                        ("Dashboard", Tab::Dashboard),
-                        ("Tasks", Tab::Tasks),
-                        ("Console", Tab::Console),
-                        ("God-mode Console", Tab::GodConsole),
-                        ("Discover", Tab::Discover),
-                        ("Indices", Tab::Indices),
-                        ("Observability", Tab::Observability),
-                        ("Osquery", Tab::Osquery),
-                        ("Pipelines", Tab::PipelineSimulator),
-                        ("Logs", Tab::Logs),
-                        ("Painless Playground", Tab::PainlessPlayground),
-                        ("Settings", Tab::Settings),
-                    ] {
-                        let is_active = self.current_tab == tab;
-                        let text = egui::RichText::new(label).size(14.0);
-                        let text = if is_active {
-                            let active_bg = Theme::accent().linear_multiply(0.25);
-                            text.color(Theme::contrast_text_color(active_bg)).strong()
-                        } else {
-                            text.color(Theme::text_secondary())
-                        };
-                        if ui.selectable_label(is_active, text).clicked() {
-                            self.current_tab = tab;
+        // Solid (non-floating) scroll bar: when the tabs overflow, the bar
+        // gets its own strip below them instead of floating over the labels.
+        ui.scope(|ui| {
+            ui.spacing_mut().scroll = egui::style::ScrollStyle::solid();
+            egui::ScrollArea::horizontal()
+                .id_salt("tabs")
+                .show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        for (label, tab) in [
+                            ("Clusters", Tab::Clusters),
+                            ("Snapshot", Tab::Snapshot),
+                            ("Status", Tab::Status),
+                            ("Dashboard", Tab::Dashboard),
+                            ("Tasks", Tab::Tasks),
+                            ("Console", Tab::Console),
+                            ("God-mode Console", Tab::GodConsole),
+                            ("Discover", Tab::Discover),
+                            ("Indices", Tab::Indices),
+                            ("Observability", Tab::Observability),
+                            ("Osquery", Tab::Osquery),
+                            ("Pipelines", Tab::PipelineSimulator),
+                            ("Logs", Tab::Logs),
+                            ("Painless Playground", Tab::PainlessPlayground),
+                            ("Settings", Tab::Settings),
+                        ] {
+                            let is_active = self.current_tab == tab;
+                            let text = egui::RichText::new(label).size(14.0);
+                            let text = if is_active {
+                                let active_bg = Theme::accent().linear_multiply(0.25);
+                                text.color(Theme::contrast_text_color(active_bg)).strong()
+                            } else {
+                                text.color(Theme::text_secondary())
+                            };
+                            if ui.selectable_label(is_active, text).clicked() {
+                                self.current_tab = tab;
+                            }
                         }
-                    }
+                    });
                 });
-            });
+        });
         ui.separator();
     }
 
@@ -2844,7 +2849,7 @@ impl DrasticSmurfApp {
                     ui,
                     &mut self.osquery_state,
                     &clusters,
-                    &mut self.osquery_request,
+                    &mut self.osquery_requests,
                 );
             }
         }
@@ -3137,44 +3142,73 @@ impl DrasticSmurfApp {
                 role: "user".into(),
                 content: req.user_text.clone(),
                 timestamp: now,
+                ..Default::default()
             });
+            // Placeholder the stream fills in. build_llm_messages skips empty
+            // assistant turns, so it is never sent to the model.
             conv.messages.push(ChatMessage {
                 role: "assistant".into(),
-                content: String::new(),
                 timestamp: now,
+                ..Default::default()
             });
             if conv.title == "New conversation" {
                 conv.title = req.user_text.chars().take(60).collect::<String>();
             }
             conv.updated_at = now;
         }
+        self.assistant_state
+            .begin_run(&req.conversation_id, req.include_cluster_context);
+        self.start_assistant_stream(
+            &req.conversation_id,
+            req.include_cluster_context.then_some(ctx),
+        );
+        self.persist_assistant_conversations();
+    }
 
-        // Snapshot conversation for the network task.
-        let snapshot = self
+    /// Stream the model's next reply for a conversation whose last message is the
+    /// assistant placeholder. Used for the first reply and after each round of tools.
+    fn start_assistant_stream(
+        &mut self,
+        conversation_id: &str,
+        cluster_ctx: Option<ClusterContext>,
+    ) {
+        let fail = |state: &mut llm_assistant::AssistantState, msg: String| {
+            state.agent = None;
+            state.is_streaming = false;
+            state.last_error = Some(msg);
+            if let Some(conv) = state.active_conversation_mut()
+                && conv.messages.last().is_some_and(|m| {
+                    m.role == "assistant" && m.content.is_empty() && m.tool_calls.is_empty()
+                })
+            {
+                conv.messages.pop();
+            }
+        };
+        let Some(conv) = self
             .assistant_state
             .conversations
             .iter()
-            .find(|c| c.id == req.conversation_id)
-            .cloned();
-        let Some(conv) = snapshot else {
-            self.assistant_state.last_error = Some("Conversation not found".into());
+            .find(|c| c.id == conversation_id)
+            .cloned()
+        else {
+            fail(&mut self.assistant_state, "Conversation not found".into());
             return;
         };
 
-        let cluster_ctx_opt = if req.include_cluster_context {
-            Some(ctx)
-        } else {
-            None
-        };
-
-        let messages = build_llm_messages(&conv, cluster_ctx_opt.as_ref(), "");
-        // The last user message was already pushed into the conversation above;
-        // build_llm_messages expects to append the user_text, but since we just
-        // pushed it, drop the trailing duplicate.
-        let mut messages = messages;
-        if messages.last().map(|m| m.role == "user").unwrap_or(false) {
-            messages.pop();
-        }
+        let tools_on = self.assistant_state.tools_active();
+        let cluster_names: Vec<String> = self
+            .cluster_manager
+            .clusters()
+            .iter()
+            .map(|c| c.name.clone())
+            .collect();
+        // The user's message is already in the conversation, so no extra user text.
+        let messages = llm_assistant::build_llm_messages_with(
+            &conv,
+            cluster_ctx.as_ref(),
+            "",
+            tools_on.then_some(cluster_names.as_slice()),
+        );
 
         let api_key_res =
             crate::core::auth::get_llm_api_key(&self.assistant_state.settings.provider_id);
@@ -3189,20 +3223,220 @@ impl DrasticSmurfApp {
                 "ollama" | "lmstudio" | "vllm" | "custom"
             )
         {
-            self.assistant_state
-                .last_error
-                .get_or_insert_with(String::new);
-            self.assistant_state.last_error =
-                Some("No API key set. Open settings (⚙) and paste your key.".into());
-            self.assistant_state.is_streaming = false;
+            fail(
+                &mut self.assistant_state,
+                "No API key set. Open settings (⚙) and paste your key.".into(),
+            );
             return;
         }
 
         let settings = self.assistant_state.settings.clone();
-        self.assistant_state.stream_rx = Some(spawn_stream(settings, api_key, messages));
+        let tools = tools_on.then(crate::modules::assistant_tools::tool_specs);
+        self.assistant_state.stream_rx = Some(spawn_stream(settings, api_key, messages, tools));
         self.assistant_state.is_streaming = true;
         self.assistant_state.last_error = None;
-        self.persist_assistant_conversations();
+    }
+
+    /// Per-frame assistant work that must happen even with the dock closed: drain the
+    /// stream, run tools that are ready, and start the next reply after tool results.
+    fn pump_assistant(&mut self, ctx: &egui::Context) {
+        llm_assistant::poll(&mut self.assistant_state, ctx);
+        for (run_id, call_id, action) in self.assistant_state.take_ready_tools() {
+            self.run_assistant_tool(run_id, call_id, action, ctx);
+        }
+        self.assistant_state.advance_agent();
+        if std::mem::take(&mut self.assistant_state.continue_requested)
+            && let Some(agent) = self.assistant_state.agent.clone()
+        {
+            let cluster_ctx = agent
+                .include_cluster_context
+                .then(|| self.compute_assistant_cluster_context());
+            self.start_assistant_stream(&agent.conversation_id, cluster_ctx);
+        }
+        if std::mem::take(&mut self.assistant_state.needs_persist) {
+            self.persist_assistant_conversations();
+        }
+    }
+
+    /// Carry out one assistant tool call. Quick, local actions complete immediately;
+    /// cluster requests run in the background and report through `tool_tx`.
+    fn run_assistant_tool(
+        &mut self,
+        run_id: u64,
+        call_id: String,
+        action: crate::modules::assistant_tools::ToolAction,
+        ctx: &egui::Context,
+    ) {
+        use crate::modules::assistant_tools::{ToolAction, compact_result};
+        let clusters = self.cluster_manager.clusters();
+        let known = || {
+            clusters
+                .iter()
+                .map(|c| c.name.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+        let result = match action {
+            ToolAction::ListClusters => {
+                let list: Vec<serde_json::Value> = clusters
+                    .iter()
+                    .map(|c| {
+                        let health = self
+                            .status_state
+                            .health_data
+                            .iter()
+                            .find(|(n, _)| n == &c.name)
+                            .and_then(|(_, h)| h.as_ref());
+                        serde_json::json!({
+                            "name": c.name,
+                            "health": health.map(|h| h.status.clone()),
+                            "nodes": health.map(|h| h.number_of_nodes),
+                            "version": self.status_state.es_versions.get(&c.name),
+                            "error": self.status_state.errors.get(&c.name),
+                            "kibana": !c.kibana_host.trim().is_empty(),
+                        })
+                    })
+                    .collect();
+                serde_json::Value::Array(list).to_string()
+            }
+            ToolAction::EsRequest(req) => {
+                let Some(config) = clusters.iter().find(|c| c.name == req.cluster).cloned() else {
+                    self.assistant_state.complete_tool(
+                        run_id,
+                        &call_id,
+                        format!(
+                            "Error: no cluster named '{}'. Configured clusters: {}",
+                            req.cluster,
+                            known()
+                        ),
+                    );
+                    return;
+                };
+                if req.kibana && config.kibana_host.trim().is_empty() {
+                    self.assistant_state.complete_tool(
+                        run_id,
+                        &call_id,
+                        format!(
+                            "Error: cluster '{}' has no Kibana host configured.",
+                            req.cluster
+                        ),
+                    );
+                    return;
+                }
+                let Some(client) = self.cluster_manager.get_client(&req.cluster) else {
+                    self.assistant_state.complete_tool(
+                        run_id,
+                        &call_id,
+                        format!(
+                            "Error: couldn't connect to '{}'. Check the cluster is reachable.",
+                            req.cluster
+                        ),
+                    );
+                    return;
+                };
+                let tx = self.assistant_state.tool_tx.clone();
+                let ctx = ctx.clone();
+                tokio::spawn(async move {
+                    let result = match send_console_request(
+                        &client,
+                        Some(&config),
+                        &req.method,
+                        &req.path,
+                        req.body,
+                        req.kibana,
+                    )
+                    .await
+                    {
+                        Ok(text) if text.trim().is_empty() => {
+                            "(empty response, request succeeded)".to_string()
+                        }
+                        Ok(text) => compact_result(&text),
+                        Err(e) => format!("Request failed: {}", e),
+                    };
+                    let _ = tx.send(llm_assistant::ToolResultMsg {
+                        run_id,
+                        call_id,
+                        result,
+                    });
+                    ctx.request_repaint();
+                });
+                return;
+            }
+            ToolAction::GetConsole => {
+                let c = &self.console_state;
+                let response = if c.response_is_example {
+                    "(the response box only shows an API doc example; nothing has been sent)"
+                        .to_string()
+                } else if c.response.is_empty() {
+                    "(empty)".to_string()
+                } else {
+                    compact_result(c.full_response.as_deref().unwrap_or(&c.response))
+                };
+                serde_json::json!({
+                    "cluster": c.selected_cluster,
+                    "method": c.method,
+                    "path": c.path,
+                    "kibana": c.use_kibana_host,
+                    "body": c.body,
+                    "response": response,
+                })
+                .to_string()
+            }
+            ToolAction::OpenInConsole(req) => {
+                if !req.cluster.is_empty() && !clusters.iter().any(|c| c.name == req.cluster) {
+                    format!(
+                        "Error: no cluster named '{}'. Configured clusters: {}",
+                        req.cluster,
+                        known()
+                    )
+                } else {
+                    let summary = req.summary();
+                    let c = &mut self.console_state;
+                    if !req.cluster.is_empty() {
+                        c.selected_cluster = req.cluster;
+                    }
+                    c.method = req.method;
+                    c.path = req.path;
+                    c.body = req.body.unwrap_or_default();
+                    c.use_kibana_host = req.kibana;
+                    c.history_index = None;
+                    c.json_error = None;
+                    c.clear_example_response();
+                    self.current_tab = Tab::Console;
+                    self.toasts
+                        .info("Assistant loaded a request into the Console");
+                    format!(
+                        "Loaded {} into the Console (cluster: {}). The user can review, edit and send it.",
+                        summary, self.console_state.selected_cluster
+                    )
+                }
+            }
+            ToolAction::OpenTab(id) => {
+                let tab = match id.as_str() {
+                    "clusters" => Tab::Clusters,
+                    "snapshot" => Tab::Snapshot,
+                    "status" => Tab::Status,
+                    "dashboard" => Tab::Dashboard,
+                    "tasks" => Tab::Tasks,
+                    "console" => Tab::Console,
+                    "god_console" => Tab::GodConsole,
+                    "discover" => Tab::Discover,
+                    "indices" => Tab::Indices,
+                    "observability" => Tab::Observability,
+                    "osquery" => Tab::Osquery,
+                    "pipelines" => Tab::PipelineSimulator,
+                    "logs" => Tab::Logs,
+                    "painless" => Tab::PainlessPlayground,
+                    _ => Tab::Settings,
+                };
+                self.current_tab = tab;
+                format!(
+                    "Opened the {} tab.",
+                    crate::modules::assistant_tools::tab_label(&id)
+                )
+            }
+        };
+        self.assistant_state.complete_tool(run_id, &call_id, result);
     }
 
     fn persist_assistant_conversations(&mut self) {
@@ -3593,7 +3827,7 @@ impl eframe::App for DrasticSmurfApp {
             }
         }
 
-        if let Some(request) = self.osquery_request.take() {
+        for request in std::mem::take(&mut self.osquery_requests) {
             let client = self.cluster_manager.get_client(&request.cluster);
             let config = self
                 .cluster_manager
@@ -4131,10 +4365,24 @@ impl eframe::App for DrasticSmurfApp {
             )
             .show(ctx, |ui| {
                 self.render_tabs(ui);
-                self.render_content(ui);
+                // Page-level scrolling for whatever overflows the window. egui still
+                // offers the inner Ui the viewport height, so pages that size their
+                // panels to `available_height()` fit exactly and never show the bar.
+                // The bar is solid (takes its own strip, only when needed) instead of
+                // floating over the page; nested scroll areas keep the default style.
+                let inner_scroll = ui.spacing().scroll;
+                ui.spacing_mut().scroll = egui::style::ScrollStyle::solid();
+                egui::ScrollArea::vertical()
+                    .id_salt(("page_scroll", self.current_tab.clone()))
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        ui.spacing_mut().scroll = inner_scroll;
+                        self.render_content(ui);
+                    });
             });
 
-        // AI Assistant side dock
+        // AI Assistant: stream/tool work runs every frame, dock or not.
+        self.pump_assistant(ctx);
         self.render_assistant_dock(ctx);
         self.render_assistant_chevron(ctx);
 

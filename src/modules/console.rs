@@ -1,6 +1,7 @@
 use egui::Ui;
 
 use crate::core::config::SavedQuery;
+use crate::modules::api_examples::{self, PromptChoice};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ConsoleTab {
@@ -33,6 +34,53 @@ pub struct ConsoleState {
     pub body_height: Option<f32>,
     pub json_error: Option<String>,
     pub preset_filter: String,
+    /// The response box holds an API doc example rather than a real response.
+    pub response_is_example: bool,
+    /// Send was pressed while the body still had example markers.
+    pub examples_prompt: bool,
+    /// Send on the next frame (set by the examples prompt).
+    pub send_requested: bool,
+    /// (method, path, body text) of the examples last inserted, for "Show examples".
+    pub examples_source: Option<(String, String, String)>,
+}
+
+impl ConsoleState {
+    /// Load a preset, filling the body and response boxes with API doc examples.
+    pub fn apply_preset(&mut self, preset: &ConsolePreset) {
+        self.method = preset.method.to_string();
+        self.path = preset.path.to_string();
+        self.body = api_examples::request_text(preset.method, preset.path, preset.body);
+        self.examples_source = api_examples::has_examples(&self.body)
+            .then(|| (self.method.clone(), self.path.clone(), self.body.clone()));
+        self.use_kibana_host = preset.use_kibana;
+        self.history_index = None;
+        self.json_error = None;
+        match api_examples::response_text(preset.method, preset.path) {
+            Some(text) => {
+                self.response = text;
+                self.full_response = None;
+                self.response_is_example = true;
+            }
+            None => self.clear_example_response(),
+        }
+    }
+
+    /// The examples last inserted, while the request still targets the same API.
+    fn available_examples(&self) -> Option<String> {
+        self.examples_source
+            .as_ref()
+            .filter(|(m, p, _)| *m == self.method && *p == self.path)
+            .map(|(_, _, text)| text.clone())
+    }
+
+    /// Clear the response box if it only holds a doc example.
+    pub fn clear_example_response(&mut self) {
+        if self.response_is_example {
+            self.response.clear();
+            self.full_response = None;
+            self.response_is_example = false;
+        }
+    }
 }
 
 impl ConsoleState {
@@ -965,7 +1013,7 @@ const PRESETS: &[ConsolePreset] = &[
     ConsolePreset {
         category: "Snapshot & Backup",
         name: "Run SLM Policy Now",
-        method: "POST",
+        method: "PUT",
         path: "/_slm/policy/{{slm_policy}}/_execute",
         body: None,
         description: "Take a snapshot immediately using a snapshot lifecycle policy.",
@@ -2174,6 +2222,34 @@ pub fn render_preset_list(
                             .size(11.0)
                             .color(crate::ui::theme::Theme::text_primary()),
                     );
+                    if let Some(docs) = api_examples::lookup(preset.method, preset.path) {
+                        let mut parts = Vec::new();
+                        if !docs.request.is_empty() {
+                            parts.push(format!("{} request", docs.request.len()));
+                        }
+                        if !docs.response.is_empty() {
+                            parts.push(format!("{} response", docs.response.len()));
+                        }
+                        if !parts.is_empty() {
+                            ui.label(
+                                egui::RichText::new(format!(
+                                    "📖 API doc examples: {}",
+                                    parts.join(", ")
+                                ))
+                                .size(11.0)
+                                .color(crate::ui::theme::Theme::text_muted()),
+                            );
+                        }
+                        // egui keeps a tooltip open while the pointer moves onto it when
+                        // it holds a link, so this is clickable.
+                        if let Some(url) = &docs.doc_url {
+                            ui.hyperlink_to(
+                                egui::RichText::new("🔗 Open API docs ↗").size(11.0),
+                                url,
+                            )
+                            .on_hover_text(url);
+                        }
+                    }
                 });
                 ui.add_space(3.0);
             }
@@ -2226,6 +2302,18 @@ pub fn render_console_module(
     if clusters.is_empty() {
         ui.label("No clusters configured. Add a cluster first.");
         return;
+    }
+
+    if state.examples_prompt
+        && let Some(choice) =
+            api_examples::render_examples_prompt(ui, "console_examples_prompt", &mut state.body)
+    {
+        state.examples_prompt = false;
+        state.json_error = None;
+        if choice == PromptChoice::RemovedAndSend {
+            state.send_requested = true;
+            ui.ctx().request_repaint();
+        }
     }
 
     let total_available = ui.available_size() - egui::vec2(0.0, 12.0);
@@ -2320,11 +2408,7 @@ pub fn render_console_module(
                                     ui.add_space(4.0);
 
                                     if let Some(preset) = render_preset_list(ui, &state.preset_filter, "console_preset") {
-                                        state.method = preset.method.to_string();
-                                        state.path = preset.path.to_string();
-                                        state.body = preset.body.map(|b| b.to_string()).unwrap_or_default();
-                                        state.use_kibana_host = preset.use_kibana;
-                                        state.history_index = None;
+                                        state.apply_preset(preset);
                                     }
                                 }
                                 ConsoleTab::Variables => {
@@ -2543,7 +2627,12 @@ pub fn render_console_module(
                                 ui.spinner();
                             }
 
-                            if send_btn.clicked() && !state.is_loading {
+                            let send_now = (send_btn.clicked() || std::mem::take(&mut state.send_requested))
+                                && !state.is_loading;
+                            if send_now && api_examples::has_examples(&state.body) {
+                                state.examples_prompt = true;
+                            } else if send_now {
+                                state.clear_example_response();
                                 state.is_loading = true;
                                 state.history.push((
                                     state.selected_cluster.clone(),
@@ -2665,6 +2754,10 @@ pub fn render_console_module(
                     ui.add_space(8.0);
                     ui.horizontal(|ui| {
                         ui.label("Body:");
+                        let available = state.available_examples();
+                        if api_examples::examples_toolbar(ui, &mut state.body, available.as_deref()) {
+                            state.json_error = None;
+                        }
                         if let Some(ref err) = state.json_error {
                             ui.colored_label(crate::ui::theme::Theme::danger(), format!("⚠️ {}", err));
                         }
@@ -2747,6 +2840,14 @@ pub fn render_console_module(
                         if ui.small_button("Clear").clicked() {
                             state.response.clear();
                             state.full_response = None;
+                            state.response_is_example = false;
+                        }
+                        if state.response_is_example {
+                            ui.label(
+                                egui::RichText::new("📖 example from the API docs; cleared when you send")
+                                    .small()
+                                    .color(crate::ui::theme::Theme::text_muted()),
+                            );
                         }
                     });
 
@@ -2774,6 +2875,9 @@ pub fn render_console_module(
 pub fn prettify_json_body(body: &str) -> Result<String, String> {
     if body.trim().is_empty() {
         return Ok(String::new());
+    }
+    if api_examples::has_examples(body) {
+        return Err("Body contains API doc examples; remove them first (🧹)".to_string());
     }
 
     // 1. Find all unquoted placeholders like `{{label}}` and temporarily replace them with valid quoted strings.
@@ -2885,6 +2989,48 @@ mod tests {
         assert_eq!(result_missing, "/{{missing_var}}/docs");
 
         assert_eq!(interpolate_variables("", &vars), "");
+    }
+
+    #[test]
+    fn test_apply_preset_inserts_doc_examples() {
+        let create = PRESETS.iter().find(|p| p.name == "Create Index").unwrap();
+        let mut state = ConsoleState::new();
+        state.response = "real response".to_string();
+        state.apply_preset(create);
+        assert!(state.body.starts_with("####### EXAMPLE 0: "));
+        assert_eq!(
+            api_examples::keep_only(&state.body, 0).as_deref(),
+            Some(create.body.unwrap().trim())
+        );
+        assert_eq!(api_examples::remove_example_blocks(&state.body), "");
+        let inserted = state.body.clone();
+        state.body.clear();
+        assert_eq!(
+            state.available_examples().as_deref(),
+            Some(inserted.as_str())
+        );
+        state.path = "/other".to_string();
+        assert!(
+            state.available_examples().is_none(),
+            "examples belong to one API"
+        );
+        state.path = create.path.to_string();
+        state.body = inserted;
+        assert!(prettify_json_body(&state.body).is_err());
+        // Create Index has no documented response example: the real response stays.
+        assert_eq!(state.response, "real response");
+        assert!(!state.response_is_example);
+
+        let health = PRESETS.iter().find(|p| p.name == "Cluster Health").unwrap();
+        state.apply_preset(health);
+        assert_eq!(state.body, "", "GET health has no body examples");
+        assert!(state.response_is_example);
+        assert!(state.response.starts_with(api_examples::EXAMPLE_MARKER));
+
+        // Switching to a preset without a response example clears the old example.
+        state.apply_preset(create);
+        assert!(!state.response_is_example);
+        assert!(state.response.is_empty());
     }
 
     #[test]

@@ -15,9 +15,9 @@ A fast, native desktop GUI for monitoring and interacting with multiple Elastics
 | **Snapshot Monitoring** | Live snapshot progress with speed tracking, ETA, sparklines, and SLM policy status |
 | **Cluster Status** | At-a-glance health dashboard — nodes, shards, indices, docs, JVM heap |
 | **Task Monitoring** | Watch reindex, snapshot, and other cluster tasks in real time with filtering |
-| **Elastic Console** | Send raw API requests with saved queries, without re-entering credentials |
+| **Elastic Console** | Send raw API requests with saved queries, without re-entering credentials. Picking a preset also fills in request and response examples from Elastic's API docs, under `####### EXAMPLE` marker lines (the preset's own body is Example 0). Keep one example, remove them all, or show them again from the body toolbar; you're prompted if any remain when you send |
 | **God-mode Console** | Run one request across many selected clusters in turn, optionally looping over a list of values via `{{loop_item}}`, or chaining one level by extracting JSON paths from every response (one `*` wildcard, `&&` for multiple columns, e.g. `*&&*.settings.index.lifecycle.name`) into a list fed back via `{{results_item}}` / `{{results_item.N}}`, with labelled per-cluster/per-value results, dry run and write confirmation |
-| **Osquery** | Run live Osquery queries on selected Fleet agents and inspect their status and results |
+| **Osquery** | Run live Osquery queries on Fleet agents found by type-to-search, or on groups (all agents, platforms, agent policies), optionally starting from a Kibana saved query, and inspect their status and results |
 
 - **Multi-cluster** — manage separate credentials and auth per cluster
 - **Secure** — passwords stored in your OS keyring, never on disk
@@ -84,7 +84,8 @@ Clusters are saved to `~/.config/drastic-smurf/config.json`. Passwords are store
 
 For Osquery, configure the cluster's Kibana host and install the Osquery Manager
 integration on the target Fleet agents. The Kibana account needs Fleet agent
-read access and Osquery Manager privileges to run queries and view results;
+and agent policy read access (for search and the platform/policy groups) and
+Osquery Manager privileges to run queries, read saved queries, and view results;
 older Elastic Stack versions may also require index privileges. See Elastic's
 [Osquery prerequisites](https://www.elastic.co/docs/solutions/security/investigate/osquery#required-privileges).
 The tab uses Kibana's versioned live-query API, available in Kibana 8.19 and 9.x.
