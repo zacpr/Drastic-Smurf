@@ -415,6 +415,26 @@ pub struct SavedQuery {
     pub body: Option<String>,
 }
 
+/// A saved God-mode Console request: multi-cluster targets plus loop values.
+/// Stored globally (not per cluster) because it spans clusters. Never holds credentials.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct GodSavedQuery {
+    pub name: String,
+    pub method: String,
+    pub path: String,
+    #[serde(default)]
+    pub body: Option<String>,
+    #[serde(default)]
+    pub use_kibana: bool,
+    #[serde(default)]
+    pub loop_items: String,
+    /// JSON path extracted from each response into the Extracted values list.
+    #[serde(default)]
+    pub extract_path: String,
+    #[serde(default)]
+    pub clusters: Vec<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct StatusSnapshot {
     pub timestamp: chrono::DateTime<chrono::Utc>,
@@ -536,6 +556,8 @@ pub struct AppConfig {
     pub pinned_monitor_layouts: HashMap<String, PinnedMonitorLayout>,
     #[serde(default)]
     pub pipeline_test_presets: Vec<PipelineTestPreset>,
+    #[serde(default)]
+    pub god_console_saved_queries: Vec<GodSavedQuery>,
     #[serde(default)]
     pub llm: LlmSettings,
     #[serde(default)]

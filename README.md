@@ -16,6 +16,8 @@ A fast, native desktop GUI for monitoring and interacting with multiple Elastics
 | **Cluster Status** | At-a-glance health dashboard — nodes, shards, indices, docs, JVM heap |
 | **Task Monitoring** | Watch reindex, snapshot, and other cluster tasks in real time with filtering |
 | **Elastic Console** | Send raw API requests with saved queries, without re-entering credentials |
+| **God-mode Console** | Run one request across many selected clusters in turn, optionally looping over a list of values via `{{loop_item}}`, or chaining one level by extracting JSON paths from every response (one `*` wildcard, `&&` for multiple columns, e.g. `*&&*.settings.index.lifecycle.name`) into a list fed back via `{{results_item}}` / `{{results_item.N}}`, with labelled per-cluster/per-value results, dry run and write confirmation |
+| **Osquery** | Run live Osquery queries on selected Fleet agents and inspect their status and results |
 
 - **Multi-cluster** — manage separate credentials and auth per cluster
 - **Secure** — passwords stored in your OS keyring, never on disk
@@ -79,6 +81,17 @@ tasks run `cargo` directly and do not require `flatpak-spawn`.
 5. Switch between tabs to monitor snapshots, status, tasks, or open the console
 
 Clusters are saved to `~/.config/drastic-smurf/config.json`. Passwords are stored in your OS keyring. Module data (saved queries, status history, tasks cache, snapshot cache) is stored alongside the config.
+
+For Osquery, configure the cluster's Kibana host and install the Osquery Manager
+integration on the target Fleet agents. The Kibana account needs Fleet agent
+read access and Osquery Manager privileges to run queries and view results;
+older Elastic Stack versions may also require index privileges. See Elastic's
+[Osquery prerequisites](https://www.elastic.co/docs/solutions/security/investigate/osquery#required-privileges).
+The tab uses Kibana's versioned live-query API, available in Kibana 8.19 and 9.x.
+
+ES|QL queries can be run in Elastic Console using the **Search & Analytics >
+ES|QL Query** preset. ES|QL requires a compatible Elasticsearch version and
+read access to the queried indices.
 
 ---
 
