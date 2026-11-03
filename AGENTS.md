@@ -24,12 +24,14 @@ v# AGENTS.md — DRASTIC SMURF
 | **Task Monitoring** | ✅ Functional | Filterable task grid (cluster, action, description, running time, cancellable) with dynamic category dropdown filtering. |
 | **Clusters** | ✅ Functional | Centralized cluster management: list, add/edit, test connection, import/export. |
 | **Elastic Console** | ✅ Enhanced | Collapsible category-based Elasticsearch & Kibana presets (170+ items, including Fleet agent/integration policies and data views) with a title filter box, official documentation links, automatic connection target host toggles (ES vs Kibana), custom variables with interpolation, command history cycling, saved queries, JSON body prettification, and live validation error reporting. |
+| **God-mode Console** | ✅ Functional | Console fanned out across multiple selected clusters, run sequentially. A loop-values list (newline/comma, `('a','b')` style accepted) expands `{{loop_item}}` into one request per value per cluster; `{{cluster_name}}` and each target cluster's own Console variables are interpolated per job. Combined labelled response log (cluster, loop value, status, timing), dry run, confirm modal for multi-request writes, stop/stop-on-error, history, and global saved queries (`god_console_saved_queries` in `config.json`). Shares presets with the Console via `render_preset_list`. |
 | **Discover** | ✅ Functional | A cutdown mimic of Kibana's Discover. Index pattern interrogating, Lucene/KQL search queries, dynamic available fields selection, and collapsible document JSON drawers. |
 | **Datastreams & Indices** | ✅ Enhanced | Tri-tabbed explorer featuring 'Datastreams & Indices', 'Index Templates', and 'Components'. Supports hiding system entities (.prefix), deep bi-directional linking between datastreams, index templates, and ordered component templates, debounced search filtering, and multi-selection. |
 | **Observability Monitors** | ✅ Functional | Kibana Synthetics / Uptime monitors explorer with space-selection support, multi-region status, sparkline history latency, and a customizable Pinned Dashboard. |
 | **World Clocks** | ✅ Functional | Collapsible Sidebar World Timezones displaying ISO 8601 local, UTC, Sydney (APAC), Germany (EMEA), Chicago (AMER), and custom offsets. Supports labels modification, clipboard copy buttons, toggles, deletion, and full Settings Tab persistence. |
 | **AI Assistant** | ✅ Functional | Side-dock chat panel for troubleshooting Elasticsearch and API usage. Streams from any OpenAI-compatible `/chat/completions` endpoint (OpenAI, Azure OpenAI, GitHub Copilot, Ollama, LM Studio, vLLM, OpenRouter, etc.). API keys stored in OS keyring, conversation history persisted in `config.json`, concise auto-injected cluster context (health/version/nodes/JVM/errors). SSE streaming with token-by-token UI updates and cancel support. |
 | **Painless Playground** | ✅ Functional | Elasticsearch Painless script editor featuring preset templates (Math, Score, Filter, String manipulation), live JSON parameters validation, and full mock context indexing setup. |
+| **Osquery** | ✅ Functional | Live Osquery queries for explicitly selected Fleet agents through Kibana, with space selection, status, and paginated results. Requires the Osquery Manager integration and appropriate Kibana/Fleet privileges. |
 
 
 ---
@@ -53,9 +55,11 @@ src/
 │   ├── console.rs      # Elastic Console tab
 │   ├── dashboard.rs    # Cluster Dashboard tab (Overview & Detail views)
 │   ├── discover.rs     # Discover tab
+│   ├── god_console.rs  # God-mode Console (multi-cluster + loop) tab
 │   ├── indices.rs      # Datastreams & Indices explorer tab
 │   ├── llm_assistant.rs # AI Assistant side-dock panel
 │   ├── observability.rs # Kibana Synthetics Monitors tab
+│   ├── osquery.rs      # Fleet Osquery live-query tab
 │   ├── painless.rs     # Painless Script Playground tab
 │   ├── snapshot.rs     # Snapshot Monitoring tab
 │   ├── status.rs       # Cluster Status tab

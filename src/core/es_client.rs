@@ -655,6 +655,18 @@ impl EsClient {
         path: &str,
         body: Option<String>,
     ) -> Result<serde_json::Value, EsError> {
+        self.send_to_host_with_version(host, method, path, body, None)
+            .await
+    }
+
+    pub async fn send_to_host_with_version(
+        &self,
+        host: &str,
+        method: reqwest::Method,
+        path: &str,
+        body: Option<String>,
+        api_version: Option<&str>,
+    ) -> Result<serde_json::Value, EsError> {
         let base = host.trim_end_matches('/');
         let url = if path.starts_with('/') {
             format!("{}{}", base, path)
@@ -668,6 +680,9 @@ impl EsClient {
             .header("kbn-xsrf", "true")
             .header("Content-Type", "application/json");
 
+        if let Some(version) = api_version {
+            req = req.header("Elastic-Api-Version", version);
+        }
         if let Some(b) = body {
             req = req.body(b);
         }

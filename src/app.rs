@@ -14,6 +14,10 @@ use crate::modules::clusters::{ClustersState, render_clusters_module};
 use crate::modules::console::{ConsoleState, render_console_module};
 use crate::modules::dashboard::{DashboardState, render_dashboard_module};
 use crate::modules::discover::{DiscoverState, render_discover_module};
+use crate::modules::god_console::{
+    GodConsoleActions, GodConsoleState, GodJob, GodJobResult, GodRunRequest,
+    render_god_console_module,
+};
 use crate::modules::indices::{IndicesState, render_indices_module};
 use crate::modules::llm_assistant::{
     self, AssistantState, ClusterContext, SendRequest, build_cluster_context, build_llm_messages,
@@ -21,6 +25,9 @@ use crate::modules::llm_assistant::{
 };
 use crate::modules::logs::{LogsState, render_logs_module};
 use crate::modules::observability::{ObservabilityState, render_observability_module};
+use crate::modules::osquery::{
+    OsqueryRequest, OsqueryResponse, OsqueryState, render_osquery_module,
+};
 use crate::modules::painless::{PainlessState, render_painless_module};
 use crate::modules::pipeline::{PipelineState, render_pipeline_module};
 use crate::modules::snapshot::{
@@ -41,9 +48,11 @@ pub enum Tab {
     Dashboard,
     Tasks,
     Console,
+    GodConsole,
     Discover,
     Indices,
     Observability,
+    Osquery,
     PipelineSimulator,
     Logs,
     PainlessPlayground,
@@ -65,6 +74,8 @@ pub enum RefreshMsg {
     TasksResult(String, Vec<crate::core::es_client::TaskInfo>),
     TasksError(String, String),
     ConsoleResult(Result<String, String>),
+    GodConsoleResult(u64, Box<GodJobResult>),
+    GodConsoleDone(u64),
     DiscoverResult(Result<String, String>),
     TestResult(String),
     FetchedRepos(String, Vec<String>),
@@ -110,6 +121,7 @@ pub enum RefreshMsg {
     OnlineFileResult(Result<String, String>),
     LogsResult(String, Result<Vec<LogEntry>, String>),
     PainlessResult(Result<String, String>),
+    OsqueryResult(OsqueryResponse),
 }
 
 pub struct DrasticSmurfApp {
@@ -121,10 +133,12 @@ pub struct DrasticSmurfApp {
     pub dashboard_state: DashboardState,
     pub tasks_state: TasksState,
     pub console_state: ConsoleState,
+    pub god_console_state: GodConsoleState,
     pub discover_state: DiscoverState,
     pub logs_state: LogsState,
     pub indices_state: IndicesState,
     pub observability_state: ObservabilityState,
+    pub osquery_state: OsqueryState,
     pub clusters_state: ClustersState,
     pub appearance_state: AppearanceState,
     pub pipeline_state: PipelineState,
@@ -148,11 +162,13 @@ pub struct DrasticSmurfApp {
     pub history_loading: bool,
     pub cluster_histories_fetched: HashMap<String, Vec<crate::core::es_client::SnapshotInfo>>,
     pub console_send: Option<(String, String, String, Option<String>, bool)>,
+    pub god_console_send: Option<GodRunRequest>,
     pub discover_send: Option<(String, String, String)>,
     pub logs_send: Option<(String, LogFilters, LogFieldNames, String, usize)>,
     pub painless_send: Option<(String, String)>,
     pub indices_refresh: Option<(String, bool)>,
     pub observability_refresh: Option<(String, String)>,
+    pub osquery_request: Option<OsqueryRequest>,
     pub clusters_import: Option<crate::core::config::AppConfig>,
     pub theme: crate::ui::theme::AppTheme,
     pub vfx: crate::core::config::VfxSettings,
@@ -173,7 +189,6 @@ pub struct DrasticSmurfApp {
     pub show_pending_cluster: Option<String>,
     pub assistant_state: AssistantState,
     pub assistant_dock_visible: bool,
-    pub should_close: bool,
     _tray_icon: Option<tray_icon::TrayIcon>,
     tray_show_id: Option<tray_icon::menu::MenuId>,
     tray_quit_id: Option<tray_icon::menu::MenuId>,
@@ -284,10 +299,16 @@ impl DrasticSmurfApp {
             dashboard_state: DashboardState::default(),
             tasks_state: TasksState::default(),
             console_state,
+            god_console_state: {
+                let mut st = GodConsoleState::new();
+                st.saved_queries = manager.god_console_saved_queries();
+                st
+            },
             discover_state: DiscoverState::default(),
             logs_state: LogsState::from_settings(&config.logs),
             indices_state: IndicesState::new(),
             observability_state,
+            osquery_state: OsqueryState::default(),
             clusters_state: ClustersState::default(),
             appearance_state: AppearanceState {
                 selected_preset: config.theme.name.clone(),
@@ -314,11 +335,13 @@ impl DrasticSmurfApp {
             history_loading: false,
             cluster_histories_fetched: HashMap::new(),
             console_send: None,
+            god_console_send: None,
             discover_send: None,
             logs_send: None,
             painless_send: None,
             indices_refresh: None,
             observability_refresh: None,
+            osquery_request: None,
             clusters_import: None,
             theme: config.theme,
             vfx: config.vfx,
@@ -352,7 +375,6 @@ impl DrasticSmurfApp {
                 config.assistant_conversations.clone(),
             ),
             assistant_dock_visible: config.assistant_dock_visible,
-            should_close: false,
             _tray_icon: tray,
             tray_show_id: show_id,
             tray_quit_id: quit_id,
@@ -802,6 +824,12 @@ impl DrasticSmurfApp {
                     self.console_state.response = text;
                     self.console_state.is_loading = false;
                 }
+                RefreshMsg::GodConsoleResult(run_id, result) => {
+                    self.god_console_state.push_result(run_id, *result);
+                }
+                RefreshMsg::GodConsoleDone(run_id) => {
+                    self.god_console_state.finish(run_id);
+                }
                 RefreshMsg::DiscoverResult(result) => {
                     self.discover_state.is_loading = false;
                     match result {
@@ -1069,6 +1097,7 @@ impl DrasticSmurfApp {
                     self.painless_state.response = text;
                     self.painless_state.is_loading = false;
                 }
+                RefreshMsg::OsqueryResult(result) => self.osquery_state.receive(result),
             }
         }
     }
@@ -1657,9 +1686,11 @@ impl DrasticSmurfApp {
                         ("Dashboard", Tab::Dashboard),
                         ("Tasks", Tab::Tasks),
                         ("Console", Tab::Console),
+                        ("God-mode Console", Tab::GodConsole),
                         ("Discover", Tab::Discover),
                         ("Indices", Tab::Indices),
                         ("Observability", Tab::Observability),
+                        ("Osquery", Tab::Osquery),
                         ("Pipelines", Tab::PipelineSimulator),
                         ("Logs", Tab::Logs),
                         ("Painless Playground", Tab::PainlessPlayground),
@@ -2282,6 +2313,50 @@ impl DrasticSmurfApp {
                     self.console_state.variables_changed = false;
                 }
             }
+            Tab::GodConsole => {
+                let names: Vec<String> = self
+                    .cluster_manager
+                    .clusters()
+                    .iter()
+                    .filter(|c| self.cluster_matches_filter(&c.name))
+                    .map(|c| c.name.clone())
+                    .collect();
+                let manager = self.cluster_manager.clone();
+                let vars_for = move |name: &str| manager.cluster_variables(name);
+                let mut actions = GodConsoleActions::default();
+                render_god_console_module(
+                    ui,
+                    &mut self.god_console_state,
+                    &names,
+                    &vars_for,
+                    &mut actions,
+                );
+
+                if let Some(req) = actions.send {
+                    self.god_console_send = Some(req);
+                }
+                if let Some(query) = actions.save_query {
+                    let mut queries = self.cluster_manager.god_console_saved_queries();
+                    let name = query.name.clone();
+                    if let Some(existing) = queries.iter_mut().find(|q| q.name == query.name) {
+                        *existing = query;
+                    } else {
+                        queries.push(query);
+                    }
+                    self.cluster_manager
+                        .save_god_console_saved_queries(queries.clone());
+                    self.god_console_state.saved_queries = queries;
+                    self.toasts.info(format!("Saved query '{}'", name));
+                }
+                if let Some(name) = actions.delete_query {
+                    let mut queries = self.cluster_manager.god_console_saved_queries();
+                    queries.retain(|q| q.name != name);
+                    self.cluster_manager
+                        .save_god_console_saved_queries(queries.clone());
+                    self.god_console_state.saved_queries = queries;
+                    self.toasts.info(format!("Deleted query '{}'", name));
+                }
+            }
             Tab::Discover => {
                 let mut search_triggered = None;
                 let cluster_names: Vec<String> = self
@@ -2755,6 +2830,21 @@ impl DrasticSmurfApp {
                     &mut self.painless_state,
                     &cluster_names,
                     &mut self.painless_send,
+                );
+            }
+            Tab::Osquery => {
+                let clusters: Vec<String> = self
+                    .cluster_manager
+                    .clusters()
+                    .iter()
+                    .filter(|cluster| self.cluster_matches_filter(&cluster.name))
+                    .map(|cluster| cluster.name.clone())
+                    .collect();
+                render_osquery_module(
+                    ui,
+                    &mut self.osquery_state,
+                    &clusters,
+                    &mut self.osquery_request,
                 );
             }
         }
@@ -3318,12 +3408,6 @@ impl DrasticSmurfApp {
 
 impl eframe::App for DrasticSmurfApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // Intercept close events to minimize/hide to tray
-        if ctx.input(|i| i.viewport().close_requested()) && !self.should_close {
-            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
-            ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
-        }
-
         // Poll tray icon click events
         while let Ok(event) = tray_icon::TrayIconEvent::receiver().try_recv() {
             if let tray_icon::TrayIconEvent::Click {
@@ -3343,7 +3427,6 @@ impl eframe::App for DrasticSmurfApp {
                 ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
             }
             if self.tray_quit_id.as_ref() == Some(&event.id) {
-                self.should_close = true;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
         }
@@ -3399,43 +3482,15 @@ impl eframe::App for DrasticSmurfApp {
                     .into_iter()
                     .find(|c| c.name == cluster_name);
                 tokio::spawn(async move {
-                    let method = match method.as_str() {
-                        "GET" => reqwest::Method::GET,
-                        "POST" => reqwest::Method::POST,
-                        "PUT" => reqwest::Method::PUT,
-                        "DELETE" => reqwest::Method::DELETE,
-                        "HEAD" => reqwest::Method::HEAD,
-                        _ => reqwest::Method::GET,
-                    };
-                    let result = if use_kibana {
-                        if let Some(ref config) = cluster_config {
-                            let kibana_host = if config.kibana_host.is_empty() {
-                                if config.host.contains("elastic") {
-                                    config.host.replace("elastic", "kibana")
-                                } else {
-                                    config.host.clone()
-                                }
-                            } else {
-                                let h = config.kibana_host.trim();
-                                if h.starts_with("http://") || h.starts_with("https://") {
-                                    h.to_string()
-                                } else {
-                                    format!("http://{}", h)
-                                }
-                            };
-                            client
-                                .send_to_host_raw(&kibana_host, method, &path, body)
-                                .await
-                                .map_err(|e| e.to_string())
-                        } else {
-                            Err("No cluster config found".to_string())
-                        }
-                    } else {
-                        client
-                            .execute_raw(method, &path, body)
-                            .await
-                            .map_err(|e| e.to_string())
-                    };
+                    let result = send_console_request(
+                        &client,
+                        cluster_config.as_ref(),
+                        &method,
+                        &path,
+                        body,
+                        use_kibana,
+                    )
+                    .await;
                     let _ = tx.send(RefreshMsg::ConsoleResult(result));
                     ctx.request_repaint();
                 });
@@ -3445,6 +3500,27 @@ impl eframe::App for DrasticSmurfApp {
                         .to_string(),
                 )));
             }
+        }
+
+        // Handle God-mode console run: one background task executes every job in order.
+        if let Some(req) = self.god_console_send.take() {
+            let configs = self.cluster_manager.clusters();
+            let mut targets: HashMap<String, (Option<EsClient>, Option<ClusterConfig>)> =
+                HashMap::new();
+            for job in &req.jobs {
+                if !targets.contains_key(&job.cluster) {
+                    targets.insert(
+                        job.cluster.clone(),
+                        (
+                            self.cluster_manager.get_client(&job.cluster),
+                            configs.iter().find(|c| c.name == job.cluster).cloned(),
+                        ),
+                    );
+                }
+            }
+            let tx = self.refresh_tx.clone();
+            let ctx = ctx.clone();
+            tokio::spawn(run_god_console_jobs(req, targets, tx, ctx));
         }
 
         // Handle discover send
@@ -3514,6 +3590,41 @@ impl eframe::App for DrasticSmurfApp {
                     "Failed to obtain cluster client. Ensure the cluster is configured and reachable."
                         .to_string(),
                 )));
+            }
+        }
+
+        if let Some(request) = self.osquery_request.take() {
+            let client = self.cluster_manager.get_client(&request.cluster);
+            let config = self
+                .cluster_manager
+                .clusters()
+                .into_iter()
+                .find(|cluster| cluster.name == request.cluster);
+            match (client, config) {
+                (Some(client), Some(config)) if !config.kibana_host.trim().is_empty() => {
+                    let host = config.kibana_host.trim().to_string();
+                    let host = if host.starts_with("http://") || host.starts_with("https://") {
+                        host
+                    } else {
+                        format!("http://{host}")
+                    };
+                    let tx = self.refresh_tx.clone();
+                    let ctx = ctx.clone();
+                    tokio::spawn(async move {
+                        let response =
+                            crate::modules::osquery::execute_request(&client, &host, &request)
+                                .await;
+                        let _ = tx.send(RefreshMsg::OsqueryResult(response));
+                        ctx.request_repaint();
+                    });
+                }
+                _ => {
+                    let response = crate::modules::osquery::request_error(
+                        &request,
+                        "Configure a Kibana host for this cluster and ensure its client is available.".to_string(),
+                    );
+                    self.osquery_state.receive(response);
+                }
             }
         }
 
@@ -5135,4 +5246,122 @@ impl eframe::App for DrasticSmurfApp {
             tracing::warn!("Failed to save window state: {}", e);
         }
     }
+}
+
+/// Base URL for a cluster's Kibana: the explicit `kibana_host`, or a best guess derived from the
+/// Elasticsearch host (`elastic` → `kibana`).
+fn kibana_base_url(config: &ClusterConfig) -> String {
+    if config.kibana_host.is_empty() {
+        if config.host.contains("elastic") {
+            config.host.replace("elastic", "kibana")
+        } else {
+            config.host.clone()
+        }
+    } else {
+        let h = config.kibana_host.trim();
+        if h.starts_with("http://") || h.starts_with("https://") {
+            h.to_string()
+        } else {
+            format!("http://{}", h)
+        }
+    }
+}
+
+/// Send one raw Console request to Elasticsearch, or to Kibana when `use_kibana` is set.
+async fn send_console_request(
+    client: &EsClient,
+    config: Option<&ClusterConfig>,
+    method: &str,
+    path: &str,
+    body: Option<String>,
+    use_kibana: bool,
+) -> Result<String, String> {
+    let method = match method {
+        "GET" => reqwest::Method::GET,
+        "POST" => reqwest::Method::POST,
+        "PUT" => reqwest::Method::PUT,
+        "DELETE" => reqwest::Method::DELETE,
+        "HEAD" => reqwest::Method::HEAD,
+        _ => reqwest::Method::GET,
+    };
+    if use_kibana {
+        let Some(config) = config else {
+            return Err("No cluster config found".to_string());
+        };
+        client
+            .send_to_host_raw(&kibana_base_url(config), method, path, body)
+            .await
+            .map_err(|e| e.to_string())
+    } else {
+        client
+            .execute_raw(method, path, body)
+            .await
+            .map_err(|e| e.to_string())
+    }
+}
+
+/// Execute God-mode Console jobs strictly in order, reporting each result as it lands.
+async fn run_god_console_jobs(
+    req: GodRunRequest,
+    targets: HashMap<String, (Option<EsClient>, Option<ClusterConfig>)>,
+    tx: Sender<RefreshMsg>,
+    ctx: egui::Context,
+) {
+    use std::sync::atomic::Ordering;
+
+    for job in req.jobs {
+        if req.cancel.load(Ordering::Relaxed) {
+            break;
+        }
+        let GodJob {
+            ref cluster,
+            ref method,
+            ref path,
+            ref body,
+            use_kibana,
+            ..
+        } = job;
+        let start = Instant::now();
+        let result = match targets.get(cluster) {
+            Some((Some(client), config)) => {
+                send_console_request(
+                    client,
+                    config.as_ref(),
+                    method,
+                    path,
+                    body.clone(),
+                    use_kibana,
+                )
+                .await
+            }
+            _ => Err(
+                "Failed to obtain cluster client. Ensure the cluster is configured and reachable."
+                    .to_string(),
+            ),
+        };
+        let elapsed_ms = start.elapsed().as_millis();
+        let ok = result.is_ok();
+        let text = match result {
+            Ok(val) => match serde_json::from_str::<serde_json::Value>(&val) {
+                Ok(parsed) => serde_json::to_string_pretty(&parsed).unwrap_or(val),
+                Err(_) => val,
+            },
+            Err(e) => format!("Error: {}", e),
+        };
+        let _ = tx.send(RefreshMsg::GodConsoleResult(
+            req.run_id,
+            Box::new(GodJobResult {
+                job,
+                ok,
+                text,
+                elapsed_ms,
+            }),
+        ));
+        ctx.request_repaint();
+        if !ok && req.stop_on_error {
+            break;
+        }
+    }
+    let _ = tx.send(RefreshMsg::GodConsoleDone(req.run_id));
+    ctx.request_repaint();
 }

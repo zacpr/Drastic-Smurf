@@ -57,7 +57,7 @@ pub struct ConsolePreset {
 }
 
 /// Methods the console can send. Anything else falls back to GET in `DrasticSmurfApp::update`.
-const CONSOLE_METHODS: &[&str] = &["GET", "POST", "PUT", "DELETE", "HEAD"];
+pub const CONSOLE_METHODS: &[&str] = &["GET", "POST", "PUT", "DELETE", "HEAD"];
 
 const PRESETS: &[ConsolePreset] = &[
     // --- Cluster Status & Info ---
@@ -2102,6 +2102,105 @@ pub fn preset_matches_filter(name: &str, filter: &str) -> bool {
         .all(|word| name.contains(word))
 }
 
+/// Render the collapsible, filterable preset catalogue. Returns the preset the user clicked, if any.
+/// `id_ns` namespaces the collapsing-header ids so multiple consoles keep independent open state.
+pub fn render_preset_list(
+    ui: &mut Ui,
+    filter: &str,
+    id_ns: &str,
+) -> Option<&'static ConsolePreset> {
+    let mut picked = None;
+    let filter_active = !filter.trim().is_empty();
+    let mut any_match = false;
+    for group in PRESETS.chunk_by(|a, b| a.category == b.category) {
+        let matches: Vec<&'static ConsolePreset> = group
+            .iter()
+            .filter(|p| preset_matches_filter(p.name, filter))
+            .collect();
+        if matches.is_empty() {
+            continue;
+        }
+        any_match = true;
+
+        let category = group[0].category;
+        let header = egui::CollapsingHeader::new(
+            egui::RichText::new(format!("{} ({})", category, matches.len()))
+                .strong()
+                .color(crate::ui::theme::Theme::text_secondary())
+                .size(12.0),
+        );
+        // Filtering forces sections open under a separate id, so clearing
+        // the filter restores whatever the user had expanded.
+        let header = if filter_active {
+            header
+                .id_salt((id_ns, "filtered", category))
+                .default_open(true)
+                .open(Some(true))
+        } else {
+            header.id_salt((id_ns, category)).default_open(false)
+        };
+        header.show(ui, |ui| {
+            for preset in matches {
+                let btn_label = if preset.use_kibana {
+                    format!("🎨 {}", preset.name)
+                } else {
+                    preset.name.to_string()
+                };
+
+                let btn =
+                    ui.add(egui::Button::new(btn_label).fill(crate::ui::theme::Theme::bg_input()));
+                if btn.clicked() {
+                    picked = Some(preset);
+                }
+                btn.on_hover_ui(|ui| {
+                    ui.set_max_width(220.0);
+                    let prefix = if preset.use_kibana {
+                        "🎨 Kibana API"
+                    } else {
+                        "🔌 Elasticsearch API"
+                    };
+                    ui.label(
+                        egui::RichText::new(prefix)
+                            .small()
+                            .color(crate::ui::theme::Theme::text_muted()),
+                    );
+                    ui.label(
+                        egui::RichText::new(format!("{} {}", preset.method, preset.path))
+                            .strong()
+                            .color(crate::ui::theme::Theme::accent()),
+                    );
+                    ui.label(
+                        egui::RichText::new(preset.description)
+                            .size(11.0)
+                            .color(crate::ui::theme::Theme::text_primary()),
+                    );
+                });
+                ui.add_space(3.0);
+            }
+        });
+    }
+
+    if !any_match {
+        ui.label(
+            egui::RichText::new("No commands match this filter.")
+                .color(crate::ui::theme::Theme::text_muted())
+                .size(11.0),
+        );
+    }
+    picked
+}
+
+/// Colour used for an HTTP method label.
+pub fn method_color(method: &str) -> egui::Color32 {
+    match method {
+        "GET" => crate::ui::theme::Theme::success(),
+        "POST" => crate::ui::theme::Theme::warning(),
+        "PUT" => crate::ui::theme::Theme::accent(),
+        "DELETE" => crate::ui::theme::Theme::danger(),
+        _ => crate::ui::theme::Theme::text_secondary(),
+    }
+}
+
 pub fn interpolate_variables(input: &str, variables: &[(String, String)]) -> String {
     let mut output = input.to_string();
     for (k, v) in variables {
@@ -2220,84 +2319,12 @@ pub fn render_console_module(
                                     ui.separator();
                                     ui.add_space(4.0);
 
-                                    let filter_active = !state.preset_filter.trim().is_empty();
-                                    let mut any_match = false;
-                                    for group in PRESETS.chunk_by(|a, b| a.category == b.category) {
-                                        let matches: Vec<&ConsolePreset> = group
-                                            .iter()
-                                            .filter(|p| preset_matches_filter(p.name, &state.preset_filter))
-                                            .collect();
-                                        if matches.is_empty() {
-                                            continue;
-                                        }
-                                        any_match = true;
-
-                                        let category = group[0].category;
-                                        let header = egui::CollapsingHeader::new(
-                                            egui::RichText::new(format!("{} ({})", category, matches.len()))
-                                                .strong()
-                                                .color(crate::ui::theme::Theme::text_secondary())
-                                                .size(12.0),
-                                        );
-                                        // Filtering forces sections open under a separate id, so clearing
-                                        // the filter restores whatever the user had expanded.
-                                        let header = if filter_active {
-                                            header
-                                                .id_salt(("console_preset_filtered", category))
-                                                .default_open(true)
-                                                .open(Some(true))
-                                        } else {
-                                            header.id_salt(("console_preset", category)).default_open(false)
-                                        };
-                                        header.show(ui, |ui| {
-                                            for preset in matches {
-                                                let btn_label = if preset.use_kibana {
-                                                    format!("🎨 {}", preset.name)
-                                                } else {
-                                                    preset.name.to_string()
-                                                };
-
-                                                let btn = ui.add(
-                                                    egui::Button::new(btn_label)
-                                                        .fill(crate::ui::theme::Theme::bg_input())
-                                                );
-                                                if btn.clicked() {
-                                                    state.method = preset.method.to_string();
-                                                    state.path = preset.path.to_string();
-                                                    state.body = preset.body.map(|b| b.to_string()).unwrap_or_default();
-                                                    state.use_kibana_host = preset.use_kibana;
-                                                    state.history_index = None;
-                                                }
-                                                btn.on_hover_ui(|ui| {
-                                                    ui.set_max_width(220.0);
-                                                    let prefix = if preset.use_kibana { "🎨 Kibana API" } else { "🔌 Elasticsearch API" };
-                                                    ui.label(
-                                                        egui::RichText::new(prefix)
-                                                            .small()
-                                                            .color(crate::ui::theme::Theme::text_muted()),
-                                                    );
-                                                    ui.label(
-                                                        egui::RichText::new(format!("{} {}", preset.method, preset.path))
-                                                            .strong()
-                                                            .color(crate::ui::theme::Theme::accent()),
-                                                    );
-                                                    ui.label(
-                                                        egui::RichText::new(preset.description)
-                                                            .size(11.0)
-                                                            .color(crate::ui::theme::Theme::text_primary()),
-                                                    );
-                                                });
-                                                ui.add_space(3.0);
-                                            }
-                                        });
-                                    }
-
-                                    if !any_match {
-                                        ui.label(
-                                            egui::RichText::new("No commands match this filter.")
-                                                .color(crate::ui::theme::Theme::text_muted())
-                                                .size(11.0),
-                                        );
+                                    if let Some(preset) = render_preset_list(ui, &state.preset_filter, "console_preset") {
+                                        state.method = preset.method.to_string();
+                                        state.path = preset.path.to_string();
+                                        state.body = preset.body.map(|b| b.to_string()).unwrap_or_default();
+                                        state.use_kibana_host = preset.use_kibana;
+                                        state.history_index = None;
                                     }
                                 }
                                 ConsoleTab::Variables => {

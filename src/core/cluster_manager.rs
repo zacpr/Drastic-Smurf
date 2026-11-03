@@ -28,6 +28,7 @@ pub struct ClusterManager {
     timezone_clocks: Arc<Mutex<Vec<crate::core::config::TimezoneClockConfig>>>,
     cluster_filter: Arc<Mutex<String>>,
     pipeline_test_presets: Arc<Mutex<Vec<crate::core::config::PipelineTestPreset>>>,
+    god_console_saved_queries: Arc<Mutex<Vec<crate::core::config::GodSavedQuery>>>,
     llm: Arc<Mutex<crate::core::config::LlmSettings>>,
     assistant_dock_visible: Arc<Mutex<bool>>,
     assistant_conversations: Arc<Mutex<Vec<crate::core::config::ChatConversation>>>,
@@ -56,6 +57,7 @@ impl ClusterManager {
             timezone_clocks: Arc::new(Mutex::new(crate::core::config::default_timezone_clocks())),
             cluster_filter: Arc::new(Mutex::new(String::new())),
             pipeline_test_presets: Arc::new(Mutex::new(Vec::new())),
+            god_console_saved_queries: Arc::new(Mutex::new(Vec::new())),
             llm: Arc::new(Mutex::new(crate::core::config::LlmSettings::default())),
             assistant_dock_visible: Arc::new(Mutex::new(false)),
             assistant_conversations: Arc::new(Mutex::new(Vec::new())),
@@ -104,6 +106,10 @@ impl ClusterManager {
             *p = config.pipeline_test_presets;
         }
         {
+            let mut g = self.god_console_saved_queries.lock().unwrap();
+            *g = config.god_console_saved_queries;
+        }
+        {
             let mut l = self.llm.lock().unwrap();
             *l = config.llm;
         }
@@ -150,6 +156,7 @@ impl ClusterManager {
         let timezone_clocks = self.timezone_clocks.lock().unwrap().clone();
         let cluster_filter = self.cluster_filter.lock().unwrap().clone();
         let pipeline_test_presets = self.pipeline_test_presets.lock().unwrap().clone();
+        let god_console_saved_queries = self.god_console_saved_queries.lock().unwrap().clone();
         let llm = self.llm.lock().unwrap().clone();
         let assistant_dock_visible = *self.assistant_dock_visible.lock().unwrap();
         let assistant_conversations = self.assistant_conversations.lock().unwrap().clone();
@@ -169,6 +176,7 @@ impl ClusterManager {
         config.timezone_clocks = timezone_clocks;
         config.cluster_filter = cluster_filter;
         config.pipeline_test_presets = pipeline_test_presets;
+        config.god_console_saved_queries = god_console_saved_queries;
         config.llm = llm;
         config.assistant_dock_visible = assistant_dock_visible;
         config.assistant_conversations = assistant_conversations;
@@ -423,6 +431,15 @@ impl ClusterManager {
         Ok(())
     }
 
+    pub fn god_console_saved_queries(&self) -> Vec<crate::core::config::GodSavedQuery> {
+        self.god_console_saved_queries.lock().unwrap().clone()
+    }
+
+    pub fn save_god_console_saved_queries(&self, queries: Vec<crate::core::config::GodSavedQuery>) {
+        *self.god_console_saved_queries.lock().unwrap() = queries;
+        self.mark_dirty();
+    }
+
     #[allow(dead_code)]
     pub fn llm_settings(&self) -> crate::core::config::LlmSettings {
         self.llm.lock().unwrap().clone()
@@ -480,6 +497,16 @@ impl ClusterManager {
     pub fn set_refresh_interval_secs(&self, value: u64) {
         *self.refresh_interval_secs.lock().unwrap() = value;
         self.mark_dirty();
+    }
+
+    /// A cluster's Console variables, without cloning the rest of its cached data.
+    pub fn cluster_variables(&self, name: &str) -> Vec<(String, String)> {
+        self.cluster_data
+            .lock()
+            .unwrap()
+            .get(name)
+            .map(|d| d.variables.clone())
+            .unwrap_or_default()
     }
 
     pub fn get_cluster_data(&self, name: &str) -> Option<crate::core::config::ClusterData> {
