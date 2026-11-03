@@ -428,6 +428,9 @@ pub struct GodSavedQuery {
     pub use_kibana: bool,
     #[serde(default)]
     pub loop_items: String,
+    /// JSON path extracted from each response into the Extracted values list.
+    #[serde(default)]
+    pub extract_path: String,
     #[serde(default)]
     pub clusters: Vec<String>,
 }

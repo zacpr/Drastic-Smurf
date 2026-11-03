@@ -19,6 +19,8 @@ use crate::ui::theme::Theme;
 pub const LOOP_PLACEHOLDER: &str = "{{loop_item}}";
 /// Placeholder replaced by the target cluster's name.
 pub const CLUSTER_PLACEHOLDER: &str = "{{cluster_name}}";
+/// Placeholder replaced by each value in the Extracted values list.
+pub const RESULTS_PLACEHOLDER: &str = "{{results_item}}";
 
 /// Per-job display cap, matching the single-cluster Console.
 const JOB_DISPLAY_LIMIT: usize = 100_000;
@@ -39,6 +41,7 @@ pub enum GodTab {
 pub struct GodJob {
     pub cluster: String,
     pub item: Option<String>,
+    pub result_item: Option<String>,
     pub method: String,
     pub path: String,
     pub body: Option<String>,
@@ -71,6 +74,7 @@ pub struct GodHistoryEntry {
     pub use_kibana: bool,
     pub clusters: Vec<String>,
     pub loop_text: String,
+    pub extract_path: String,
 }
 
 /// Side effects requested by the UI, handled by the app after rendering.
@@ -90,6 +94,12 @@ pub struct GodConsoleState {
     pub use_kibana_host: bool,
     pub selected_clusters: Vec<String>,
     pub loop_text: String,
+    /// Dotted JSON path pulled out of every response (e.g. `toplevel.setting.ilm`).
+    pub extract_path: String,
+    /// One extracted value per line; editable, and fed to `{{results_item}}`.
+    pub extracted_text: String,
+    /// Warnings from the last extracting run (missing path, object/array match, failed request).
+    pub extract_warnings: Vec<String>,
 
     // Workspace
     pub active_tab: GodTab,
@@ -112,6 +122,8 @@ pub struct GodConsoleState {
     pub ok_count: usize,
     pub err_count: usize,
     pub cancel: Option<Arc<AtomicBool>>,
+    /// Extraction parsed when the current run started; `None` when not extracting.
+    run_extraction: Option<Extraction>,
     pub pending_confirm: Option<Vec<GodJob>>,
     /// Combined, possibly truncated log shown in the response box.
     pub response: String,
@@ -190,14 +202,68 @@ impl GodConsoleState {
             self.err_count += 1;
         }
         let header = format_job_header(&result.job, result.ok, result.elapsed_ms);
+        let extract_line = self.extract_for_result(&result);
         let mut body = result.text;
         if body.len() > JOB_DISPLAY_LIMIT {
             let cut = truncate_at_char_boundary(&body, JOB_DISPLAY_LIMIT).len();
             body.truncate(cut);
             body.push_str("\n... [Response truncated. Use 'Copy all' for the full payload] ...");
         }
-        let block = format!("{}\n{}\n\n", header, body);
+        let block = match extract_line {
+            Some(line) => format!("{}\n{}\n{}\n\n", header, line, body),
+            None => format!("{}\n{}\n\n", header, body),
+        };
         self.append_text(&block);
+    }
+
+    /// When the current run is extracting, pull row(s) out of this result, append them to
+    /// the Extracted values list, and return the line(s) to show under the job header.
+    fn extract_for_result(&mut self, result: &GodJobResult) -> Option<String> {
+        let outcome = {
+            let ex = self.run_extraction.as_ref()?;
+            if result.ok {
+                ex.extract(&result.text)
+            } else {
+                ExtractOutcome::failed(ex.columns(), "request failed")
+            }
+        };
+        if !self.extracted_text.is_empty() && !self.extracted_text.ends_with('\n') {
+            self.extracted_text.push('\n');
+        }
+        for row in &outcome.rows {
+            self.extracted_text.push_str(row);
+            self.extracted_text.push('\n');
+        }
+        let label = format!("[{}]{}", result.job.cluster, job_labels(&result.job));
+        for w in &outcome.warnings {
+            self.extract_warnings.push(format!("{}: {}", label, w));
+        }
+        Some(if outcome.rows.len() == 1 {
+            let row = &outcome.rows[0];
+            if outcome.warnings.is_empty() {
+                format!("🔎 Extracted: {}", row)
+            } else {
+                format!("⚠️ Extraction: {} → {}", outcome.warnings.join("; "), row)
+            }
+        } else if outcome.warnings.is_empty() {
+            format!("🔎 Extracted {} row(s)", outcome.rows.len())
+        } else {
+            let mut text = format!(
+                "⚠️ Extracted {} row(s), {} warning(s)",
+                outcome.rows.len(),
+                outcome.warnings.len()
+            );
+            for w in outcome.warnings.iter().take(LOG_WARNING_LINES) {
+                text.push_str(&format!("\n   ⚠️ {}", w));
+            }
+            if outcome.warnings.len() > LOG_WARNING_LINES {
+                text.push_str(&format!(
+                    "\n   … {} more (hover the warning count under Extracted values)",
+                    outcome.warnings.len() - LOG_WARNING_LINES
+                ));
+            }
+            text
+        })
     }
 
     /// Mark a run finished. Results from a superseded run are ignored.
@@ -229,6 +295,22 @@ impl GodConsoleState {
         self.total_jobs = jobs.len();
         self.is_running = true;
         self.stopping = false;
+        // One level of chaining only: a request that consumes {{results_item}} never
+        // overwrites the list it is reading from.
+        self.run_extraction = None;
+        let expr = self.extract_path.trim();
+        if !expr.is_empty() && !uses_results(&self.path, &self.body) {
+            match parse_extraction(expr) {
+                Ok(ex) => {
+                    self.extracted_text.clear();
+                    self.extract_warnings.clear();
+                    self.run_extraction = Some(ex);
+                }
+                Err(e) => {
+                    self.append_text(&format!("⚠️ Extraction disabled for this run: {}\n\n", e));
+                }
+            }
+        }
         let cancel = Arc::new(AtomicBool::new(false));
         self.cancel = Some(cancel.clone());
         actions.send = Some(GodRunRequest {
@@ -247,6 +329,7 @@ impl GodConsoleState {
             use_kibana: self.use_kibana_host,
             clusters,
             loop_text: self.loop_text.clone(),
+            extract_path: self.extract_path.clone(),
         });
         self.history_index = Some(self.history.len() - 1);
     }
@@ -259,6 +342,7 @@ impl GodConsoleState {
             self.use_kibana_host = entry.use_kibana;
             self.selected_clusters = entry.clusters;
             self.loop_text = entry.loop_text;
+            self.extract_path = entry.extract_path;
             self.history_index = Some(idx);
         }
     }
@@ -307,77 +391,470 @@ pub fn parse_loop_items(text: &str) -> Vec<String> {
         .collect()
 }
 
+/// Parse the Extracted values list: strictly one value per line (values may contain commas).
+pub fn parse_extracted_items(text: &str) -> Vec<String> {
+    text.lines()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+/// Markers written to the Extracted values list when a response yields no usable value.
+const EXTRACT_MARKERS: &[&str] = &["null", "object", "array"];
+
+/// Separator between paths in an extraction expression, and between fields in each
+/// Extracted values row. Reserved: extracted values containing it are rewritten to `& &`.
+pub const FIELD_SEPARATOR: &str = "&&";
+
+/// Extraction warnings written to the log per response before summarising the rest.
+const LOG_WARNING_LINES: usize = 5;
+
+/// Runs with more requests than this ask for confirmation even for read-only methods.
+pub const LARGE_RUN_CONFIRM: usize = 200;
+
+/// Split one Extracted values row into its fields.
+pub fn split_row(row: &str) -> Vec<&str> {
+    row.split(FIELD_SEPARATOR).map(str::trim).collect()
+}
+
+/// Whether any field of a row is a `null` / `object` / `array` marker.
+pub fn row_has_marker(row: &str) -> bool {
+    split_row(row).iter().any(|f| EXTRACT_MARKERS.contains(f))
+}
+
+/// Normalise a path (`$.` prefix, `[n]` indexing) and split it into segments.
+/// An empty path (or `$`) has no segments and refers to the whole response.
+fn path_segments(path: &str) -> Vec<String> {
+    let path = path.trim();
+    let path = path
+        .strip_prefix("$.")
+        .or_else(|| path.strip_prefix('$'))
+        .unwrap_or(path);
+    if path.is_empty() {
+        return Vec::new();
+    }
+    path.replace('[', ".")
+        .replace(']', "")
+        .split('.')
+        .map(str::to_string)
+        .collect()
+}
+
+/// Look up a dotted path in a JSON value.
+///
+/// Numeric segments index arrays (`hits.hits.0._id`, or `hits.hits[0]._id`). Object keys
+/// that themselves contain dots (index names like `.ds-logs-2026.11.03`) are matched by
+/// trying progressively longer joins of the remaining segments.
+#[cfg(test)]
+pub fn lookup_json_path<'a>(
+    value: &'a serde_json::Value,
+    path: &str,
+) -> Option<&'a serde_json::Value> {
+    walk_json(value, &path_segments(path))
+}
+
+fn walk_json<'a, S: AsRef<str>>(
+    value: &'a serde_json::Value,
+    segs: &[S],
+) -> Option<&'a serde_json::Value> {
+    if segs.is_empty() {
+        return Some(value);
+    }
+    match value {
+        serde_json::Value::Object(map) => (1..=segs.len()).find_map(|end| {
+            let key = segs[..end]
+                .iter()
+                .map(AsRef::as_ref)
+                .collect::<Vec<_>>()
+                .join(".");
+            map.get(&key)
+                .and_then(|child| walk_json(child, &segs[end..]))
+        }),
+        serde_json::Value::Array(arr) => {
+            let idx: usize = segs[0].as_ref().parse().ok()?;
+            walk_json(arr.get(idx)?, &segs[1..])
+        }
+        _ => None,
+    }
+}
+
+/// Make an extracted string safe for a one-line, `&&`-separated row.
+fn clean_field(v: &str) -> String {
+    v.replace(['\r', '\n'], " ").replace(FIELD_SEPARATOR, "& &")
+}
+
+/// Turn a looked-up JSON value into one row field, plus a warning for unusable values.
+fn to_field(value: Option<&serde_json::Value>, what: &str) -> (String, Option<String>) {
+    use serde_json::Value;
+    match value {
+        None => ("null".to_string(), Some(format!("'{}' not found", what))),
+        Some(Value::Null) => ("null".to_string(), Some(format!("'{}' is null", what))),
+        Some(Value::Object(_)) => (
+            "object".to_string(),
+            Some(format!("'{}' matched an object, not a value", what)),
+        ),
+        Some(Value::Array(_)) => (
+            "array".to_string(),
+            Some(format!("'{}' matched an array, not a value", what)),
+        ),
+        Some(Value::String(v)) => (clean_field(v), None),
+        Some(other) => (other.to_string(), None),
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ExtractPart {
+    raw: String,
+    segments: Vec<String>,
+    /// Position of the `*` segment, if this part uses the wildcard.
+    star: Option<usize>,
+}
+
+/// A parsed extraction expression: one or more `&&`-joined paths with at most one `*`
+/// position, shared by every path that uses it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Extraction {
+    parts: Vec<ExtractPart>,
+    /// Segments before the `*`, when any part uses the wildcard.
+    prefix: Option<Vec<String>>,
+}
+
+/// Rows and warnings extracted from one response.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ExtractOutcome {
+    pub rows: Vec<String>,
+    pub warnings: Vec<String>,
+}
+
+impl ExtractOutcome {
+    /// A single all-`null` row with one warning.
+    pub fn failed(columns: usize, warning: impl Into<String>) -> Self {
+        Self {
+            rows: vec![vec!["null"; columns.max(1)].join(" && ")],
+            warnings: vec![warning.into()],
+        }
+    }
+}
+
+/// Parse an extraction expression such as `toplevel.setting.ilm` or
+/// `indices.*&&indices.*.policy`.
+///
+/// Rules: paths are joined with `&&`; `*` must be a whole segment; there is at most one `*`
+/// per path, and every path that uses it must share the same prefix before it (so all
+/// wildcard columns walk the same object/array and line up row by row).
+pub fn parse_extraction(expr: &str) -> Result<Extraction, String> {
+    let mut parts = Vec::new();
+    let mut prefix: Option<Vec<String>> = None;
+    for raw in expr.split(FIELD_SEPARATOR) {
+        let raw = raw.trim();
+        if raw.is_empty() {
+            return Err("empty path next to &&".to_string());
+        }
+        let segments = path_segments(raw);
+        let stars: Vec<usize> = segments
+            .iter()
+            .enumerate()
+            .filter(|(_, seg)| seg.contains('*'))
+            .map(|(i, _)| i)
+            .collect();
+        if stars.len() > 1 {
+            return Err(format!("'{}' has more than one *", raw));
+        }
+        let star = stars.first().copied();
+        if let Some(i) = star {
+            if segments[i] != "*" {
+                return Err(format!(
+                    "'{}': * must be a whole path segment, e.g. indices.*.policy",
+                    raw
+                ));
+            }
+            let p = segments[..i].to_vec();
+            match &prefix {
+                Some(existing) if *existing != p => {
+                    return Err(format!(
+                        "every * must sit at the same path: '{}' vs '{}'",
+                        star_path(existing),
+                        star_path(&p)
+                    ));
+                }
+                _ => prefix = Some(p),
+            }
+        }
+        parts.push(ExtractPart {
+            raw: raw.to_string(),
+            segments,
+            star,
+        });
+    }
+    Ok(Extraction { parts, prefix })
+}
+
+/// Display form of a wildcard position, e.g. `indices.*` (or `*` at the top level).
+fn star_path(prefix: &[String]) -> String {
+    if prefix.is_empty() {
+        "*".to_string()
+    } else {
+        format!("{}.*", prefix.join("."))
+    }
+}
+
+impl Extraction {
+    /// Number of fields in every extracted row.
+    pub fn columns(&self) -> usize {
+        self.parts.len()
+    }
+
+    /// Extract rows from one response body.
+    ///
+    /// Without a wildcard this yields exactly one row. With one, it yields a row per key
+    /// (object) or element (array) at the wildcard; a path ending in `*` gives that key or
+    /// index. Paths without a wildcard are evaluated once and repeated on every row.
+    /// Unusable values become `null` / `object` / `array` markers with a warning.
+    pub fn extract(&self, text: &str) -> ExtractOutcome {
+        let Ok(json) = serde_json::from_str::<serde_json::Value>(text) else {
+            return ExtractOutcome::failed(self.columns(), "response is not JSON");
+        };
+        let mut warnings = Vec::new();
+        // Fixed (non-wildcard) columns: evaluated once, warned once.
+        let fixed: Vec<Option<String>> = self
+            .parts
+            .iter()
+            .map(|part| {
+                part.star.is_none().then(|| {
+                    let (v, w) = to_field(walk_json(&json, &part.segments), &part.raw);
+                    warnings.extend(w);
+                    v
+                })
+            })
+            .collect();
+
+        let Some(prefix) = &self.prefix else {
+            let row = fixed.into_iter().flatten().collect::<Vec<_>>().join(" && ");
+            return ExtractOutcome {
+                rows: vec![row],
+                warnings,
+            };
+        };
+
+        let entries: Vec<(String, &serde_json::Value)> = match walk_json(&json, prefix) {
+            Some(serde_json::Value::Object(map)) => {
+                map.iter().map(|(k, v)| (k.clone(), v)).collect()
+            }
+            Some(serde_json::Value::Array(arr)) => arr
+                .iter()
+                .enumerate()
+                .map(|(i, v)| (i.to_string(), v))
+                .collect(),
+            Some(_) => {
+                return ExtractOutcome::failed(
+                    self.columns(),
+                    format!("'{}' is not an object or array", star_path(prefix)),
+                );
+            }
+            None => {
+                return ExtractOutcome::failed(
+                    self.columns(),
+                    format!("'{}' not found", prefix.join(".")),
+                );
+            }
+        };
+        if entries.is_empty() {
+            return ExtractOutcome::failed(
+                self.columns(),
+                format!("'{}' matched nothing", star_path(prefix)),
+            );
+        }
+
+        let rows = entries
+            .iter()
+            .map(|(key, child)| {
+                self.parts
+                    .iter()
+                    .zip(&fixed)
+                    .map(|(part, fixed)| match (fixed, part.star) {
+                        (Some(v), _) => v.clone(),
+                        (None, Some(star)) => {
+                            let suffix = &part.segments[star + 1..];
+                            if suffix.is_empty() {
+                                clean_field(key)
+                            } else {
+                                let what = format!("{} @ {}", part.raw, key);
+                                let (v, w) = to_field(walk_json(child, suffix), &what);
+                                warnings.extend(w);
+                                v
+                            }
+                        }
+                        (None, None) => unreachable!("non-wildcard parts are always fixed"),
+                    })
+                    .collect::<Vec<_>>()
+                    .join(" && ")
+            })
+            .collect();
+        ExtractOutcome { rows, warnings }
+    }
+}
+
+/// Highest `{{results_item…}}` field referenced in a template: 0 when unused, 1 for the bare
+/// `{{results_item}}`, N for `{{results_item.N}}`.
+pub fn max_results_field(text: &str) -> usize {
+    let mut max = 0;
+    let mut rest = text;
+    while let Some(pos) = rest.find(RESULTS_PREFIX) {
+        let after = &rest[pos + RESULTS_PREFIX.len()..];
+        if let Some((n, _)) = parse_results_ref(after) {
+            max = max.max(n);
+        }
+        rest = after;
+    }
+    max
+}
+
+/// `{{results_item` — shared prefix of the bare and numbered results placeholders.
+const RESULTS_PREFIX: &str = "{{results_item";
+
+/// Parse what follows `{{results_item`: `}}` is field 1, `.N}}` is field N.
+/// Returns the field number and the number of bytes consumed.
+fn parse_results_ref(after: &str) -> Option<(usize, usize)> {
+    if after.starts_with("}}") {
+        return Some((1, 2));
+    }
+    let digits_and_rest = after.strip_prefix('.')?;
+    let digits: String = digits_and_rest
+        .chars()
+        .take_while(char::is_ascii_digit)
+        .collect();
+    if digits.is_empty() || !digits_and_rest[digits.len()..].starts_with("}}") {
+        return None;
+    }
+    let n: usize = digits.parse().ok()?;
+    (n >= 1).then_some((n, 1 + digits.len() + 2))
+}
+
+/// Replace `{{results_item}}` / `{{results_item.N}}` with a row's fields in a single pass,
+/// so inserted response data is never itself re-substituted. References to fields the row
+/// doesn't have are left as-is.
+fn substitute_results(template: &str, row: &str) -> String {
+    let fields = split_row(row);
+    let mut out = String::with_capacity(template.len());
+    let mut rest = template;
+    while let Some(pos) = rest.find(RESULTS_PREFIX) {
+        out.push_str(&rest[..pos]);
+        let after = &rest[pos + RESULTS_PREFIX.len()..];
+        match parse_results_ref(after).and_then(|(n, used)| Some((fields.get(n - 1)?, used))) {
+            Some((field, used)) => {
+                out.push_str(field);
+                rest = &after[used..];
+            }
+            None => {
+                out.push_str(RESULTS_PREFIX);
+                rest = after;
+            }
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
+/// Whether the request template references `{{results_item}}` or `{{results_item.N}}`.
+pub fn uses_results(path: &str, body: &str) -> bool {
+    max_results_field(path).max(max_results_field(body)) > 0
+}
+
 /// Whether the request template references the loop placeholder.
 pub fn uses_loop(path: &str, body: &str) -> bool {
     path.contains(LOOP_PLACEHOLDER) || body.contains(LOOP_PLACEHOLDER)
 }
 
-/// Interpolate a template for one cluster and optional loop item.
+/// Interpolate a template for one cluster, optional loop item and optional results item.
 ///
-/// Order: built-ins (`{{loop_item}}`, `{{cluster_name}}`) first, then the cluster's own
-/// Console variables. This lets a loop value itself contain a `{{var}}` reference.
+/// Order: `{{cluster_name}}` and `{{loop_item}}` first, then the cluster's own Console
+/// variables (so a loop value may itself contain a `{{var}}` reference), then
+/// `{{results_item}}` last, so response data is never re-interpreted as a template.
 pub fn interpolate_for(
     template: &str,
     cluster: &str,
     item: Option<&str>,
+    result_item: Option<&str>,
     cluster_vars: &[(String, String)],
 ) -> String {
     let mut out = template.replace(CLUSTER_PLACEHOLDER, cluster);
     if let Some(item) = item {
         out = out.replace(LOOP_PLACEHOLDER, item);
     }
-    interpolate_variables(&out, cluster_vars)
+    out = interpolate_variables(&out, cluster_vars);
+    if let Some(row) = result_item {
+        out = substitute_results(&out, row);
+    }
+    out
 }
 
-/// Expand a request template into concrete jobs: for each cluster (in order), each loop item.
+/// Expand a request template into concrete jobs: for each cluster (in order), each loop item,
+/// each results item.
 ///
-/// When there are no loop items, or the template doesn't use `{{loop_item}}`, each cluster
-/// gets exactly one job.
+/// A list only multiplies the jobs when it is non-empty and its placeholder is used in the
+/// path or body; with neither, each cluster gets exactly one job.
+#[allow(clippy::too_many_arguments)]
 pub fn build_jobs(
     clusters: &[String],
     items: &[String],
+    results: &[String],
     method: &str,
     path: &str,
     body: &str,
     use_kibana: bool,
     vars_for: impl Fn(&str) -> Vec<(String, String)>,
 ) -> Vec<GodJob> {
-    let looping = !items.is_empty() && uses_loop(path, body);
+    let loop_items: Vec<Option<&str>> = if !items.is_empty() && uses_loop(path, body) {
+        items.iter().map(|i| Some(i.as_str())).collect()
+    } else {
+        vec![None]
+    };
+    let result_items: Vec<Option<&str>> = if !results.is_empty() && uses_results(path, body) {
+        results.iter().map(|r| Some(r.as_str())).collect()
+    } else {
+        vec![None]
+    };
     let mut jobs = Vec::new();
     for cluster in clusters {
         let vars = vars_for(cluster);
-        let mut push = |item: Option<&str>| {
-            let interp_body = interpolate_for(body, cluster, item, &vars);
-            jobs.push(GodJob {
-                cluster: cluster.clone(),
-                item: item.map(str::to_string),
-                method: method.to_string(),
-                path: interpolate_for(path, cluster, item, &vars),
-                body: if interp_body.trim().is_empty() {
-                    None
-                } else {
-                    Some(interp_body)
-                },
-                use_kibana,
-            });
-        };
-        if looping {
-            for item in items {
-                push(Some(item));
+        for &item in &loop_items {
+            for &result_item in &result_items {
+                let interp_body = interpolate_for(body, cluster, item, result_item, &vars);
+                jobs.push(GodJob {
+                    cluster: cluster.clone(),
+                    item: item.map(str::to_string),
+                    result_item: result_item.map(str::to_string),
+                    method: method.to_string(),
+                    path: interpolate_for(path, cluster, item, result_item, &vars),
+                    body: if interp_body.trim().is_empty() {
+                        None
+                    } else {
+                        Some(interp_body)
+                    },
+                    use_kibana,
+                });
             }
-        } else {
-            push(None);
         }
     }
     jobs
 }
 
+/// ` loop_item=… results_item=…` labels for a job (empty when it uses neither).
+fn job_labels(job: &GodJob) -> String {
+    let mut out = String::new();
+    if let Some(i) = &job.item {
+        out.push_str(&format!(" loop_item={}", i));
+    }
+    if let Some(r) = &job.result_item {
+        out.push_str(&format!(" results_item={}", r));
+    }
+    out
+}
+
 /// The one-line header written above each job's output in the combined log.
 pub fn format_job_header(job: &GodJob, ok: bool, elapsed_ms: u128) -> String {
-    let item = match &job.item {
-        Some(i) => format!(" loop_item={}", i),
-        None => String::new(),
-    };
+    let item = job_labels(job);
     let status = if ok { "✅ OK" } else { "❌ ERROR" };
     format!(
         "━━ [{}]{} ━━ {} {} → {} ({} ms)",
@@ -421,8 +898,11 @@ pub fn render_god_console_module(
 
     let targets = state.active_targets(clusters);
     let items = parse_loop_items(&state.loop_text);
+    let results = parse_extracted_items(&state.extracted_text);
     let looping = !items.is_empty() && uses_loop(&state.path, &state.body);
-    let per_cluster = if looping { items.len() } else { 1 };
+    let resulting = !results.is_empty() && uses_results(&state.path, &state.body);
+    let per_cluster =
+        if looping { items.len() } else { 1 } * if resulting { results.len() } else { 1 };
     let job_count = targets.len() * per_cluster;
 
     render_confirm_modal(ui, state, actions);
@@ -443,7 +923,7 @@ pub fn render_god_console_module(
                     .inner_margin(Theme::CARD_PADDING)
                     .show(ui, |ui| {
                         ui.set_height(height - 32.0);
-                        render_workspace(ui, state, clusters, &items, actions);
+                        render_workspace(ui, state, clusters, &items, &results, actions);
                     });
             });
 
@@ -460,7 +940,8 @@ pub fn render_god_console_module(
                     .show(ui, |ui| {
                         ui.set_height(height - 32.0);
                         render_editor(
-                            ui, state, &targets, &items, looping, job_count, vars_for, actions,
+                            ui, state, &targets, &items, &results, looping, resulting, job_count,
+                            vars_for, actions,
                         );
                     });
             });
@@ -473,6 +954,7 @@ fn render_workspace(
     state: &mut GodConsoleState,
     clusters: &[String],
     items: &[String],
+    results: &[String],
     actions: &mut GodConsoleActions,
 ) {
     ui.label(
@@ -535,7 +1017,7 @@ fn render_workspace(
         .id_salt("god_console_workspace_scroll")
         .max_height(scroll_height)
         .show(ui, |ui| match state.active_tab {
-            GodTab::Targets => render_targets_tab(ui, state, clusters, items),
+            GodTab::Targets => render_targets_tab(ui, state, clusters, items, results),
             GodTab::Presets => {
                 ui.horizontal(|ui| {
                     ui.hyperlink_to(
@@ -571,6 +1053,7 @@ fn render_targets_tab(
     state: &mut GodConsoleState,
     clusters: &[String],
     items: &[String],
+    results: &[String],
 ) {
     // --- Cluster checklist ---
     let visible: Vec<&String> = clusters
@@ -679,6 +1162,187 @@ fn render_targets_tab(
             }
         });
     }
+
+    ui.add_space(10.0);
+    ui.separator();
+    ui.add_space(6.0);
+    render_extraction_section(ui, state, results);
+}
+
+fn render_extraction_section(ui: &mut Ui, state: &mut GodConsoleState, results: &[String]) {
+    // --- Result extraction path ---
+    ui.label(egui::RichText::new("Result extraction").strong().size(13.0));
+    ui.add_space(4.0);
+    ui.add(
+        egui::TextEdit::singleline(&mut state.extract_path)
+            .hint_text("e.g. toplevel.setting.ilm  or  *&&*.settings.index.lifecycle.name")
+            .code_editor()
+            .desired_width(ui.available_width()),
+    );
+    ui.add_space(2.0);
+    let consuming = uses_results(&state.path, &state.body);
+    if consuming && !state.extract_path.trim().is_empty() {
+        ui.label(
+            egui::RichText::new(format!(
+                "⏸ Paused: this request uses {}, so it won't overwrite the list it reads (one level of chaining).",
+                RESULTS_PLACEHOLDER
+            ))
+            .color(Theme::text_secondary())
+            .size(11.0),
+        );
+    } else if !state.extract_path.trim().is_empty() {
+        match parse_extraction(&state.extract_path) {
+            Ok(ex) if ex.columns() > 1 => {
+                let names: Vec<String> = (1..=ex.columns())
+                    .map(|i| {
+                        if i == 1 {
+                            RESULTS_PLACEHOLDER.to_string()
+                        } else {
+                            format!("{}.{}}}}}", RESULTS_PREFIX, i)
+                        }
+                    })
+                    .collect();
+                small_muted(
+                    ui,
+                    format!("{} columns → {}", ex.columns(), names.join(", ")),
+                );
+            }
+            Ok(_) => {}
+            Err(e) => {
+                ui.label(
+                    egui::RichText::new(format!("⚠️ {}", e))
+                        .color(Theme::danger())
+                        .size(11.0),
+                );
+            }
+        }
+    }
+    ui.label(
+        egui::RichText::new("ℹ Path syntax")
+            .color(Theme::text_secondary())
+            .size(11.0),
+    )
+    .on_hover_text(
+        "Dotted JSON path pulled from every response on Send.\n\
+             • Numeric segments index arrays: hits.hits.0._id or hits.hits[0]._id\n\
+             • Keys starting with '.' get a doubled dot: indices..ds-logs-x.policy\n\
+             • One * per expression matches every key/element; one row each.\n\
+             \u{20}\u{20}A path ending in * gives the key itself: indices.*\n\
+             • Join paths with && for more columns: indices.*&&indices.*.policy\n\
+             \u{20}\u{20}All * paths must share the same prefix; others repeat on each row.\n\
+             • Use {{results_item}} (column 1) and {{results_item.2}}, .3 … in the request.",
+    );
+
+    ui.add_space(8.0);
+
+    // --- Extracted values ---
+    let marker_count = results.iter().filter(|v| row_has_marker(v)).count();
+    ui.horizontal(|ui| {
+        ui.label(egui::RichText::new("Extracted values").strong().size(13.0));
+        small_muted(ui, format!("{} value(s)", results.len()));
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            let idle = !state.is_running;
+            if ui
+                .add_enabled(
+                    idle && !state.extracted_text.is_empty(),
+                    egui::Button::new("Clear").small(),
+                )
+                .clicked()
+            {
+                state.extracted_text.clear();
+                state.extract_warnings.clear();
+            }
+            if ui
+                .add_enabled(
+                    idle && results.len() > 1,
+                    egui::Button::new("Unique").small(),
+                )
+                .on_hover_text("Remove duplicate rows, keeping the first occurrence")
+                .clicked()
+            {
+                let mut seen = std::collections::HashSet::new();
+                let unique: Vec<&String> =
+                    results.iter().filter(|v| seen.insert(v.as_str())).collect();
+                state.extracted_text = unique
+                    .iter()
+                    .map(|v| format!("{}\n", v))
+                    .collect::<String>();
+            }
+            if ui
+                .add_enabled(
+                    idle && marker_count > 0,
+                    egui::Button::new("Drop ⚠").small(),
+                )
+                .on_hover_text("Remove rows with a null / object / array placeholder in any column")
+                .clicked()
+            {
+                state.extracted_text = results
+                    .iter()
+                    .filter(|v| !row_has_marker(v))
+                    .map(|v| format!("{}\n", v))
+                    .collect::<String>();
+            }
+        });
+    });
+    ui.add_space(4.0);
+    ui.add_enabled(
+        !state.is_running,
+        egui::TextEdit::multiline(&mut state.extracted_text)
+            .hint_text("filled on Send, one row per line (columns joined by &&); editable")
+            .code_editor()
+            .desired_rows(6)
+            .desired_width(ui.available_width()),
+    );
+    ui.add_space(4.0);
+    small_muted(
+        ui,
+        format!(
+            "Use {} in the path or body to run once per row.",
+            RESULTS_PLACEHOLDER
+        ),
+    );
+    let used = max_results_field(&state.path).max(max_results_field(&state.body));
+    let min_fields = results.iter().map(|r| split_row(r).len()).min();
+    if let Some(min_fields) = min_fields.filter(|&m| used > m) {
+        ui.label(
+            egui::RichText::new(format!(
+                "⚠️ The request uses column {} but some rows only have {}; those stay literal.",
+                used, min_fields
+            ))
+            .color(Theme::warning())
+            .size(11.0),
+        );
+    }
+    if !state.extract_warnings.is_empty() {
+        ui.add_space(4.0);
+        let n = state.extract_warnings.len();
+        let mut hover = state
+            .extract_warnings
+            .iter()
+            .take(50)
+            .cloned()
+            .collect::<Vec<_>>()
+            .join("\n");
+        if n > 50 {
+            hover.push_str(&format!("\n… {} more", n - 50));
+        }
+        ui.label(
+            egui::RichText::new(format!("⚠️ {} extraction warning(s)", n))
+                .color(Theme::warning())
+                .size(11.0),
+        )
+        .on_hover_text(hover);
+    }
+    if marker_count > 0 {
+        ui.label(
+            egui::RichText::new(format!(
+                "⚠️ {} row(s) contain null/object/array placeholders, which would be sent as literal text.",
+                marker_count
+            ))
+            .color(Theme::warning())
+            .size(11.0),
+        );
+    }
 }
 
 fn render_history_tab(ui: &mut Ui, state: &mut GodConsoleState) {
@@ -723,9 +1387,10 @@ fn render_history_tab(ui: &mut Ui, state: &mut GodConsoleState) {
             load = Some(idx);
         }
         btn.on_hover_text(format!(
-            "Clusters: {}\nLoop values: {}\nBody: {}",
+            "Clusters: {}\nLoop values: {}\nExtraction: {}\nBody: {}",
             entry.clusters.join(", "),
             entry.loop_text.replace('\n', ", "),
+            entry.extract_path,
             entry.body
         ));
         ui.add_space(4.0);
@@ -752,11 +1417,12 @@ fn render_saved_tab(ui: &mut Ui, state: &mut GodConsoleState, actions: &mut GodC
                 load = Some(idx);
             }
             btn.on_hover_text(format!(
-                "{} {}\nClusters: {}\nLoop values: {}",
+                "{} {}\nClusters: {}\nLoop values: {}\nExtraction: {}",
                 query.method,
                 query.path,
                 query.clusters.join(", "),
-                query.loop_items.replace('\n', ", ")
+                query.loop_items.replace('\n', ", "),
+                query.extract_path
             ));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.button("🗑").on_hover_text("Delete Saved Query").clicked() {
@@ -773,6 +1439,7 @@ fn render_saved_tab(ui: &mut Ui, state: &mut GodConsoleState, actions: &mut GodC
         state.body = q.body.unwrap_or_default();
         state.use_kibana_host = q.use_kibana;
         state.loop_text = q.loop_items;
+        state.extract_path = q.extract_path;
         if !q.clusters.is_empty() {
             state.selected_clusters = q.clusters;
         }
@@ -786,7 +1453,9 @@ fn render_editor(
     state: &mut GodConsoleState,
     targets: &[String],
     items: &[String],
+    results: &[String],
     looping: bool,
+    resulting: bool,
     job_count: usize,
     vars_for: &dyn Fn(&str) -> Vec<(String, String)>,
     actions: &mut GodConsoleActions,
@@ -817,21 +1486,16 @@ fn render_editor(
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             let summary = if targets.is_empty() {
                 egui::RichText::new("🎯 No clusters selected").color(Theme::warning())
-            } else if looping {
-                egui::RichText::new(format!(
-                    "🎯 {} cluster(s) × {} item(s) = {} request(s)",
-                    targets.len(),
-                    items.len(),
-                    job_count
-                ))
-                .color(Theme::accent())
             } else {
-                egui::RichText::new(format!(
-                    "🎯 {} cluster(s) = {} request(s)",
-                    targets.len(),
-                    job_count
-                ))
-                .color(Theme::accent())
+                let mut text = format!("🎯 {} cluster(s)", targets.len());
+                if looping {
+                    text.push_str(&format!(" × {} item(s)", items.len()));
+                }
+                if resulting {
+                    text.push_str(&format!(" × {} result(s)", results.len()));
+                }
+                text.push_str(&format!(" = {} request(s)", job_count));
+                egui::RichText::new(text).color(Theme::accent())
             };
             let resp = ui.label(summary.strong());
             if !targets.is_empty() {
@@ -847,6 +1511,7 @@ fn render_editor(
         build_jobs(
             targets,
             items,
+            results,
             &state.method,
             &state.path,
             &state.body,
@@ -897,7 +1562,9 @@ fn render_editor(
                 if send.clicked() {
                     let jobs = build(state);
                     state.record_history(targets.to_vec());
-                    if !is_read_only_method(&state.method) && jobs.len() > 1 {
+                    if (!is_read_only_method(&state.method) && jobs.len() > 1)
+                        || jobs.len() > LARGE_RUN_CONFIRM
+                    {
                         state.pending_confirm = Some(jobs);
                     } else {
                         state.start_run(jobs, actions);
@@ -913,11 +1580,7 @@ fn render_editor(
                     let mut text =
                         format!("🧪 Dry run: {} request(s), nothing sent.\n\n", jobs.len());
                     for job in &jobs {
-                        let item = job
-                            .item
-                            .as_ref()
-                            .map(|i| format!(" loop_item={}", i))
-                            .unwrap_or_default();
+                        let item = job_labels(job);
                         text.push_str(&format!(
                             "[{}]{}  {} {}{}\n",
                             job.cluster,
@@ -956,8 +1619,13 @@ fn render_editor(
         } else {
             None
         };
+        let result_item = if resulting {
+            results.first().map(String::as_str)
+        } else {
+            None
+        };
         let vars = vars_for(first);
-        let evaluated = interpolate_for(&state.path, first, item, &vars);
+        let evaluated = interpolate_for(&state.path, first, item, result_item, &vars);
         if evaluated != state.path {
             small_muted(
                 ui,
@@ -971,6 +1639,16 @@ fn render_editor(
                 "⚠️ {} loop value(s) listed but {} isn't used in the path or body. Each cluster runs once.",
                 items.len(),
                 LOOP_PLACEHOLDER
+            ))
+            .color(Theme::warning())
+            .size(11.0),
+        );
+    }
+    if results.is_empty() && uses_results(&state.path, &state.body) {
+        ui.label(
+            egui::RichText::new(format!(
+                "⚠️ {} is used but Extracted values is empty, so it will be sent literally.",
+                RESULTS_PLACEHOLDER
             ))
             .color(Theme::warning())
             .size(11.0),
@@ -995,6 +1673,7 @@ fn render_editor(
                     },
                     use_kibana: state.use_kibana_host,
                     loop_items: state.loop_text.clone(),
+                    extract_path: state.extract_path.clone(),
                     clusters: targets.to_vec(),
                 });
                 state.show_save_dialog = false;
@@ -1155,10 +1834,18 @@ fn render_confirm_modal(ui: &mut Ui, state: &mut GodConsoleState, actions: &mut 
                 .color(method_color(&method)),
         );
         ui.add_space(6.0);
-        ui.label(format!(
-            "This is a write method and will run against {} cluster(s):",
-            clusters.len()
-        ));
+        ui.label(if is_read_only_method(&method) {
+            format!(
+                "This is a large run ({} requests) against {} cluster(s):",
+                count,
+                clusters.len()
+            )
+        } else {
+            format!(
+                "This is a write method and will run against {} cluster(s):",
+                clusters.len()
+            )
+        });
         ui.add_space(4.0);
         egui::ScrollArea::vertical()
             .max_height(160.0)
@@ -1247,6 +1934,7 @@ mod tests {
         let jobs = build_jobs(
             &s(&["c1", "c2"]),
             &s(&["a", "b"]),
+            &[],
             "POST",
             "/{{loop_item}}/_rollover",
             "",
@@ -1275,6 +1963,7 @@ mod tests {
         let jobs = build_jobs(
             &s(&["c1", "c2"]),
             &s(&["a", "b", "c"]),
+            &[],
             "GET",
             "/_cluster/health",
             "",
@@ -1287,9 +1976,16 @@ mod tests {
 
     #[test]
     fn single_job_per_cluster_without_items() {
-        let jobs = build_jobs(&s(&["c1"]), &[], "GET", "/{{loop_item}}", "", false, |_| {
-            Vec::new()
-        });
+        let jobs = build_jobs(
+            &s(&["c1"]),
+            &[],
+            &[],
+            "GET",
+            "/{{loop_item}}",
+            "",
+            false,
+            |_| Vec::new(),
+        );
         assert_eq!(jobs.len(), 1);
         assert_eq!(jobs[0].path, "/{{loop_item}}");
     }
@@ -1299,6 +1995,7 @@ mod tests {
         let jobs = build_jobs(
             &s(&["c1"]),
             &s(&["x", "y"]),
+            &[],
             "POST",
             "/_aliases",
             r#"{"index":"{{loop_item}}"}"#,
@@ -1318,6 +2015,7 @@ mod tests {
         let jobs = build_jobs(
             &s(&["prod", "dev"]),
             &s(&["logs-{{suffix}}"]),
+            &[],
             "GET",
             "/{{loop_item}}/_alias?c={{cluster_name}}",
             "",
@@ -1333,6 +2031,7 @@ mod tests {
         let job = GodJob {
             cluster: "prod-east".into(),
             item: Some("logs-a".into()),
+            result_item: None,
             method: "POST".into(),
             path: "/logs-a/_rollover".into(),
             body: None,
@@ -1354,6 +2053,7 @@ mod tests {
         let job = GodJob {
             cluster: "c".into(),
             item: None,
+            result_item: None,
             method: "GET".into(),
             path: "/".into(),
             body: None,
@@ -1386,5 +2086,274 @@ mod tests {
     fn truncation_respects_char_boundaries() {
         assert_eq!(truncate_at_char_boundary("héllo", 2), "h");
         assert_eq!(truncate_at_char_boundary("abc", 10), "abc");
+    }
+
+    const SAMPLE: &str = r#"{"toplevel": {"setting": {"ilm": "ilm1", "otherthing": "thingb", "n": 3, "on": true, "gone": null}}}"#;
+
+    fn ex(text: &str, expr: &str) -> ExtractOutcome {
+        parse_extraction(expr).unwrap().extract(text)
+    }
+
+    #[test]
+    fn extracts_scalar_values() {
+        let out = ex(SAMPLE, "toplevel.setting.ilm");
+        assert_eq!(out.rows, s(&["ilm1"]));
+        assert!(out.warnings.is_empty());
+        assert_eq!(ex(SAMPLE, "toplevel.setting.n").rows, s(&["3"]));
+        assert_eq!(ex(SAMPLE, "$.toplevel.setting.on").rows, s(&["true"]));
+    }
+
+    #[test]
+    fn missing_null_object_array_and_non_json_warn() {
+        let out = ex(SAMPLE, "toplevel.nope");
+        assert_eq!(out.rows, s(&["null"]));
+        assert!(out.warnings[0].contains("not found"));
+        let out = ex(SAMPLE, "toplevel.setting.gone");
+        assert_eq!(out.rows, s(&["null"]));
+        assert_eq!(out.warnings.len(), 1);
+        let out = ex(SAMPLE, "toplevel.setting");
+        assert_eq!(out.rows, s(&["object"]));
+        assert_eq!(out.warnings.len(), 1);
+        let out = ex(r#"{"a":[1,2]}"#, "a");
+        assert_eq!(out.rows, s(&["array"]));
+        assert_eq!(out.warnings.len(), 1);
+        let out = ex("Error: HTTP 500", "a&&b");
+        assert_eq!(out.rows, s(&["null && null"]));
+        assert!(out.warnings[0].contains("not JSON"));
+    }
+
+    /// Trimmed `GET <pattern>/_settings` response: the top-level keys are index names.
+    const SETTINGS: &str = r#"{
+      ".ds-logs-borderwise.services-wtg-2026.10.23-000011": {"settings": {"index": {
+        "lifecycle": {"indexing_complete": "true", "name": "rollover-100gb_or_30d-delete_365d"},
+        "provided_name": ".ds-logs-borderwise.services-wtg-2026.10.23-000011"}}},
+      ".ds-logs-borderwise.services-wtg-2026.11.03-000014": {"settings": {"index": {
+        "lifecycle": {"name": "rollover-100gb_or_30d-delete_365d"},
+        "provided_name": ".ds-logs-borderwise.services-wtg-2026.11.03-000014"}}}
+    }"#;
+
+    #[test]
+    fn top_level_wildcard_with_key_capture() {
+        let out = ex(SETTINGS, "*&&*.settings.index.lifecycle.name");
+        assert_eq!(
+            out.rows,
+            s(&[
+                ".ds-logs-borderwise.services-wtg-2026.10.23-000011 && rollover-100gb_or_30d-delete_365d",
+                ".ds-logs-borderwise.services-wtg-2026.11.03-000014 && rollover-100gb_or_30d-delete_365d",
+            ])
+        );
+        assert!(out.warnings.is_empty());
+        let out = ex(
+            SETTINGS,
+            "*.settings.index.provided_name && *.settings.index.lifecycle.name",
+        );
+        assert_eq!(out.rows.len(), 2);
+        assert!(out.rows[0].starts_with(".ds-logs-borderwise.services-wtg-2026.10.23-000011 && "));
+    }
+
+    #[test]
+    fn missing_field_in_one_row_warns_and_keeps_row() {
+        let out = ex(SETTINGS, "*&&*.settings.index.lifecycle.indexing_complete");
+        assert_eq!(out.rows.len(), 2);
+        assert!(out.rows[0].ends_with(" && true"));
+        assert!(out.rows[1].ends_with(" && null"));
+        assert_eq!(out.warnings.len(), 1);
+        assert!(out.warnings[0].contains("2026.11.03-000014"));
+        assert!(row_has_marker(&out.rows[1]));
+        assert!(!row_has_marker(&out.rows[0]));
+    }
+
+    #[test]
+    fn nested_and_array_wildcards_with_fixed_columns() {
+        let json = r#"{"cluster_name":"prod","indices":{"a":{"policy":"p1"},"b":{"policy":"p2"}},
+                       "hits":{"hits":[{"_id":"x"},{"_id":"y"}]}}"#;
+        assert_eq!(
+            ex(json, "cluster_name&&indices.*&&indices.*.policy").rows,
+            s(&["prod && a && p1", "prod && b && p2"])
+        );
+        assert_eq!(
+            ex(json, "hits.hits.*&&hits.hits[*]._id").rows,
+            s(&["0 && x", "1 && y"])
+        );
+        let out = ex(r#"{"indices":{}}"#, "indices.*&&indices.*.policy");
+        assert_eq!(out.rows, s(&["null && null"]));
+        assert!(out.warnings[0].contains("matched nothing"));
+        let out = ex(r#"{}"#, "indices.*");
+        assert!(out.warnings[0].contains("not found"));
+        let out = ex(r#"{"indices":5}"#, "indices.*");
+        assert!(out.warnings[0].contains("not an object or array"));
+    }
+
+    #[test]
+    fn extraction_rules_are_enforced() {
+        assert!(
+            parse_extraction("a.*.b.*")
+                .unwrap_err()
+                .contains("more than one")
+        );
+        assert!(
+            parse_extraction("ind*.x")
+                .unwrap_err()
+                .contains("whole path segment")
+        );
+        assert!(
+            parse_extraction("a.*&&b.*")
+                .unwrap_err()
+                .contains("same path")
+        );
+        assert!(parse_extraction("a&&").unwrap_err().contains("empty path"));
+        assert!(parse_extraction("a.*&&a.*.x&&c").is_ok());
+        assert_eq!(parse_extraction("a && b && c").unwrap().columns(), 3);
+    }
+
+    #[test]
+    fn values_containing_separator_or_newlines_stay_one_field() {
+        let out = ex(r#"{"v":"a && b\nc"}"#, "v");
+        assert_eq!(out.rows, s(&["a & & b c"]));
+        assert_eq!(split_row(&out.rows[0]).len(), 1);
+    }
+
+    #[test]
+    fn numbered_results_fields_substitute_in_one_pass() {
+        let row = "my-index && {{results_item.1}} && hot";
+        assert_eq!(
+            substitute_results(
+                "/{{results_item}}/x/{{results_item.2}}/{{results_item.3}}",
+                row
+            ),
+            "/my-index/x/{{results_item.1}}/hot"
+        );
+        assert_eq!(
+            substitute_results(
+                "{{results_item.4}} {{results_item.0}} {{results_item.x}}",
+                row
+            ),
+            "{{results_item.4}} {{results_item.0}} {{results_item.x}}"
+        );
+        assert_eq!(
+            max_results_field("/{{results_item.12}}/{{results_item}}"),
+            12
+        );
+        assert_eq!(max_results_field("/{{results_items}}"), 0);
+        assert!(uses_results("/_ilm/policy/{{results_item.2}}", ""));
+        assert!(!uses_results("/x", "{}"));
+    }
+
+    #[test]
+    fn path_indexes_arrays_and_dotted_keys() {
+        let json: serde_json::Value = serde_json::from_str(
+            r#"{"hits":{"hits":[{"_id":"x"},{"_id":"y"}]},
+                "indices":{".ds-logs-2026.11.03-000001":{"policy":"hot-warm"}}}"#,
+        )
+        .unwrap();
+        assert_eq!(lookup_json_path(&json, "hits.hits.1._id").unwrap(), "y");
+        assert_eq!(lookup_json_path(&json, "hits.hits[0]._id").unwrap(), "x");
+        // A key starting with "." is written after the parent's separator: `indices..ds-…`.
+        assert_eq!(
+            lookup_json_path(&json, "indices..ds-logs-2026.11.03-000001.policy").unwrap(),
+            "hot-warm"
+        );
+        assert_eq!(
+            lookup_json_path(&json, "indices.ds-logs-2026.11.03-000001.policy"),
+            None
+        );
+        let json2: serde_json::Value =
+            serde_json::from_str(r#"{".ds-logs-2026.11.03":{"policy":"p"}}"#).unwrap();
+        assert_eq!(
+            lookup_json_path(&json2, ".ds-logs-2026.11.03.policy").unwrap(),
+            "p"
+        );
+        assert_eq!(lookup_json_path(&json, "hits.hits.9._id"), None);
+    }
+
+    #[test]
+    fn extracted_items_split_on_lines_only() {
+        assert_eq!(parse_extracted_items("a, b\n\n  c  \n"), s(&["a, b", "c"]));
+    }
+
+    #[test]
+    fn results_multiply_jobs_after_loop_items() {
+        let jobs = build_jobs(
+            &s(&["c1"]),
+            &s(&["a", "b"]),
+            &s(&["p1", "p2"]),
+            "GET",
+            "/{{loop_item}}/{{results_item}}",
+            "",
+            false,
+            |_| Vec::new(),
+        );
+        let paths: Vec<&str> = jobs.iter().map(|j| j.path.as_str()).collect();
+        assert_eq!(paths, vec!["/a/p1", "/a/p2", "/b/p1", "/b/p2"]);
+        assert_eq!(jobs[1].result_item.as_deref(), Some("p2"));
+        assert!(format_job_header(&jobs[1], true, 1).contains(" loop_item=a results_item=p2 "));
+    }
+
+    #[test]
+    fn results_are_not_reinterpolated_as_variables() {
+        let jobs = build_jobs(
+            &s(&["c1"]),
+            &[],
+            &s(&["{{secret}}"]),
+            "GET",
+            "/_ilm/policy/{{results_item}}",
+            "",
+            false,
+            |_| vec![("secret".to_string(), "leaked".to_string())],
+        );
+        assert_eq!(jobs[0].path, "/_ilm/policy/{{secret}}");
+    }
+
+    fn ok_result(cluster: &str, text: &str) -> GodJobResult {
+        GodJobResult {
+            job: GodJob {
+                cluster: cluster.into(),
+                item: None,
+                result_item: None,
+                method: "GET".into(),
+                path: "/".into(),
+                body: None,
+                use_kibana: false,
+            },
+            ok: true,
+            text: text.into(),
+            elapsed_ms: 1,
+        }
+    }
+
+    #[test]
+    fn run_fills_extracted_list_with_warnings() {
+        let mut st = GodConsoleState::new();
+        st.extract_path = "toplevel.setting.ilm".into();
+        st.extracted_text = "stale\n".into();
+        let mut actions = GodConsoleActions::default();
+        st.start_run(Vec::new(), &mut actions);
+        let id = st.run_id;
+        st.push_result(id, ok_result("c1", SAMPLE));
+        st.push_result(id, ok_result("c2", r#"{"toplevel":{}}"#));
+        let mut failed = ok_result("c3", "Error: boom");
+        failed.ok = false;
+        st.push_result(id, failed);
+        assert_eq!(st.extracted_text, "ilm1\nnull\nnull\n");
+        assert_eq!(st.extract_warnings.len(), 2);
+        assert!(st.full_response.contains("🔎 Extracted: ilm1"));
+        assert!(
+            st.full_response
+                .contains("⚠️ Extraction: request failed → null")
+        );
+    }
+
+    #[test]
+    fn consuming_run_does_not_overwrite_extracted_list() {
+        let mut st = GodConsoleState::new();
+        st.extract_path = "toplevel.setting.ilm".into();
+        st.extracted_text = "ilm1\n".into();
+        st.path = "/_ilm/policy/{{results_item}}".into();
+        let mut actions = GodConsoleActions::default();
+        st.start_run(Vec::new(), &mut actions);
+        let id = st.run_id;
+        st.push_result(id, ok_result("c1", SAMPLE));
+        assert_eq!(st.extracted_text, "ilm1\n");
+        assert!(!st.full_response.contains("Extract"));
     }
 }

@@ -16,7 +16,7 @@ A fast, native desktop GUI for monitoring and interacting with multiple Elastics
 | **Cluster Status** | At-a-glance health dashboard — nodes, shards, indices, docs, JVM heap |
 | **Task Monitoring** | Watch reindex, snapshot, and other cluster tasks in real time with filtering |
 | **Elastic Console** | Send raw API requests with saved queries, without re-entering credentials |
-| **God-mode Console** | Run one request across many selected clusters in turn, optionally looping over a list of values via `{{loop_item}}`, with labelled per-cluster/per-value results, dry run and write confirmation |
+| **God-mode Console** | Run one request across many selected clusters in turn, optionally looping over a list of values via `{{loop_item}}`, or chaining one level by extracting JSON paths from every response (one `*` wildcard, `&&` for multiple columns, e.g. `*&&*.settings.index.lifecycle.name`) into a list fed back via `{{results_item}}` / `{{results_item.N}}`, with labelled per-cluster/per-value results, dry run and write confirmation |
 | **Osquery** | Run live Osquery queries on selected Fleet agents and inspect their status and results |
 
 - **Multi-cluster** — manage separate credentials and auth per cluster
