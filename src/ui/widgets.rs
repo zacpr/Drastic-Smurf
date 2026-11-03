@@ -522,7 +522,9 @@ pub fn json_highlight(_ui: &Ui, text: &str) -> egui::text::LayoutJob {
     let trimmed = text.trim_start();
 
     // Check if the output is JSON
-    let is_json = trimmed.starts_with('{') || trimmed.starts_with('[');
+    let example_marker = crate::modules::api_examples::EXAMPLE_MARKER;
+    let is_json =
+        trimmed.starts_with('{') || trimmed.starts_with('[') || trimmed.starts_with(example_marker);
 
     if text.len() > 100_000 {
         // Skip syntax highlighting for very large text to prevent UI freezing
@@ -580,12 +582,18 @@ pub fn json_highlight(_ui: &Ui, text: &str) -> egui::text::LayoutJob {
                     i += 1;
                 }
                 let slice: String = chars[start..i].iter().collect();
+                // API doc example headers stand out from ordinary comments.
+                let color = if slice.starts_with(example_marker) {
+                    Theme::accent()
+                } else {
+                    comment_color
+                };
                 job.append(
                     &slice,
                     0.0,
                     egui::TextFormat {
                         font_id: font_id.clone(),
-                        color: comment_color,
+                        color,
                         ..Default::default()
                     },
                 );

@@ -10,8 +10,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use egui::Ui;
 
 use crate::core::config::GodSavedQuery;
+use crate::modules::api_examples;
 use crate::modules::console::{
-    CONSOLE_METHODS, interpolate_variables, method_color, prettify_json_body, render_preset_list,
+    CONSOLE_METHODS, ConsolePreset, interpolate_variables, method_color, prettify_json_body,
+    render_preset_list,
 };
 use crate::ui::theme::Theme;
 
@@ -130,6 +132,14 @@ pub struct GodConsoleState {
     /// Untruncated combined log for "Copy all".
     pub full_response: String,
     pub display_truncated: bool,
+    /// The response box holds an API doc example rather than run output.
+    pub response_is_example: bool,
+    /// Send was pressed while the body still had example markers.
+    pub examples_prompt: bool,
+    /// Send on the next frame (set by the examples prompt).
+    pub send_requested: bool,
+    /// (method, path, body text) of the examples last inserted, for "Show examples".
+    pub examples_source: Option<(String, String, String)>,
 }
 
 impl GodConsoleState {
@@ -140,6 +150,36 @@ impl GodConsoleState {
             body_height: Some(200.0),
             ..Default::default()
         }
+    }
+
+    /// Load a preset, filling the body and response boxes with API doc examples.
+    fn apply_preset(&mut self, preset: &ConsolePreset) {
+        self.method = preset.method.to_string();
+        self.path = preset.path.to_string();
+        self.body = api_examples::request_text(preset.method, preset.path, preset.body);
+        self.examples_source = api_examples::has_examples(&self.body)
+            .then(|| (self.method.clone(), self.path.clone(), self.body.clone()));
+        self.use_kibana_host = preset.use_kibana;
+        self.history_index = None;
+        self.json_error = None;
+        // Never wipe real run output just because a preset was picked.
+        if self.is_running || (!self.response_is_example && !self.response.is_empty()) {
+            return;
+        }
+        self.clear_output();
+        if let Some(text) = api_examples::response_text(preset.method, preset.path) {
+            self.full_response = text.clone();
+            self.response = text;
+            self.response_is_example = true;
+        }
+    }
+
+    /// The examples last inserted, while the request still targets the same API.
+    fn available_examples(&self) -> Option<String> {
+        self.examples_source
+            .as_ref()
+            .filter(|(m, p, _)| *m == self.method && *p == self.path)
+            .map(|(_, _, text)| text.clone())
     }
 
     fn is_selected(&self, cluster: &str) -> bool {
@@ -167,6 +207,7 @@ impl GodConsoleState {
     fn clear_output(&mut self) {
         self.response.clear();
         self.full_response.clear();
+        self.response_is_example = false;
         self.display_truncated = false;
         self.ok_count = 0;
         self.err_count = 0;
@@ -906,6 +947,17 @@ pub fn render_god_console_module(
     let job_count = targets.len() * per_cluster;
 
     render_confirm_modal(ui, state, actions);
+    if state.examples_prompt
+        && let Some(choice) =
+            api_examples::render_examples_prompt(ui, "god_console_examples_prompt", &mut state.body)
+    {
+        state.examples_prompt = false;
+        state.json_error = None;
+        if choice == api_examples::PromptChoice::RemovedAndSend {
+            state.send_requested = true;
+            ui.ctx().request_repaint();
+        }
+    }
 
     let total_available = ui.available_size() - egui::vec2(0.0, 12.0);
     ui.allocate_ui_with_layout(
@@ -1036,11 +1088,7 @@ fn render_workspace(
                 if let Some(preset) =
                     render_preset_list(ui, &state.preset_filter, "god_console_preset")
                 {
-                    state.method = preset.method.to_string();
-                    state.path = preset.path.to_string();
-                    state.body = preset.body.map(|b| b.to_string()).unwrap_or_default();
-                    state.use_kibana_host = preset.use_kibana;
-                    state.history_index = None;
+                    state.apply_preset(preset);
                 }
             }
             GodTab::History => render_history_tab(ui, state),
@@ -1559,7 +1607,10 @@ fn render_editor(
                         .fill(accent),
                     )
                     .on_hover_text("Run against every selected cluster, in order");
-                if send.clicked() {
+                let send_now = send.clicked() || std::mem::take(&mut state.send_requested);
+                if send_now && api_examples::has_examples(&state.body) {
+                    state.examples_prompt = true;
+                } else if send_now && job_count > 0 {
                     let jobs = build(state);
                     state.record_history(targets.to_vec());
                     if (!is_read_only_method(&state.method) && jobs.len() > 1)
@@ -1690,6 +1741,10 @@ fn render_editor(
     ui.add_space(4.0);
     ui.horizontal(|ui| {
         ui.label("Body:");
+        let available = state.available_examples();
+        if api_examples::examples_toolbar(ui, &mut state.body, available.as_deref()) {
+            state.json_error = None;
+        }
         if let Some(err) = &state.json_error {
             ui.colored_label(Theme::danger(), format!("⚠️ {}", err));
         }
@@ -1786,6 +1841,13 @@ fn render_editor(
             .clicked()
         {
             state.clear_output();
+        }
+        if state.response_is_example {
+            ui.label(
+                egui::RichText::new("📖 example from the API docs; cleared when you send")
+                    .small()
+                    .color(Theme::text_muted()),
+            );
         }
     });
 

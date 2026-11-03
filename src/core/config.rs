@@ -149,6 +149,13 @@ pub struct LlmSettings {
     pub auto_cluster_context: bool,
     #[serde(default)]
     pub extra_headers: Vec<(String, String)>,
+    /// Let the assistant act in the app through tool calls (look up cluster data,
+    /// load requests into the Console, switch tabs, run approved requests).
+    #[serde(default = "default_true")]
+    pub tools_enabled: bool,
+    /// Run read-only (GET/HEAD) tool requests without asking. Writes always ask.
+    #[serde(default = "default_true")]
+    pub auto_run_reads: bool,
 }
 
 fn default_llm_model() -> String {
@@ -172,6 +179,8 @@ impl Default for LlmSettings {
             max_context_chars: default_llm_max_context_chars(),
             auto_cluster_context: true,
             extra_headers: Vec::new(),
+            tools_enabled: true,
+            auto_run_reads: true,
         }
     }
 }
@@ -321,6 +330,16 @@ pub struct ChatMessage {
     pub role: String,
     pub content: String,
     pub timestamp: chrono::DateTime<chrono::Utc>,
+    /// Reasoning ("thinking") a reasoning model streamed before its answer. Shown in
+    /// the chat, never sent back to the model, and not persisted.
+    #[serde(skip)]
+    pub reasoning: String,
+    /// Tools an `assistant` message called.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tool_calls: Vec<crate::core::llm::ToolCall>,
+    /// For a `tool` message: the call it answers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_call_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -498,7 +517,7 @@ pub fn default_timezone_clocks() -> Vec<TimezoneClockConfig> {
             enabled: true,
         },
         TimezoneClockConfig {
-            label: "Sydney (APAC)".to_string(),
+            label: "APAC (Sydney)".to_string(),
             zone: "Sydney".to_string(),
             enabled: true,
         },
@@ -591,8 +610,20 @@ impl AppConfig {
             return Ok(Self::default());
         }
         let contents = std::fs::read_to_string(&path)?;
-        let config = serde_json::from_str(&contents)?;
+        let mut config: Self = serde_json::from_str(&contents)?;
+        config.migrate();
         Ok(config)
+    }
+
+    /// Bring older saved configs in line with renamed defaults, leaving anything the
+    /// user customised alone.
+    fn migrate(&mut self) {
+        for clock in &mut self.timezone_clocks {
+            // The Sydney clock was renamed to match "EMEA (Germany)" / "AMER (Chicago)".
+            if clock.label == "Sydney (APAC)" && clock.zone == "Sydney" {
+                clock.label = "APAC (Sydney)".to_string();
+            }
+        }
     }
 
     pub fn save(&self) -> Result<()> {
@@ -622,6 +653,28 @@ mod tests {
                 panic!("ERROR LOADING REAL CONFIG: {:?}", e);
             }
         }
+    }
+
+    #[test]
+    fn test_migrate_renames_default_sydney_clock_only() {
+        let mut config = AppConfig {
+            timezone_clocks: vec![
+                TimezoneClockConfig {
+                    label: "Sydney (APAC)".to_string(),
+                    zone: "Sydney".to_string(),
+                    enabled: true,
+                },
+                TimezoneClockConfig {
+                    label: "Sydney (APAC)".to_string(),
+                    zone: "UTC+10".to_string(),
+                    enabled: true,
+                },
+            ],
+            ..Default::default()
+        };
+        config.migrate();
+        assert_eq!(config.timezone_clocks[0].label, "APAC (Sydney)");
+        assert_eq!(config.timezone_clocks[1].label, "Sydney (APAC)");
     }
 
     #[test]

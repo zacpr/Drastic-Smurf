@@ -11,7 +11,8 @@ use std::sync::mpsc::{Receiver, Sender, channel};
 
 use crate::core::auth;
 use crate::core::config::{self, ChatConversation, ChatMessage, LlmProviderPreset, LlmSettings};
-use crate::core::llm::{self, ChatMessage as LlmMessage};
+use crate::core::llm::{self, ChatMessage as LlmMessage, StreamDelta, StreamOutcome, ToolCall};
+use crate::modules::assistant_tools::{self, MAX_TOOL_STEPS, ToolAction};
 use crate::ui::theme::Theme;
 use eframe::egui;
 
@@ -24,12 +25,55 @@ pub struct ClusterContext {
 
 #[derive(Debug, Clone, Default)]
 pub enum StreamMsg {
-    /// Incremental token from the assistant.
+    /// Incremental answer text.
     Delta(String),
+    /// Incremental reasoning ("thinking") text, streamed before the answer.
+    Reasoning(String),
     /// Streaming finished cleanly.
     #[default]
     Done,
+    /// Finished, with the provider's finish_reason and any tool calls.
+    DoneWith(StreamOutcome),
+    /// The provider rejected the tools; the request is being retried without them.
+    ToolsUnsupported,
     Error(String),
+}
+
+/// Where one requested tool call is up to.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ToolStatus {
+    AwaitingApproval,
+    /// Approved (or needs no approval); the host runs it next frame.
+    Ready,
+    Running,
+    Declined,
+    Done,
+}
+
+#[derive(Debug, Clone)]
+pub struct PendingTool {
+    pub call: ToolCall,
+    pub action: Result<ToolAction, String>,
+    pub status: ToolStatus,
+    pub result: Option<String>,
+}
+
+/// One user message's tool loop: stream → tool calls → results → stream again.
+#[derive(Debug, Clone)]
+pub struct AgentRun {
+    pub id: u64,
+    pub conversation_id: String,
+    pub include_cluster_context: bool,
+    pub steps: usize,
+    pub pending: Vec<PendingTool>,
+}
+
+/// A finished asynchronous tool (an `es_request`), sent back from its task.
+#[derive(Debug, Clone)]
+pub struct ToolResultMsg {
+    pub run_id: u64,
+    pub call_id: String,
+    pub result: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -77,6 +121,19 @@ pub struct AssistantState {
     pub stream_rx: Option<Receiver<StreamMsg>>,
     pub is_streaming: bool,
     pub last_error: Option<String>,
+    /// A reply finished; the host should save conversations.
+    pub needs_persist: bool,
+    /// The tool loop for the message being answered, if any.
+    pub agent: Option<AgentRun>,
+    next_run_id: u64,
+    /// Tool results finished: the host should start the next stream.
+    pub continue_requested: bool,
+    pub tool_tx: Sender<ToolResultMsg>,
+    tool_rx: Receiver<ToolResultMsg>,
+    /// Model that rejected tool calls; tools are not sent to it again this session.
+    pub tools_unsupported_model: Option<String>,
+    /// Informational line under the chat (not an error).
+    pub notice: Option<String>,
     pub scroll_to_bottom: bool,
     pub last_saved_at: Option<chrono::DateTime<chrono::Utc>>,
     pub last_key_saved_at: Option<chrono::DateTime<chrono::Utc>>,
@@ -100,6 +157,7 @@ impl AssistantState {
                 .unwrap_or(false);
 
         let active_id = conversations.first().map(|c| c.id.clone());
+        let (tool_tx, tool_rx) = channel();
 
         Self {
             settings,
@@ -112,6 +170,14 @@ impl AssistantState {
             stream_rx: None,
             is_streaming: false,
             last_error: None,
+            needs_persist: false,
+            agent: None,
+            next_run_id: 0,
+            continue_requested: false,
+            tool_tx,
+            tool_rx,
+            tools_unsupported_model: None,
+            notice: None,
             scroll_to_bottom: false,
             last_saved_at: None,
             last_key_saved_at: None,
@@ -148,6 +214,145 @@ impl AssistantState {
         self.active_conversation_id = Some(id);
         self.draft.clear();
         self.last_error = None;
+    }
+
+    /// Whether the next request should offer tools to the model.
+    pub fn tools_active(&self) -> bool {
+        self.settings.tools_enabled
+            && self.tools_unsupported_model.as_deref() != Some(self.settings.model.as_str())
+    }
+
+    /// Start the tool loop for a newly sent user message.
+    pub fn begin_run(&mut self, conversation_id: &str, include_cluster_context: bool) {
+        self.next_run_id += 1;
+        self.notice = None;
+        self.agent = Some(AgentRun {
+            id: self.next_run_id,
+            conversation_id: conversation_id.to_string(),
+            include_cluster_context,
+            steps: 0,
+            pending: Vec::new(),
+        });
+    }
+
+    /// Stop the stream and any tool loop.
+    pub fn cancel(&mut self) {
+        self.agent = None;
+        self.continue_requested = false;
+        finish_stream(self, StreamOutcome::default(), None);
+    }
+
+    fn pending_mut(&mut self, call_id: &str) -> Option<&mut PendingTool> {
+        self.agent
+            .as_mut()?
+            .pending
+            .iter_mut()
+            .find(|p| p.call.id == call_id)
+    }
+
+    /// The user approved or declined a tool call waiting for approval.
+    pub fn decide(&mut self, call_id: &str, approve: bool) {
+        if let Some(p) = self.pending_mut(call_id)
+            && p.status == ToolStatus::AwaitingApproval
+        {
+            if approve {
+                p.status = ToolStatus::Ready;
+            } else {
+                p.status = ToolStatus::Declined;
+                p.result = Some(
+                    "The user declined to run this request. Do not retry it; explain or ask instead."
+                        .to_string(),
+                );
+            }
+        }
+    }
+
+    /// Tools ready to run, marked Running. The host executes them and reports each
+    /// result through [`AssistantState::complete_tool`] or `tool_tx`.
+    pub fn take_ready_tools(&mut self) -> Vec<(u64, String, ToolAction)> {
+        let Some(agent) = self.agent.as_mut() else {
+            return Vec::new();
+        };
+        let run_id = agent.id;
+        agent
+            .pending
+            .iter_mut()
+            .filter(|p| p.status == ToolStatus::Ready)
+            .filter_map(|p| {
+                p.status = ToolStatus::Running;
+                p.action
+                    .clone()
+                    .ok()
+                    .map(|action| (run_id, p.call.id.clone(), action))
+            })
+            .collect()
+    }
+
+    /// Record a tool's result. Results for a cancelled or finished run are ignored.
+    pub fn complete_tool(&mut self, run_id: u64, call_id: &str, result: String) {
+        if self.agent.as_ref().map(|a| a.id) != Some(run_id) {
+            return;
+        }
+        if let Some(p) = self.pending_mut(call_id) {
+            p.status = ToolStatus::Done;
+            p.result = Some(result);
+        }
+    }
+
+    /// Once every tool call of the current step has a result, add the results to the
+    /// conversation and ask the host to stream the model's next reply.
+    pub fn advance_agent(&mut self) {
+        let Some(agent) = self.agent.as_mut() else {
+            return;
+        };
+        if agent.pending.is_empty()
+            || agent
+                .pending
+                .iter()
+                .any(|p| !matches!(p.status, ToolStatus::Done | ToolStatus::Declined))
+        {
+            return;
+        }
+        let pending = std::mem::take(&mut agent.pending);
+        agent.steps += 1;
+        let steps = agent.steps;
+        let conversation_id = agent.conversation_id.clone();
+        let Some(conv) = self
+            .conversations
+            .iter_mut()
+            .find(|c| c.id == conversation_id)
+        else {
+            self.agent = None;
+            return;
+        };
+        let now = chrono::Utc::now();
+        for p in pending {
+            conv.messages.push(ChatMessage {
+                role: "tool".into(),
+                content: p.result.unwrap_or_default(),
+                timestamp: now,
+                tool_call_id: Some(p.call.id),
+                ..Default::default()
+            });
+        }
+        conv.updated_at = now;
+        self.needs_persist = true;
+        if steps >= MAX_TOOL_STEPS {
+            self.agent = None;
+            self.last_error = Some(format!(
+                "Stopped after {} rounds of tool calls. Ask the assistant to continue if needed.",
+                MAX_TOOL_STEPS
+            ));
+            return;
+        }
+        conv.messages.push(ChatMessage {
+            role: "assistant".into(),
+            timestamp: now,
+            ..Default::default()
+        });
+        self.continue_requested = true;
+        self.is_streaming = true;
+        self.scroll_to_bottom = true;
     }
 
     pub fn delete_conversation(&mut self, id: &str) {
@@ -192,8 +397,8 @@ pub fn render_assistant_panel(
     on_run_console_action: &mut Option<ConsoleAction>,
     available_clusters: &[String],
 ) {
-    // Drain stream updates first.
-    drain_stream(state, ui.ctx());
+    // Stream and tool results are drained by the host every frame (see `poll`), so a
+    // run keeps going while the dock is closed.
     drain_models(state, ui.ctx());
 
     let frame = egui::Frame::new()
@@ -352,6 +557,7 @@ fn render_chat(
                 .size(11.0),
         );
     } else {
+        let mut decisions: Vec<(String, bool)> = Vec::new();
         egui::ScrollArea::vertical()
             .id_salt("assistant_messages_scroll")
             .max_height(ui.available_height() - 180.0)
@@ -363,6 +569,18 @@ fn render_chat(
                     ui.scroll_to_cursor(Some(egui::Align::BOTTOM));
                     state.scroll_to_bottom = false;
                 }
+                let statuses: std::collections::HashMap<String, ToolStatus> = state
+                    .agent
+                    .iter()
+                    .flat_map(|a| a.pending.iter())
+                    .map(|p| (p.call.id.clone(), p.status.clone()))
+                    .collect();
+                let running_results: std::collections::HashMap<String, String> = state
+                    .agent
+                    .iter()
+                    .flat_map(|a| a.pending.iter())
+                    .filter_map(|p| p.result.clone().map(|r| (p.call.id.clone(), r)))
+                    .collect();
                 if let Some(conv) = state.active_conversation() {
                     if conv.messages.is_empty() {
                         ui.label(
@@ -384,9 +602,23 @@ fn render_chat(
                             .size(10.0),
                     );
                     ui.add_space(4.0);
-                    for msg in &conv.messages {
-                        render_message(ui, msg);
-                        if msg.role == "assistant" {
+                    let last = conv.messages.len().saturating_sub(1);
+                    for (i, msg) in conv.messages.iter().enumerate() {
+                        // Tool results are shown inside the call that produced them.
+                        if msg.role == "tool" {
+                            continue;
+                        }
+                        render_message(ui, msg, i, state.is_streaming && i == last);
+                        for call in &msg.tool_calls {
+                            let result = conv
+                                .messages
+                                .iter()
+                                .find(|m| m.role == "tool" && m.tool_call_id.as_deref() == Some(call.id.as_str()))
+                                .map(|m| m.content.as_str())
+                                .or_else(|| running_results.get(&call.id).map(|r| r.as_str()));
+                            render_tool_card(ui, call, statuses.get(&call.id), result, &mut decisions);
+                        }
+                        if msg.role == "assistant" && msg.tool_calls.is_empty() {
                             for action in parse_console_actions(&msg.content) {
                                 render_action_card(ui, &action, available_clusters, on_run_console_action);
                             }
@@ -394,6 +626,18 @@ fn render_chat(
                     }
                 }
             });
+        for (call_id, approve) in decisions {
+            state.decide(&call_id, approve);
+        }
+    }
+
+    if let Some(notice) = &state.notice {
+        ui.add_space(4.0);
+        ui.label(
+            egui::RichText::new(format!("ℹ {}", notice))
+                .color(Theme::text_muted())
+                .size(11.0),
+        );
     }
 
     if let Some(err) = &state.last_error {
@@ -427,7 +671,7 @@ fn render_chat(
 
     ui.horizontal(|ui| {
         let send_btn = ui.add_enabled(
-            !state.is_streaming && !state.draft.trim().is_empty(),
+            !state.is_streaming && state.agent.is_none() && !state.draft.trim().is_empty(),
             egui::Button::new(
                 egui::RichText::new(if state.is_streaming {
                     "⏳ Streaming..."
@@ -441,6 +685,8 @@ fn render_chat(
         let clicked_send = send_btn.clicked();
 
         if (clicked_send || submit_pressed)
+            && !state.is_streaming
+            && state.agent.is_none()
             && let Some(conv_id) = state.active_conversation_id.clone()
         {
             let user_text = state.draft.trim().to_string();
@@ -456,9 +702,8 @@ fn render_chat(
             }
         }
 
-        if state.is_streaming && ui.button("✖ Cancel").clicked() {
-            state.is_streaming = false;
-            state.stream_rx = None;
+        if (state.is_streaming || state.agent.is_some()) && ui.button("✖ Cancel").clicked() {
+            state.cancel();
         }
     });
 
@@ -467,7 +712,7 @@ fn render_chat(
     }
 }
 
-fn render_message(ui: &mut egui::Ui, msg: &ChatMessage) {
+fn render_message(ui: &mut egui::Ui, msg: &ChatMessage, index: usize, streaming: bool) {
     let (label, color) = match msg.role.as_str() {
         "user" => ("You", Theme::accent()),
         "assistant" => ("Assistant", Theme::success()),
@@ -479,15 +724,188 @@ fn render_message(ui: &mut egui::Ui, msg: &ChatMessage) {
         .corner_radius(6.0)
         .inner_margin(egui::Margin::same(8))
         .show(ui, |ui| {
-            ui.label(egui::RichText::new(label).color(color).strong().size(11.0));
+            ui.horizontal(|ui| {
+                ui.label(egui::RichText::new(label).color(color).strong().size(11.0));
+                if streaming {
+                    ui.spinner();
+                }
+            });
             ui.add_space(2.0);
-            ui.label(
-                egui::RichText::new(&msg.content)
-                    .color(Theme::text_primary())
-                    .size(12.0),
-            );
+            if !msg.reasoning.is_empty() {
+                let thinking = streaming && msg.content.is_empty();
+                let title = if thinking {
+                    "💭 Thinking…".to_string()
+                } else {
+                    format!(
+                        "💭 Thought for {} words",
+                        msg.reasoning.split_whitespace().count()
+                    )
+                };
+                egui::CollapsingHeader::new(
+                    egui::RichText::new(title)
+                        .color(Theme::text_muted())
+                        .size(11.0),
+                )
+                .id_salt(("assistant_reasoning", index, msg.timestamp))
+                .default_open(false)
+                .show(ui, |ui| {
+                    egui::ScrollArea::vertical()
+                        .id_salt(("assistant_reasoning_scroll", index, msg.timestamp))
+                        .max_height(200.0)
+                        .stick_to_bottom(thinking)
+                        .show(ui, |ui| {
+                            ui.label(
+                                egui::RichText::new(&msg.reasoning)
+                                    .color(Theme::text_muted())
+                                    .size(11.0),
+                            );
+                        });
+                });
+            }
+            if !msg.content.is_empty() {
+                ui.label(
+                    egui::RichText::new(&msg.content)
+                        .color(Theme::text_primary())
+                        .size(12.0),
+                );
+            } else if streaming {
+                if msg.reasoning.is_empty() {
+                    ui.label(
+                        egui::RichText::new("Waiting for the model…")
+                            .color(Theme::text_muted())
+                            .italics()
+                            .size(11.0),
+                    );
+                }
+            } else if msg.role == "assistant" && msg.tool_calls.is_empty() {
+                ui.label(
+                    egui::RichText::new("(no answer)")
+                        .color(Theme::text_muted())
+                        .italics()
+                        .size(11.0),
+                );
+            }
         });
     ui.add_space(4.0);
+}
+
+/// One tool call in the chat: what it does, its status, Approve/Decline while it
+/// waits, and the result once it has one.
+fn render_tool_card(
+    ui: &mut egui::Ui,
+    call: &ToolCall,
+    status: Option<&ToolStatus>,
+    result: Option<&str>,
+    decisions: &mut Vec<(String, bool)>,
+) {
+    let action = assistant_tools::parse_call(call);
+    let (summary, request) = match &action {
+        Ok(a) => (
+            a.summary(),
+            match a {
+                ToolAction::EsRequest(r) | ToolAction::OpenInConsole(r) => Some(r.clone()),
+                _ => None,
+            },
+        ),
+        Err(_) => (format!("{}({})", call.name, call.arguments), None),
+    };
+    let (badge, badge_color) = match (status, result) {
+        (Some(ToolStatus::AwaitingApproval), _) => ("needs approval", Theme::warning()),
+        (Some(ToolStatus::Ready | ToolStatus::Running), _) => ("running…", Theme::text_secondary()),
+        (Some(ToolStatus::Declined), _) => ("declined", Theme::text_muted()),
+        (_, Some(r))
+            if action.is_err() || r.starts_with("Error") || r.starts_with("Request failed") =>
+        {
+            ("error", Theme::danger())
+        }
+        (_, Some(_)) => ("done", Theme::success()),
+        (_, None) => ("not run", Theme::text_muted()),
+    };
+    let awaiting = status == Some(&ToolStatus::AwaitingApproval);
+    egui::Frame::new()
+        .fill(Theme::bg_card())
+        .stroke(egui::Stroke::new(
+            1.0,
+            if awaiting {
+                Theme::warning()
+            } else {
+                Theme::border()
+            },
+        ))
+        .corner_radius(6.0)
+        .inner_margin(egui::Margin::same(6))
+        .show(ui, |ui| {
+            ui.horizontal_wrapped(|ui| {
+                ui.label(egui::RichText::new("🔧").size(11.0));
+                if let Some(req) = &request {
+                    ui.label(
+                        egui::RichText::new(&req.method)
+                            .color(crate::modules::console::method_color(&req.method))
+                            .strong()
+                            .size(11.0),
+                    );
+                }
+                ui.label(egui::RichText::new(&summary).monospace().size(11.0));
+                if matches!(status, Some(ToolStatus::Ready | ToolStatus::Running)) {
+                    ui.spinner();
+                }
+                ui.label(egui::RichText::new(badge).color(badge_color).size(10.0));
+            });
+            if awaiting {
+                if let Some(body) = request.as_ref().and_then(|r| r.body.as_ref()) {
+                    let preview: String = body.chars().take(800).collect();
+                    egui::ScrollArea::vertical()
+                        .id_salt(("tool_body", &call.id))
+                        .max_height(140.0)
+                        .show(ui, |ui| {
+                            ui.label(egui::RichText::new(preview).monospace().size(10.0));
+                        });
+                }
+                ui.label(
+                    egui::RichText::new(
+                        "The assistant wants to run this request. It may change the cluster.",
+                    )
+                    .color(Theme::text_secondary())
+                    .size(10.0),
+                );
+                ui.horizontal(|ui| {
+                    let accent = Theme::accent();
+                    if ui
+                        .add(
+                            egui::Button::new(
+                                egui::RichText::new("✅ Run it")
+                                    .color(Theme::contrast_text_color(accent)),
+                            )
+                            .fill(accent),
+                        )
+                        .clicked()
+                    {
+                        decisions.push((call.id.clone(), true));
+                    }
+                    if ui.button("✖ Decline").clicked() {
+                        decisions.push((call.id.clone(), false));
+                    }
+                });
+            }
+            if let Some(result) = result {
+                egui::CollapsingHeader::new(
+                    egui::RichText::new(format!("Result ({} chars)", result.chars().count()))
+                        .color(Theme::text_muted())
+                        .size(10.0),
+                )
+                .id_salt(("tool_result", &call.id))
+                .default_open(false)
+                .show(ui, |ui| {
+                    egui::ScrollArea::vertical()
+                        .id_salt(("tool_result_scroll", &call.id))
+                        .max_height(200.0)
+                        .show(ui, |ui| {
+                            ui.label(egui::RichText::new(result).monospace().size(10.0));
+                        });
+                });
+            }
+        });
+    ui.add_space(3.0);
 }
 
 /// Render the assistant settings section. Reusable across the dock panel
@@ -749,6 +1167,47 @@ pub fn render_settings_section(
         state.last_saved_at = Some(chrono::Utc::now());
     }
 
+    // ---- App access (tool calling) ---------------------------------------
+    ui.add_space(4.0);
+    let mut tools = state.settings.tools_enabled;
+    if ui
+        .checkbox(&mut tools, "Let the assistant act in the app")
+        .on_hover_text(
+            "Offers the model tools to list clusters, query them, read the Console, load \
+             requests into the Console and switch tabs. Needs a model with tool-calling support.",
+        )
+        .changed()
+    {
+        state.settings.tools_enabled = tools;
+        state.tools_unsupported_model = None;
+        state.last_saved_at = Some(chrono::Utc::now());
+    }
+    ui.add_enabled_ui(tools, |ui| {
+        let mut reads = state.settings.auto_run_reads;
+        if ui
+            .checkbox(
+                &mut reads,
+                "Run read-only requests (GET/HEAD) without asking",
+            )
+            .on_hover_text("Anything else (PUT, POST, DELETE) always asks for your approval first.")
+            .changed()
+        {
+            state.settings.auto_run_reads = reads;
+            state.last_saved_at = Some(chrono::Utc::now());
+        }
+    });
+    if state.settings.tools_enabled
+        && state.tools_unsupported_model.as_deref() == Some(state.settings.model.as_str())
+    {
+        ui.label(
+            egui::RichText::new(
+                "This model rejected tool calls; it's answering without app access.",
+            )
+            .color(Theme::warning())
+            .size(10.0),
+        );
+    }
+
     // ---- Saved indicator ----------------------------------------------
     if let Some(t) = state.last_saved_at {
         let age = (chrono::Utc::now() - t).num_seconds();
@@ -874,6 +1333,117 @@ fn render_action_card(
     ui.add_space(4.0);
 }
 
+/// The assistant message the running stream writes into.
+fn streaming_message(state: &mut AssistantState) -> Option<&mut ChatMessage> {
+    state
+        .active_conversation_mut()
+        .and_then(|conv| conv.messages.last_mut())
+        .filter(|last| last.role == "assistant")
+}
+
+/// End the current stream. Tool calls are recorded on the reply and queued for the
+/// host; otherwise the tool loop ends. An assistant reply that came back with no
+/// answer, no thinking and no tool calls is removed, so a blank turn never sits in
+/// the history, and the reason is shown instead.
+fn finish_stream(state: &mut AssistantState, outcome: StreamOutcome, error: Option<String>) {
+    state.is_streaming = false;
+    state.stream_rx = None;
+    state.needs_persist = true;
+    let StreamOutcome {
+        finish_reason,
+        tool_calls,
+    } = outcome;
+
+    let run_matches = state
+        .agent
+        .as_ref()
+        .is_some_and(|a| Some(&a.conversation_id) == state.active_conversation_id.as_ref());
+    if error.is_none() && !tool_calls.is_empty() && run_matches {
+        let auto_run_reads = state.settings.auto_run_reads;
+        if let Some(msg) = streaming_message(state) {
+            msg.tool_calls = tool_calls.clone();
+        }
+        let pending = tool_calls
+            .into_iter()
+            .map(|call| {
+                let action = assistant_tools::parse_call(&call);
+                let (status, result) = match &action {
+                    Err(e) => (ToolStatus::Done, Some(format!("Error: {}", e))),
+                    Ok(a) if a.needs_approval(auto_run_reads) => {
+                        (ToolStatus::AwaitingApproval, None)
+                    }
+                    Ok(_) => (ToolStatus::Ready, None),
+                };
+                PendingTool {
+                    call,
+                    action,
+                    status,
+                    result,
+                }
+            })
+            .collect();
+        if let Some(agent) = state.agent.as_mut() {
+            agent.pending = pending;
+        }
+        state.last_error = None;
+        state.scroll_to_bottom = true;
+        return;
+    }
+    // No (usable) tool calls: this message's run is over. After tools ran, a reply
+    // with nothing more to say (e.g. after opening a tab) is a normal ending.
+    let after_tools = state.agent.as_ref().is_some_and(|a| a.steps > 0);
+    state.agent = None;
+
+    let (answered, thought) = match streaming_message(state) {
+        Some(m) => (
+            !m.content.trim().is_empty() || !m.tool_calls.is_empty(),
+            !m.reasoning.trim().is_empty(),
+        ),
+        None => (true, false),
+    };
+    if !answered
+        && !thought
+        && let Some(conv) = state.active_conversation_mut()
+        && conv.messages.last().is_some_and(|m| m.role == "assistant")
+    {
+        conv.messages.pop();
+    }
+    state.last_error = match (error, answered, finish_reason.as_deref()) {
+        (Some(err), _, _) => Some(err),
+        (None, true, Some("length")) => Some(
+            "The reply was cut off: the model hit its output token limit (finish_reason: length)."
+                .to_string(),
+        ),
+        (None, true, _) => None,
+        (None, false, _) if after_tools => None,
+        (None, false, Some("length")) if thought => Some(
+            "The model used its whole output token limit thinking and never answered. Raise the \
+             max tokens / context in the provider, or ask again."
+                .to_string(),
+        ),
+        (None, false, _) if thought => Some(
+            "The model finished thinking without giving an answer. Try asking again.".to_string(),
+        ),
+        (None, false, reason) => Some(format!(
+            "The model returned an empty reply{}. Try asking again or check the provider's logs.",
+            reason
+                .map(|r| format!(" (finish_reason: {})", r))
+                .unwrap_or_default()
+        )),
+    };
+}
+
+/// Per-frame update, called by the host whether or not the dock is open: drains the
+/// stream and finished tool results, then moves the tool loop on.
+pub fn poll(state: &mut AssistantState, ctx: &egui::Context) {
+    drain_stream(state, ctx);
+    while let Ok(msg) = state.tool_rx.try_recv() {
+        state.complete_tool(msg.run_id, &msg.call_id, msg.result);
+        ctx.request_repaint();
+    }
+    state.advance_agent();
+}
+
 /// Drain pending stream updates into the active conversation's last assistant message.
 fn drain_stream(state: &mut AssistantState, ctx: &egui::Context) {
     // Take the receiver out temporarily so we can mutate `state` while draining.
@@ -884,24 +1454,42 @@ fn drain_stream(state: &mut AssistantState, ctx: &egui::Context) {
     loop {
         match rx.try_recv() {
             Ok(StreamMsg::Delta(delta)) => {
-                if let Some(conv) = state.active_conversation_mut()
-                    && let Some(last) = conv.messages.last_mut()
-                    && last.role == "assistant"
-                {
+                if let Some(last) = streaming_message(state) {
                     last.content.push_str(&delta);
+                }
+                if let Some(conv) = state.active_conversation_mut() {
                     conv.updated_at = chrono::Utc::now();
                 }
                 state.scroll_to_bottom = true;
                 ctx.request_repaint();
             }
+            Ok(StreamMsg::Reasoning(delta)) => {
+                if let Some(last) = streaming_message(state) {
+                    last.reasoning.push_str(&delta);
+                }
+                state.scroll_to_bottom = true;
+                ctx.request_repaint();
+            }
             Ok(StreamMsg::Done) => {
-                state.is_streaming = false;
+                finish_stream(state, StreamOutcome::default(), None);
                 ctx.request_repaint();
                 return;
             }
+            Ok(StreamMsg::DoneWith(outcome)) => {
+                finish_stream(state, outcome, None);
+                ctx.request_repaint();
+                return;
+            }
+            Ok(StreamMsg::ToolsUnsupported) => {
+                state.tools_unsupported_model = Some(state.settings.model.clone());
+                state.notice = Some(format!(
+                    "{} doesn't accept tool calls, so it can't act in the app; answering without them.",
+                    state.settings.model
+                ));
+            }
             Ok(StreamMsg::Error(err)) => {
-                state.is_streaming = false;
-                state.last_error = Some(err);
+                state.agent = None;
+                finish_stream(state, StreamOutcome::default(), Some(err));
                 ctx.request_repaint();
                 return;
             }
@@ -911,8 +1499,12 @@ fn drain_stream(state: &mut AssistantState, ctx: &egui::Context) {
                 break;
             }
             Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-                state.is_streaming = false;
-                state.last_error = Some("Stream connection closed unexpectedly".to_string());
+                state.agent = None;
+                finish_stream(
+                    state,
+                    StreamOutcome::default(),
+                    Some("Stream connection closed unexpectedly".to_string()),
+                );
                 ctx.request_repaint();
                 return;
             }
@@ -1009,14 +1601,31 @@ If cluster context is provided, reference it specifically.";
 
 /// Build the full `messages` array for the next API call, given the
 /// current conversation + optional cluster context.
+/// Plain-chat messages (no tools); the host uses [`build_llm_messages_with`].
+#[cfg(test)]
 pub fn build_llm_messages(
     conversation: &ChatConversation,
     cluster_ctx: Option<&ClusterContext>,
     user_text: &str,
 ) -> Vec<LlmMessage> {
+    build_llm_messages_with(conversation, cluster_ctx, user_text, None)
+}
+
+/// Build the request messages. `tools` is the list of configured cluster names when
+/// tools are offered (adds tool guidance to the system prompt and keeps tool turns),
+/// or `None` to send plain chat (tool turns are dropped).
+pub fn build_llm_messages_with(
+    conversation: &ChatConversation,
+    cluster_ctx: Option<&ClusterContext>,
+    user_text: &str,
+    tools: Option<&[String]>,
+) -> Vec<LlmMessage> {
     let mut out: Vec<LlmMessage> = Vec::with_capacity(conversation.messages.len() + 3);
 
     let mut system = SYSTEM_PROMPT.to_string();
+    if let Some(clusters) = tools {
+        system.push_str(&assistant_tools::system_prompt_addendum(clusters));
+    }
     if let Some(ctx) = cluster_ctx
         && !ctx.summary.is_empty()
     {
@@ -1026,31 +1635,94 @@ pub fn build_llm_messages(
     out.push(LlmMessage {
         role: "system".into(),
         content: system,
+        ..Default::default()
     });
 
-    for m in &conversation.messages {
+    // A tool call is only sent together with its result (a run cancelled mid-way
+    // leaves calls without results, which providers reject).
+    let answered: std::collections::HashSet<&str> = conversation
+        .messages
+        .iter()
+        .filter(|m| m.role == "tool")
+        .filter_map(|m| m.tool_call_id.as_deref())
+        .collect();
+    let mut sent_calls: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+    let user_turn = (!user_text.trim().is_empty()).then(|| ChatMessage {
+        role: "user".into(),
+        content: user_text.to_string(),
+        ..Default::default()
+    });
+    for m in conversation.messages.iter().chain(user_turn.as_ref()) {
+        if m.role == "tool" {
+            let id = m.tool_call_id.clone().unwrap_or_default();
+            if tools.is_some() && sent_calls.contains(&id) {
+                out.push(LlmMessage {
+                    role: "tool".into(),
+                    content: if m.content.is_empty() {
+                        "(empty)".to_string()
+                    } else {
+                        m.content.clone()
+                    },
+                    tool_call_id: Some(id),
+                    ..Default::default()
+                });
+            }
+            continue;
+        }
+        let tool_calls: Vec<ToolCall> = if tools.is_some() {
+            m.tool_calls
+                .iter()
+                .filter(|c| answered.contains(c.id.as_str()))
+                .cloned()
+                .collect()
+        } else {
+            Vec::new()
+        };
+        // Empty turns (the streaming placeholder, or a reply that never arrived)
+        // must not be sent: a trailing empty assistant turn reads as "already
+        // answered" and makes some models stop immediately with no output.
+        if m.content.trim().is_empty() && tool_calls.is_empty() {
+            continue;
+        }
+        // Merge consecutive plain turns from the same speaker (left behind when a
+        // reply failed); several chat templates require strictly alternating roles.
+        if tool_calls.is_empty()
+            && m.role != "system"
+            && let Some(prev) = out.last_mut()
+            && prev.role == m.role
+            && prev.tool_calls.is_empty()
+        {
+            prev.content.push_str("\n\n");
+            prev.content.push_str(&m.content);
+            continue;
+        }
+        sent_calls.extend(tool_calls.iter().map(|c| c.id.clone()));
         out.push(LlmMessage {
             role: m.role.clone(),
             content: m.content.clone(),
+            tool_calls,
+            ..Default::default()
         });
     }
-    out.push(LlmMessage {
-        role: "user".into(),
-        content: user_text.to_string(),
-    });
     out
 }
 
 /// Spawn the streaming call on the tokio runtime and wire it into a channel.
+/// With `tools`, a provider error that mentions tools (a model or server without
+/// tool support) is retried once without them.
 pub fn spawn_stream(
     settings: LlmSettings,
     api_key: Option<String>,
     messages: Vec<LlmMessage>,
+    tools: Option<serde_json::Value>,
 ) -> Receiver<StreamMsg> {
     let (tx, rx): (Sender<StreamMsg>, Receiver<StreamMsg>) = channel();
     tokio::spawn(async move {
+        // No overall timeout: a slow local model may legitimately stream for
+        // minutes (thinking, then answering). Only a stall between chunks fails.
         let client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(120))
+            .read_timeout(std::time::Duration::from_secs(180))
             .connect_timeout(std::time::Duration::from_secs(10))
             // Some local servers (e.g. LM Studio) close idle connections
             // unexpectedly; fresh connections avoid stale-pool decode errors.
@@ -1058,22 +1730,49 @@ pub fn spawn_stream(
             .build()
             .unwrap_or_else(|_| reqwest::Client::new());
 
-        // Forward deltas to the channel.
-        let tx_for_delta = tx.clone();
-        let stream_result = llm::chat_stream(
-            &client,
-            &settings,
-            api_key.as_deref(),
-            &messages,
-            move |delta| {
-                let _ = tx_for_delta.send(StreamMsg::Delta(delta.to_string()));
-            },
-        )
-        .await;
+        let run = |tools: Option<serde_json::Value>| {
+            let tx = tx.clone();
+            let client = client.clone();
+            let settings = settings.clone();
+            let api_key = api_key.clone();
+            let messages = messages.clone();
+            async move {
+                let mut sent_any = false;
+                let result = llm::chat_stream(
+                    &client,
+                    &settings,
+                    api_key.as_deref(),
+                    &messages,
+                    tools.as_ref(),
+                    |delta| {
+                        sent_any = true;
+                        let msg = match delta {
+                            StreamDelta::Content(text) => StreamMsg::Delta(text.to_string()),
+                            StreamDelta::Reasoning(text) => StreamMsg::Reasoning(text.to_string()),
+                        };
+                        let _ = tx.send(msg);
+                    },
+                )
+                .await;
+                (result, sent_any)
+            }
+        };
 
-        match stream_result {
-            Ok(()) => {
-                let _ = tx.send(StreamMsg::Done);
+        let had_tools = tools.is_some();
+        let (mut result, sent_any) = run(tools).await;
+        if had_tools
+            && !sent_any
+            && let Err(e) = &result
+            && format!("{:#}", e).to_lowercase().contains("tool")
+        {
+            tracing::info!("Provider rejected tools, retrying without: {:#}", e);
+            let _ = tx.send(StreamMsg::ToolsUnsupported);
+            result = run(None).await.0;
+        }
+
+        match result {
+            Ok(outcome) => {
+                let _ = tx.send(StreamMsg::DoneWith(outcome));
             }
             Err(e) => {
                 tracing::warn!("AI assistant chat stream failed: {:#}", e);
@@ -1489,6 +2188,7 @@ mod tests {
                 role: "user".into(),
                 content: "earlier".into(),
                 timestamp: chrono::Utc::now(),
+                ..Default::default()
             }],
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
@@ -1498,13 +2198,276 @@ mod tests {
             cluster_name: "foo".into(),
         };
         let msgs = build_llm_messages(&conv, Some(&ctx), "now?");
-        assert_eq!(msgs.len(), 3);
+        assert_eq!(msgs.len(), 2);
         assert_eq!(msgs[0].role, "system");
         assert!(msgs[0].content.contains("Cluster: foo"));
+        // Consecutive user turns are merged so roles alternate.
         assert_eq!(msgs[1].role, "user");
-        assert_eq!(msgs[1].content, "earlier");
-        assert_eq!(msgs[2].role, "user");
-        assert_eq!(msgs[2].content, "now?");
+        assert_eq!(msgs[1].content, "earlier\n\nnow?");
+    }
+
+    #[test]
+    fn build_llm_messages_drops_empty_turns_and_placeholder() {
+        let turn = |role: &str, content: &str| ChatMessage {
+            role: role.into(),
+            content: content.into(),
+            ..Default::default()
+        };
+        // The shape that made LM Studio return nothing: blank replies in the
+        // history and the streaming placeholder at the end.
+        let conv = ChatConversation {
+            messages: vec![
+                turn("user", "hi"),
+                turn("assistant", ""),
+                turn("user", "hello?"),
+                turn("assistant", "Hello!"),
+                turn("user", "are you there?"),
+                turn("assistant", ""),
+            ],
+            ..Default::default()
+        };
+        let msgs = build_llm_messages(&conv, None, "");
+        let roles: Vec<&str> = msgs.iter().map(|m| m.role.as_str()).collect();
+        assert_eq!(roles, ["system", "user", "assistant", "user"]);
+        assert_eq!(msgs[1].content, "hi\n\nhello?");
+        assert_eq!(msgs[3].content, "are you there?");
+        assert!(msgs.iter().all(|m| !m.content.is_empty()));
+    }
+
+    fn call(id: &str, name: &str, args: &str) -> ToolCall {
+        ToolCall {
+            id: id.into(),
+            name: name.into(),
+            arguments: args.into(),
+        }
+    }
+
+    fn state_with_question() -> AssistantState {
+        let mut state = AssistantState::new(LlmSettings::default(), Vec::new());
+        state.new_conversation();
+        let id = state.active_conversation_id.clone().unwrap();
+        let conv = state.active_conversation_mut().unwrap();
+        conv.messages.push(ChatMessage {
+            role: "user".into(),
+            content: "is apac ok? then delete idx".into(),
+            ..Default::default()
+        });
+        conv.messages.push(ChatMessage {
+            role: "assistant".into(),
+            ..Default::default()
+        });
+        state.begin_run(&id, false);
+        state.is_streaming = true;
+        state
+    }
+
+    #[test]
+    fn tool_loop_runs_reads_asks_for_writes_and_continues() {
+        let mut state = state_with_question();
+        let read = call(
+            "r",
+            "es_request",
+            r#"{"cluster":"apac","method":"GET","path":"/_cluster/health"}"#,
+        );
+        let write = call(
+            "w",
+            "es_request",
+            r#"{"cluster":"apac","method":"DELETE","path":"/idx"}"#,
+        );
+        let bad = call("b", "nope", "{}");
+        finish_stream(
+            &mut state,
+            StreamOutcome {
+                finish_reason: Some("tool_calls".into()),
+                tool_calls: vec![read, write, bad],
+            },
+            None,
+        );
+        assert!(!state.is_streaming);
+        let statuses: Vec<ToolStatus> = state
+            .agent
+            .as_ref()
+            .unwrap()
+            .pending
+            .iter()
+            .map(|p| p.status.clone())
+            .collect();
+        assert_eq!(
+            statuses,
+            [
+                ToolStatus::Ready,
+                ToolStatus::AwaitingApproval,
+                ToolStatus::Done
+            ]
+        );
+        // The reply keeps its tool calls even though it has no text.
+        assert_eq!(
+            state
+                .active_conversation()
+                .unwrap()
+                .messages
+                .last()
+                .unwrap()
+                .tool_calls
+                .len(),
+            3
+        );
+
+        // Only the read is handed to the host; the write waits.
+        let ready = state.take_ready_tools();
+        assert_eq!(ready.len(), 1);
+        let (run_id, call_id, _) = &ready[0];
+        state.complete_tool(*run_id, call_id, "{\"status\":\"green\"}".into());
+        state.complete_tool(*run_id + 99, "w", "stale".into()); // other run: ignored
+        state.advance_agent();
+        assert!(!state.continue_requested, "still waiting for approval");
+
+        state.decide("w", false);
+        state.advance_agent();
+        assert!(state.continue_requested);
+        assert!(state.is_streaming);
+        let msgs = &state.active_conversation().unwrap().messages;
+        let tools: Vec<(&str, &str)> = msgs
+            .iter()
+            .filter(|m| m.role == "tool")
+            .map(|m| (m.tool_call_id.as_deref().unwrap(), m.content.as_str()))
+            .collect();
+        assert_eq!(tools[0], ("r", "{\"status\":\"green\"}"));
+        assert!(tools[1].1.contains("declined"));
+        assert!(tools[2].1.starts_with("Error: Unknown tool"));
+        assert_eq!(
+            msgs.last().unwrap().role,
+            "assistant",
+            "new placeholder for the next reply"
+        );
+
+        // What goes to the model: the calls with their results, then no placeholder.
+        let conv = state.active_conversation().unwrap().clone();
+        let sent = build_llm_messages_with(&conv, None, "", Some(&["apac".to_string()]));
+        let roles: Vec<&str> = sent.iter().map(|m| m.role.as_str()).collect();
+        assert_eq!(
+            roles,
+            ["system", "user", "assistant", "tool", "tool", "tool"]
+        );
+        assert_eq!(sent[2].tool_calls.len(), 3);
+        assert!(sent[0].content.contains("Configured clusters: apac"));
+
+        // A final answer without tool calls ends the run.
+        let last = state
+            .active_conversation_mut()
+            .unwrap()
+            .messages
+            .last_mut()
+            .unwrap();
+        last.content = "apac is green; I didn't delete idx.".into();
+        finish_stream(&mut state, StreamOutcome::default(), None);
+        assert!(state.agent.is_none());
+    }
+
+    #[test]
+    fn silent_reply_after_tools_is_not_an_error() {
+        let mut state = state_with_question();
+        finish_stream(
+            &mut state,
+            StreamOutcome {
+                tool_calls: vec![call("t", "open_tab", r#"{"tab":"logs"}"#)],
+                ..Default::default()
+            },
+            None,
+        );
+        let (run, id, _) = state.take_ready_tools().remove(0);
+        state.complete_tool(run, &id, "Opened the Logs tab.".into());
+        state.advance_agent();
+        finish_stream(&mut state, StreamOutcome::default(), None);
+        assert!(state.last_error.is_none());
+        let last = state
+            .active_conversation()
+            .unwrap()
+            .messages
+            .last()
+            .unwrap()
+            .clone();
+        assert_eq!(last.role, "tool", "blank placeholder removed");
+    }
+
+    #[test]
+    fn interrupted_tool_calls_are_not_sent_and_tools_off_drops_tool_turns() {
+        let mut state = state_with_question();
+        finish_stream(
+            &mut state,
+            StreamOutcome {
+                tool_calls: vec![call(
+                    "w",
+                    "es_request",
+                    r#"{"cluster":"a","method":"DELETE","path":"/x"}"#,
+                )],
+                ..Default::default()
+            },
+            None,
+        );
+        state.cancel();
+        assert!(state.agent.is_none());
+        let conv = state.active_conversation().unwrap().clone();
+        // The call never got a result, so the assistant turn (no text) is dropped.
+        let sent = build_llm_messages_with(&conv, None, "", Some(&[]));
+        let roles: Vec<&str> = sent.iter().map(|m| m.role.as_str()).collect();
+        assert_eq!(roles, ["system", "user"]);
+        let plain = build_llm_messages(&conv, None, "");
+        assert!(
+            plain
+                .iter()
+                .all(|m| m.tool_calls.is_empty() && m.role != "tool")
+        );
+    }
+
+    #[test]
+    fn finish_stream_removes_blank_reply_and_explains() {
+        let mut state = AssistantState::new(LlmSettings::default(), Vec::new());
+        state.new_conversation();
+        let conv = state.active_conversation_mut().unwrap();
+        conv.messages.push(ChatMessage {
+            role: "user".into(),
+            content: "hi".into(),
+            ..Default::default()
+        });
+        conv.messages.push(ChatMessage {
+            role: "assistant".into(),
+            ..Default::default()
+        });
+        state.is_streaming = true;
+        finish_stream(
+            &mut state,
+            StreamOutcome {
+                finish_reason: Some("stop".into()),
+                ..Default::default()
+            },
+            None,
+        );
+        assert!(!state.is_streaming);
+        assert!(state.needs_persist);
+        let conv = state.active_conversation_mut().unwrap();
+        assert_eq!(conv.messages.last().unwrap().role, "user");
+        assert!(state.last_error.as_deref().unwrap().contains("empty reply"));
+
+        // Thinking only, cut off at the token limit: the message stays (so the
+        // thinking is visible) and the reason is given.
+        let conv = state.active_conversation_mut().unwrap();
+        conv.messages.push(ChatMessage {
+            role: "assistant".into(),
+            reasoning: "hmm".into(),
+            ..Default::default()
+        });
+        finish_stream(
+            &mut state,
+            StreamOutcome {
+                finish_reason: Some("length".into()),
+                ..Default::default()
+            },
+            None,
+        );
+        let conv = state.active_conversation_mut().unwrap();
+        assert_eq!(conv.messages.last().unwrap().reasoning, "hmm");
+        assert!(state.last_error.as_deref().unwrap().contains("token limit"));
     }
 
     #[test]

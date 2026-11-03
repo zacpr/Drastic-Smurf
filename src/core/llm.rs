@@ -10,10 +10,25 @@ use serde_json::{Value, json};
 
 use crate::core::config::{LlmProviderKind, LlmSettings};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// A function call the model asked for (OpenAI `tool_calls` shape).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolCall {
+    pub id: String,
+    pub name: String,
+    /// JSON-encoded arguments, exactly as the model produced them.
+    pub arguments: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ChatMessage {
     pub role: String,
     pub content: String,
+    /// Tool calls made by an `assistant` message.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tool_calls: Vec<ToolCall>,
+    /// For a `tool` message: the call it answers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_call_id: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -23,22 +38,47 @@ pub struct ChatRequest<'a> {
     pub api_key: Option<&'a str>,
     pub messages: &'a [ChatMessage],
     pub stream: bool,
+    /// OpenAI `tools` array; `None` sends no tools.
+    pub tools: Option<&'a Value>,
+}
+
+fn message_json(m: &ChatMessage) -> Value {
+    let mut v = json!({"role": m.role, "content": m.content});
+    if !m.tool_calls.is_empty() {
+        v["tool_calls"] = m
+            .tool_calls
+            .iter()
+            .map(|c| {
+                json!({
+                    "id": c.id,
+                    "type": "function",
+                    "function": {"name": c.name, "arguments": c.arguments},
+                })
+            })
+            .collect();
+    }
+    if let Some(id) = &m.tool_call_id {
+        v["tool_call_id"] = json!(id);
+    }
+    v
 }
 
 /// Convert our settings into the JSON body for `/chat/completions`.
 pub fn build_request_body(req: &ChatRequest<'_>) -> Value {
-    let messages: Vec<Value> = req
-        .messages
-        .iter()
-        .map(|m| json!({"role": m.role, "content": m.content}))
-        .collect();
+    let messages: Vec<Value> = req.messages.iter().map(message_json).collect();
 
-    json!({
+    let mut body = json!({
         "model": req.settings.model,
         "messages": messages,
         "temperature": req.settings.temperature,
         "stream": req.stream,
-    })
+    });
+    if let Some(tools) = req.tools
+        && tools.as_array().is_some_and(|t| !t.is_empty())
+    {
+        body["tools"] = tools.clone();
+    }
+    body
 }
 
 /// If the user pasted a bare `http://host:port` (no path), assume the API
@@ -141,6 +181,7 @@ pub async fn chat_complete(
         api_key,
         messages,
         stream: false,
+        tools: None,
     };
     let body = build_request_body(&req);
     let mut req_builder = client
@@ -181,14 +222,155 @@ pub async fn chat_complete(
     Ok(content)
 }
 
-/// Stream a chat completion, yielding incremental text deltas.
+/// One incremental piece of a streamed reply.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StreamDelta<'a> {
+    /// Answer text (`delta.content`).
+    Content(&'a str),
+    /// Reasoning ("thinking") text that reasoning models stream before the answer
+    /// (`delta.reasoning_content` in LM Studio/DeepSeek/vLLM, `delta.reasoning` in
+    /// Ollama/OpenRouter).
+    Reasoning(&'a str),
+}
+
+/// How a stream ended.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct StreamOutcome {
+    /// The provider's `finish_reason` (`stop`, `length`, `tool_calls`, ...), when it sent one.
+    pub finish_reason: Option<String>,
+    /// Tool calls assembled from the streamed fragments, in call order.
+    pub tool_calls: Vec<ToolCall>,
+}
+
+/// Merge one chunk's `delta.tool_calls` fragments into `calls`. The id and name
+/// arrive in the first fragment for each `index`; `arguments` arrives in pieces.
+fn accumulate_tool_calls(value: &Value, calls: &mut Vec<ToolCall>) {
+    let Some(fragments) = value
+        .pointer("/choices/0/delta/tool_calls")
+        .or_else(|| value.pointer("/choices/0/message/tool_calls"))
+        .and_then(|v| v.as_array())
+    else {
+        return;
+    };
+    for (pos, fragment) in fragments.iter().enumerate() {
+        let index = fragment
+            .get("index")
+            .and_then(|i| i.as_u64())
+            .map(|i| i as usize)
+            .unwrap_or(pos);
+        while calls.len() <= index {
+            calls.push(ToolCall::default());
+        }
+        let call = &mut calls[index];
+        if let Some(id) = fragment.get("id").and_then(|v| v.as_str())
+            && !id.is_empty()
+        {
+            call.id = id.to_string();
+        }
+        if let Some(function) = fragment.get("function") {
+            if let Some(name) = function.get("name").and_then(|v| v.as_str()) {
+                call.name.push_str(name);
+            }
+            match function.get("arguments") {
+                Some(Value::String(args)) => call.arguments.push_str(args),
+                // Some servers send the arguments as an object rather than a string.
+                Some(args @ Value::Object(_)) => call.arguments = args.to_string(),
+                _ => {}
+            }
+        }
+    }
+}
+
+/// Incremental SSE parser. Buffers raw bytes so multi-byte UTF-8 characters split
+/// across network chunks survive, and accepts both `\n\n` and `\r\n\r\n` framing.
+#[derive(Debug, Default)]
+pub struct SseParser {
+    buffer: Vec<u8>,
+}
+
+/// One parsed SSE event.
+#[derive(Debug, Clone, PartialEq)]
+pub enum SseEvent {
+    Data(Value),
+    Done,
+}
+
+impl SseParser {
+    /// Feed bytes; returns every complete event.
+    pub fn push(&mut self, bytes: &[u8]) -> Vec<SseEvent> {
+        self.buffer.extend_from_slice(bytes);
+        let mut events = Vec::new();
+        while let Some((end, sep)) = find_frame_end(&self.buffer) {
+            let frame: Vec<u8> = self.buffer.drain(..end + sep).collect();
+            parse_frame(&String::from_utf8_lossy(&frame[..end]), &mut events);
+        }
+        events
+    }
+
+    /// Flush a final frame the server didn't terminate with a blank line.
+    pub fn finish(&mut self) -> Vec<SseEvent> {
+        let rest = std::mem::take(&mut self.buffer);
+        let mut events = Vec::new();
+        parse_frame(&String::from_utf8_lossy(&rest), &mut events);
+        events
+    }
+}
+
+fn find_frame_end(buf: &[u8]) -> Option<(usize, usize)> {
+    let lf = buf.windows(2).position(|w| w == b"\n\n").map(|i| (i, 2));
+    let crlf = buf
+        .windows(4)
+        .position(|w| w == b"\r\n\r\n")
+        .map(|i| (i, 4));
+    match (lf, crlf) {
+        (Some(a), Some(b)) => Some(if a.0 <= b.0 { a } else { b }),
+        (a, b) => a.or(b),
+    }
+}
+
+fn parse_frame(frame: &str, events: &mut Vec<SseEvent>) {
+    // Multiple `data:` lines in one event are joined with newlines (SSE spec).
+    let data: Vec<&str> = frame
+        .lines()
+        .filter_map(|line| line.trim_end_matches('\r').strip_prefix("data:"))
+        .map(|d| d.strip_prefix(' ').unwrap_or(d))
+        .collect();
+    if data.is_empty() {
+        return;
+    }
+    let payload = data.join("\n");
+    let payload = payload.trim();
+    if payload == "[DONE]" {
+        events.push(SseEvent::Done);
+    } else if !payload.is_empty() {
+        match serde_json::from_str::<Value>(payload) {
+            Ok(value) => events.push(SseEvent::Data(value)),
+            Err(e) => tracing::debug!("Skipping unparseable SSE payload: {}", e),
+        }
+    }
+}
+
+/// An error object sent inside the stream (LM Studio, OpenRouter and others report
+/// mid-stream failures this way with HTTP 200).
+fn stream_error(value: &Value) -> Option<String> {
+    let err = value.get("error")?;
+    Some(
+        err.get("message")
+            .and_then(|m| m.as_str())
+            .map(|m| m.to_string())
+            .unwrap_or_else(|| err.to_string()),
+    )
+}
+
+/// Stream a chat completion, reporting answer and reasoning deltas as they arrive.
 pub async fn chat_stream(
     client: &reqwest::Client,
     settings: &LlmSettings,
     api_key: Option<&str>,
     messages: &[ChatMessage],
-    mut on_delta: impl FnMut(&str) + Send,
-) -> Result<()> {
+    tools: Option<&Value>,
+    mut on_delta: impl FnMut(StreamDelta<'_>) + Send,
+) -> Result<StreamOutcome> {
     let url = resolve_chat_url(&settings.base_url);
     let kind = classify_kind(settings);
     let req = ChatRequest {
@@ -196,6 +378,7 @@ pub async fn chat_stream(
         api_key,
         messages,
         stream: true,
+        tools,
     };
     let body = build_request_body(&req);
     let mut req_builder = client
@@ -223,43 +406,59 @@ pub async fn chat_stream(
     }
 
     let mut stream = resp.bytes_stream();
-    let mut buffer = String::new();
+    let mut parser = SseParser::default();
+    let mut outcome = StreamOutcome::default();
 
-    while let Some(chunk_res) = stream.next().await {
-        let chunk = chunk_res.context("Error reading stream chunk")?;
-        buffer.push_str(&String::from_utf8_lossy(&chunk));
-
-        while let Some(idx) = buffer.find("\n\n") {
-            let frame: String = buffer.drain(..idx + 2).collect();
-            for line in frame.lines() {
-                let Some(data) = line.strip_prefix("data:") else {
-                    continue;
-                };
-                let data = data.trim_start();
-                if data == "[DONE]" {
-                    return Ok(());
-                }
-                if data.is_empty() {
-                    continue;
-                }
-                match serde_json::from_str::<Value>(data) {
-                    Ok(value) => {
-                        if let Some(delta) = extract_delta(&value)
-                            && !delta.is_empty()
-                        {
-                            on_delta(&delta);
-                        }
-                    }
-                    Err(_err) => {
-                        // Malformed JSON: usually means a frame is split
-                        // across byte boundaries, so wait for more data.
-                    }
-                }
+    let mut handle = |events: Vec<SseEvent>, outcome: &mut StreamOutcome| -> Result<bool> {
+        for event in events {
+            let value = match event {
+                SseEvent::Done => return Ok(true),
+                SseEvent::Data(value) => value,
+            };
+            if let Some(message) = stream_error(&value) {
+                return Err(anyhow!("LLM stream error: {}", truncate(&message, 500)));
+            }
+            if let Some(reason) = value
+                .pointer("/choices/0/finish_reason")
+                .and_then(|v| v.as_str())
+            {
+                outcome.finish_reason = Some(reason.to_string());
+            }
+            accumulate_tool_calls(&value, &mut outcome.tool_calls);
+            if let Some(text) = extract_reasoning(&value)
+                && !text.is_empty()
+            {
+                on_delta(StreamDelta::Reasoning(&text));
+            }
+            if let Some(text) = extract_delta(&value)
+                && !text.is_empty()
+            {
+                on_delta(StreamDelta::Content(&text));
             }
         }
-    }
+        Ok(false)
+    };
 
-    Ok(())
+    let mut done = false;
+    while let Some(chunk_res) = stream.next().await {
+        let chunk = chunk_res.context("Error reading the response stream")?;
+        if handle(parser.push(&chunk), &mut outcome)? {
+            done = true;
+            break;
+        }
+    }
+    if !done {
+        handle(parser.finish(), &mut outcome)?;
+    }
+    // Drop fragments that never got a name; give id-less calls a stable id so the
+    // tool result can be matched back to them.
+    outcome.tool_calls.retain(|c| !c.name.trim().is_empty());
+    for (i, call) in outcome.tool_calls.iter_mut().enumerate() {
+        if call.id.is_empty() {
+            call.id = format!("call_{}", i);
+        }
+    }
+    Ok(outcome)
 }
 
 /// List available models from the provider's `/models` endpoint.
@@ -336,6 +535,16 @@ fn extract_delta(value: &Value) -> Option<String> {
     None
 }
 
+fn extract_reasoning(value: &Value) -> Option<String> {
+    [
+        "/choices/0/delta/reasoning_content",
+        "/choices/0/delta/reasoning",
+    ]
+    .iter()
+    .find_map(|p| value.pointer(p).and_then(|v| v.as_str()))
+    .map(|s| s.to_string())
+}
+
 fn classify_kind(settings: &LlmSettings) -> LlmProviderKind {
     crate::core::config::default_llm_providers()
         .into_iter()
@@ -348,7 +557,11 @@ fn truncate(s: &str, max: usize) -> String {
     if s.len() <= max {
         s.to_string()
     } else {
-        let mut t = s[..max].to_string();
+        let mut cut = max;
+        while !s.is_char_boundary(cut) {
+            cut -= 1;
+        }
+        let mut t = s[..cut].to_string();
         t.push_str("...[truncated]");
         t
     }
@@ -480,6 +693,7 @@ mod tests {
             max_context_chars: 4000,
             auto_cluster_context: true,
             extra_headers: vec![],
+            ..Default::default()
         };
         let h = build_auth_headers(&s, Some("sk-test"), &LlmProviderKind::OpenAiCompatible);
         assert!(
@@ -499,6 +713,7 @@ mod tests {
             max_context_chars: 4000,
             auto_cluster_context: true,
             extra_headers: vec![],
+            ..Default::default()
         };
         let h = build_auth_headers(&s, Some("ghu_x"), &LlmProviderKind::GitHubCopilot);
         assert!(
@@ -516,10 +731,12 @@ mod tests {
             ChatMessage {
                 role: "system".into(),
                 content: "You are helpful".into(),
+                ..Default::default()
             },
             ChatMessage {
                 role: "user".into(),
                 content: "Hi".into(),
+                ..Default::default()
             },
         ];
         let req = ChatRequest {
@@ -527,6 +744,7 @@ mod tests {
             api_key: None,
             messages: &msgs,
             stream: true,
+            tools: None,
         };
         let body = build_request_body(&req);
         assert_eq!(body["model"], "gpt-4o-mini");
@@ -571,6 +789,101 @@ mod tests {
     fn extract_delta_returns_none_when_missing() {
         let v = serde_json::json!({"choices": [{}]});
         assert_eq!(extract_delta(&v), None);
+    }
+
+    #[test]
+    fn sse_parser_handles_split_frames_crlf_and_utf8() {
+        let mut p = SseParser::default();
+        let frame = "data: {\"choices\":[{\"delta\":{\"content\":\"héllo\"}}]}\n\n";
+        let bytes = frame.as_bytes();
+        // Split inside the two-byte 'é'.
+        let cut = frame.find('é').unwrap() + 1;
+        assert!(p.push(&bytes[..cut]).is_empty());
+        let events = p.push(&bytes[cut..]);
+        assert_eq!(events.len(), 1);
+        let SseEvent::Data(v) = &events[0] else {
+            panic!()
+        };
+        assert_eq!(extract_delta(v).as_deref(), Some("héllo"));
+
+        let events = p.push(b"data: {\"a\":1}\r\n\r\ndata: [DONE]\r\n\r\n");
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[1], SseEvent::Done);
+
+        // Unterminated last frame is flushed by finish().
+        assert!(p.push(b"data: {\"b\":2}").is_empty());
+        assert_eq!(p.finish().len(), 1);
+    }
+
+    #[test]
+    fn extracts_reasoning_and_stream_errors() {
+        let v = serde_json::json!({"choices": [{"delta": {"reasoning_content": "hmm"}}]});
+        assert_eq!(extract_reasoning(&v).as_deref(), Some("hmm"));
+        assert_eq!(extract_delta(&v), None);
+        let v = serde_json::json!({"choices": [{"delta": {"reasoning": "ollama"}}]});
+        assert_eq!(extract_reasoning(&v).as_deref(), Some("ollama"));
+        let v = serde_json::json!({"error": {"message": "Context length exceeded"}});
+        assert_eq!(stream_error(&v).as_deref(), Some("Context length exceeded"));
+        let v = serde_json::json!({"error": "boom"});
+        assert_eq!(stream_error(&v).as_deref(), Some("\"boom\""));
+    }
+
+    #[test]
+    fn accumulates_streamed_tool_calls() {
+        // LM Studio's shape: id and name first, then argument fragments.
+        let chunks = [
+            serde_json::json!({"choices":[{"delta":{"tool_calls":[{"index":0,"id":"abc","type":"function","function":{"name":"es_request","arguments":""}}]}}]}),
+            serde_json::json!({"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"cluster\":\"a\","}}]}}]}),
+            serde_json::json!({"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\"path\":\"/\"}"}}]}}]}),
+            serde_json::json!({"choices":[{"delta":{"tool_calls":[{"index":1,"id":"def","function":{"name":"list_clusters","arguments":{}}}]}}]}),
+        ];
+        let mut calls = Vec::new();
+        for c in &chunks {
+            accumulate_tool_calls(c, &mut calls);
+        }
+        assert_eq!(calls.len(), 2);
+        assert_eq!(calls[0].id, "abc");
+        assert_eq!(calls[0].name, "es_request");
+        assert_eq!(calls[0].arguments, "{\"cluster\":\"a\",\"path\":\"/\"}");
+        assert_eq!(calls[1].name, "list_clusters");
+        assert_eq!(calls[1].arguments, "{}");
+    }
+
+    #[test]
+    fn request_body_serialises_tool_turns() {
+        let s = LlmSettings::default();
+        let msgs = vec![
+            ChatMessage {
+                role: "assistant".into(),
+                tool_calls: vec![ToolCall {
+                    id: "abc".into(),
+                    name: "list_clusters".into(),
+                    arguments: "{}".into(),
+                }],
+                ..Default::default()
+            },
+            ChatMessage {
+                role: "tool".into(),
+                content: "[]".into(),
+                tool_call_id: Some("abc".into()),
+                ..Default::default()
+            },
+        ];
+        let tools =
+            serde_json::json!([{"type": "function", "function": {"name": "list_clusters"}}]);
+        let req = ChatRequest {
+            settings: &s,
+            api_key: None,
+            messages: &msgs,
+            stream: true,
+            tools: Some(&tools),
+        };
+        let body = build_request_body(&req);
+        assert_eq!(body["tools"][0]["function"]["name"], "list_clusters");
+        assert_eq!(body["messages"][0]["tool_calls"][0]["id"], "abc");
+        assert_eq!(body["messages"][0]["tool_calls"][0]["type"], "function");
+        assert_eq!(body["messages"][1]["tool_call_id"], "abc");
+        assert!(body["messages"][1].get("tool_calls").is_none());
     }
 
     #[test]

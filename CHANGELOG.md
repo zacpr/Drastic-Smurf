@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.15] - 2026-11-04
+
+### Added
+- Osquery targeting like Kibana's: debounced type-to-search agent picker (scales to thousands of agents), a Groups panel (all agents, platforms, Osquery policies, with counts), and a filterable picker for Kibana Osquery saved queries.
+- Console and God-mode Console presets fill in request and response examples from Elastic's API docs under `####### EXAMPLE n` markers (the preset's own body is Example 0), with Keep one / Remove / Show examples controls and a prompt if examples remain when sending.
+- Preset hover cards link to each API's page in Elastic's online reference.
+- AI Assistant can act in the app through tool calling: list clusters, query them, read the Console, load requests into the Console and switch tabs. Read-only requests run automatically (configurable); anything that can change a cluster waits for approval in the chat.
+- AI Assistant shows reasoning models' thinking in a collapsible section.
+- `scripts/gen_api_examples.py` regenerates the embedded API examples and doc links from Elastic's OpenAPI specs.
+
+### Fixed
+- AI Assistant often showed no reply: every request ended with an empty assistant turn (and failed replies stayed in the history as blanks), which made some models stop immediately. Empty turns are no longer sent, blank replies are explained instead of saved, mid-stream provider errors are shown, long generations are no longer cut off at 120 s, and replies are saved when they finish.
+- Pages whose content grows past the window can now be scrolled.
+- The tab bar's horizontal scroll bar no longer covers the tab labels.
+- "Run SLM Policy Now" preset used POST; the API is PUT.
+
+### Changed
+- World clock "Sydney (APAC)" renamed "APAC (Sydney)" to match the others (existing configs are migrated).
+
 ## [0.5.13] - 2026-11-01
 
 ### Added
