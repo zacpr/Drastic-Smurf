@@ -40,6 +40,12 @@ Grab a pre-built binary from the [Releases](https://github.com/zacpr/a_drastic_s
 | macOS (Intel / Apple Silicon) | `.tar.gz` |
 | Windows (x86_64) | `.msi` or `.zip` |
 
+The Windows MSI creates Start Menu and desktop shortcuts named **Drastic Smurf**
+and displays the app icon in Installed Apps. Uninstalling removes both shortcuts.
+The ZIP download does not create shortcuts.
+The tray, application window, Windows shortcuts, and Linux launcher use a
+cropped character icon. DEB/RPM packages install the Linux launcher icon.
+
 ### Build from source
 
 ```bash
@@ -57,10 +63,10 @@ cargo build --release
 **Linux build deps**
 ```bash
 # Debian/Ubuntu
-sudo apt-get install build-essential pkg-config libdbus-1-dev libwayland-dev libxkbcommon-dev libgtk-3-dev libayatana-appindicator3-dev libxdo-dev
+sudo apt-get install build-essential pkg-config libdbus-1-dev libwayland-dev libxkbcommon-dev libgtk-3-dev libayatana-appindicator3-dev
 
 # Fedora
-sudo dnf install gcc gcc-c++ pkgconf-pkg-config dbus-devel wayland-devel libxkbcommon-devel gtk3-devel libayatana-appindicator-gtk3-devel libxdo-devel
+sudo dnf install gcc gcc-c++ pkgconf-pkg-config dbus-devel wayland-devel libxkbcommon-devel gtk3-devel libayatana-appindicator-gtk3-devel
 ```
 
 Install a current stable Rust toolchain before building. The VS Code Linux build
@@ -107,6 +113,10 @@ read access to the queried indices.
 
 ## Development
 
+Regenerate the shared icon and Windows ICO from the existing artwork with
+`python scripts/gen_icons.py` (requires Pillow). The full artwork inside the
+app is unchanged.
+
 ```bash
 # Check
 cargo check --all-targets
@@ -125,6 +135,10 @@ them to the GitHub Release. A missing package fails the release rather than
 silently publishing without it.
 Both packages declare the dynamically loaded Ayatana AppIndicator runtime
 dependency so tray support also works on a fresh installation.
+The tray's optional `libxdo` feature is disabled: it only implements predefined
+edit-menu actions that the app does not use. This avoids a `libxdo.so.3`
+requirement that cannot be resolved on Fedora 45, which provides `libxdo.so.4`.
+The tray's Show Window/Quit actions and egui clipboard support are unaffected.
 
 ---
 

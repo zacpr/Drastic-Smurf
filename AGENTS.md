@@ -96,8 +96,17 @@ $ cargo run
 
 ### Packaging (requires release binary)
 
+Windows MSI shortcuts (Start Menu and desktop) are defined in `wix/main.wxs`.
+Both shortcuts and the Installed Apps entry use `wix/Product.ico`, generated
+from a head crop of the app's `drastic.png` artwork. Shortcuts are removed on uninstall.
+`assets/drastic-smurf.png` is the shared tray/window and Linux launcher icon.
+Both DEB and RPM install it under the hicolor icon theme. Regenerate the PNG and
+multi-resolution ICO with `python scripts/gen_icons.py` (requires Pillow).
+Keep `"msi"` in cargo-dist's `allow-dirty` list so it preserves the customized
+WiX template instead of rejecting or regenerating its shortcuts and icon.
+
 Linux builds require GTK 3 and Ayatana AppIndicator development packages in
-addition to libxdo, D-Bus, Wayland, xkbcommon, and pkg-config (see README.md). VS Code
+addition to D-Bus, Wayland, xkbcommon, and pkg-config (see README.md). VS Code
 Linux build tasks invoke `cargo` directly; `flatpak-spawn` is not required.
 
 ```bash
@@ -161,6 +170,10 @@ loaded Ayatana AppIndicator runtime dependency explicitly. Keep Linux system
 dependencies in `dist-workspace.toml` and `ci.yml` in sync; the release workflow
 also installs tray dependencies explicitly
 because its cargo-dist matrix dependency-install commands are generated.
+Keep `tray-icon` default features disabled: its optional `libxdo` feature is only
+needed for predefined edit-menu actions, which the app does not use. Enabling it
+makes Ubuntu-built RPMs require `libxdo.so.3`, unavailable on Fedora 45
+(`libxdo.so.4`). Show Window/Quit and egui clipboard support do not need libxdo.
 
 ### Releasing
 
