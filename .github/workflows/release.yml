@@ -141,7 +141,7 @@ jobs:
           ${{ matrix.packages_install }}
       - name: Install Linux tray dependencies
         if: contains(join(matrix.targets, ' '), 'unknown-linux-gnu')
-        run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev libayatana-appindicator3-dev libxdo-dev
+        run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev libayatana-appindicator3-dev
       - name: Build artifacts
         run: |
           # Actually do builds and make zips and whatnot

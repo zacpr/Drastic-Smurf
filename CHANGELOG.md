@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.16] - 2026-11-05
+
+### Added
+- Windows MSI creates Start Menu and desktop shortcuts and displays the app icon in Installed Apps; uninstall removes the shortcuts.
+- Shared transparent character-head icon for the tray, application window, Windows shortcuts, and Linux launcher.
+- Reproducible PNG and multi-resolution Windows ICO generation with `scripts/gen_icons.py`.
+
+### Fixed
+- RPM installation on Fedora 45: disabled the unused tray-menu `libxdo` feature, removing the Ubuntu-built binary's unavailable `libxdo.so.3` dependency.
+- DEB and RPM packages install the application icon in the hicolor icon theme instead of using a generic launcher icon.
+
 ## [0.5.15] - 2026-11-04
 
 ### Added

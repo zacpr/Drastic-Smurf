@@ -198,7 +198,7 @@ fn load_tray_icon() -> Option<(
     tray_icon::menu::MenuId,
     tray_icon::menu::MenuId,
 )> {
-    let icon_bytes = include_bytes!("../drastic.png");
+    let icon_bytes = include_bytes!("../assets/drastic-smurf.png");
     let image = match image::load_from_memory(icon_bytes) {
         Ok(img) => img.into_rgba8(),
         Err(e) => {

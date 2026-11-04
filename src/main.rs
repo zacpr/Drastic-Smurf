@@ -34,6 +34,11 @@ async fn main() -> eframe::Result<()> {
         ])
         .with_min_inner_size([800.0, 600.0]);
 
+    match eframe::icon_data::from_png_bytes(include_bytes!("../assets/drastic-smurf.png")) {
+        Ok(icon) => viewport = viewport.with_icon(icon),
+        Err(error) => tracing::error!("Failed to load application icon: {error}"),
+    }
+
     if let (Some(x), Some(y)) = (config.window_pos_x, config.window_pos_y) {
         viewport = viewport.with_position([x, y]);
     }

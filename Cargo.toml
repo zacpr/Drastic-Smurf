@@ -1,6 +1,6 @@
 [package]
 name = "drastic-smurf"
-version = "0.5.15"
+version = "0.5.16"
 edition = "2024"
 authors = ["Zac <zac@example.com>"]
 description = "Extensible desktop GUI for monitoring and interacting with multiple Elasticsearch clusters"
@@ -27,7 +27,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 webbrowser = "1.2.1"
 rfd = "0.15"
 futures-util = "0.3"
-tray-icon = "0.19"
+tray-icon = { version = "0.19", default-features = false }
 image = { version = "0.25", default-features = false, features = ["png"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
@@ -64,6 +64,7 @@ depends = "$auto, libayatana-appindicator3-1"
 assets = [
     ["target/release/drastic-smurf", "usr/bin/drastic-smurf", "755"],
     ["assets/drastic-smurf.desktop", "usr/share/applications/drastic-smurf.desktop", "644"],
+    ["assets/drastic-smurf.png", "usr/share/icons/hicolor/256x256/apps/drastic-smurf.png", "644"],
 ]
 
 [package.metadata.wix]
@@ -79,6 +80,7 @@ license = "MIT"
 assets = [
     { source = "target/release/drastic-smurf", dest = "/usr/bin/drastic-smurf", mode = "0755" },
     { source = "assets/drastic-smurf.desktop", dest = "/usr/share/applications/drastic-smurf.desktop", mode = "0644" },
+    { source = "assets/drastic-smurf.png", dest = "/usr/share/icons/hicolor/256x256/apps/drastic-smurf.png", mode = "0644" },
 ]
 
 # Tray support loads this library dynamically, bypassing automatic ELF dependency detection.

@@ -126,11 +126,38 @@
                                 Name='drastic-smurf.exe'
                                 DiskId='1'
                                 Source='$(var.CargoTargetBinDir)\drastic-smurf.exe'
-                                KeyPath='yes'/>
+                                KeyPath='yes'>
+                                <Shortcut
+                                    Id='StartMenuShortcut'
+                                    Directory='ApplicationProgramsFolder'
+                                    Name='Drastic Smurf'
+                                    Description='Monitor and interact with Elasticsearch clusters'
+                                    WorkingDirectory='Bin'
+                                    Advertise='yes'
+                                    Icon='ProductICO'
+                                    IconIndex='0'/>
+                                <Shortcut
+                                    Id='DesktopShortcut'
+                                    Directory='DesktopFolder'
+                                    Name='Drastic Smurf'
+                                    Description='Monitor and interact with Elasticsearch clusters'
+                                    WorkingDirectory='Bin'
+                                    Advertise='yes'
+                                    Icon='ProductICO'
+                                    IconIndex='0'/>
+                            </File>
+                            <RemoveFolder
+                                Id='RemoveApplicationProgramsFolder'
+                                Directory='ApplicationProgramsFolder'
+                                On='uninstall'/>
                         </Component>
                     </Directory>
                 </Directory>
             </Directory>
+            <Directory Id='ProgramMenuFolder'>
+                <Directory Id='ApplicationProgramsFolder' Name='Drastic Smurf'/>
+            </Directory>
+            <Directory Id='DesktopFolder'/>
         </Directory>
 
         <Feature
@@ -164,14 +191,8 @@
         <SetProperty Id='ARPINSTALLLOCATION' Value='[APPLICATIONFOLDER]' After='CostFinalize'/>
 
         
-        <!--
-          Uncomment the following `Icon` and `Property` tags to change the product icon.
-
-          The product icon is the graphic that appears in the Add/Remove
-          Programs control panel for the application.
-        -->
-        <!--<Icon Id='ProductICO' SourceFile='wix\Product.ico'/>-->
-        <!--<Property Id='ARPPRODUCTICON' Value='ProductICO' />-->
+        <Icon Id='ProductICO' SourceFile='wix\Product.ico'/>
+        <Property Id='ARPPRODUCTICON' Value='ProductICO'/>
 
         <Property Id='ARPHELPLINK' Value='https://github.com/zacpr/a_drastic_smurf'/>
         

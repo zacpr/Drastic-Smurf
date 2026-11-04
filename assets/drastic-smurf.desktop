@@ -5,4 +5,4 @@ Exec=drastic-smurf
 Type=Application
 Terminal=false
 Categories=System;Monitor;Network;
-Icon=utilities-system-monitor
+Icon=drastic-smurf
