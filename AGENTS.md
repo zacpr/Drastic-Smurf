@@ -104,6 +104,9 @@ Both DEB and RPM install it under the hicolor icon theme. Regenerate the PNG and
 multi-resolution ICO with `python scripts/gen_icons.py` (requires Pillow).
 Keep `"msi"` in cargo-dist's `allow-dirty` list so it preserves the customized
 WiX template instead of rejecting or regenerating its shortcuts and icon.
+The advertised shortcuts' icon identifier must end in `.exe` to match the
+component's executable key file (WiX ICE50), even though its source is an ICO.
+CI's Windows MSI job compiles the app and links the installer with validation enabled.
 
 Linux builds require GTK 3 and Ayatana AppIndicator development packages in
 addition to D-Bus, Wayland, xkbcommon, and pkg-config (see README.md). VS Code

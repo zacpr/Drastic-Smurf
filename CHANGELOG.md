@@ -2,7 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.5.16] - 2026-11-05
+## [0.5.17] - 2026-11-05
+
+Version 0.5.16 was not published because Windows MSI validation failed; this
+release includes its changes and the installer correction.
+
+### Fixed
+- Windows MSI advertised shortcuts use an icon identifier ending in `.exe`, matching the executable key file as required by WiX ICE50 validation.
+
+### Added
+- Windows MSI compilation and validation in PR CI to catch installer failures before releasing.
+
+## [0.5.16] - 2026-11-05 (unpublished)
 
 ### Added
 - Windows MSI creates Start Menu and desktop shortcuts and displays the app icon in Installed Apps; uninstall removes the shortcuts.

@@ -134,7 +134,7 @@
                                     Description='Monitor and interact with Elasticsearch clusters'
                                     WorkingDirectory='Bin'
                                     Advertise='yes'
-                                    Icon='ProductICO'
+                                    Icon='ProductIcon.exe'
                                     IconIndex='0'/>
                                 <Shortcut
                                     Id='DesktopShortcut'
@@ -143,7 +143,7 @@
                                     Description='Monitor and interact with Elasticsearch clusters'
                                     WorkingDirectory='Bin'
                                     Advertise='yes'
-                                    Icon='ProductICO'
+                                    Icon='ProductIcon.exe'
                                     IconIndex='0'/>
                             </File>
                             <RemoveFolder
@@ -191,8 +191,9 @@
         <SetProperty Id='ARPINSTALLLOCATION' Value='[APPLICATIONFOLDER]' After='CostFinalize'/>
 
         
-        <Icon Id='ProductICO' SourceFile='wix\Product.ico'/>
-        <Property Id='ARPPRODUCTICON' Value='ProductICO'/>
+        <!-- Advertised shortcuts require the icon identifier's extension to match the .exe key file (ICE50). -->
+        <Icon Id='ProductIcon.exe' SourceFile='wix\Product.ico'/>
+        <Property Id='ARPPRODUCTICON' Value='ProductIcon.exe'/>
 
         <Property Id='ARPHELPLINK' Value='https://github.com/zacpr/a_drastic_smurf'/>
         
