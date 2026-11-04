@@ -11,6 +11,26 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
+  windows-msi:
+    name: Windows MSI
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build Windows application
+        run: cargo build --locked --profile dist --target x86_64-pc-windows-msvc
+      - name: Validate and link Windows installer
+        shell: pwsh
+        run: |
+          $version = (cargo metadata --no-deps --format-version 1 | ConvertFrom-Json).packages[0].version
+          $bin = Join-Path $PWD "target\x86_64-pc-windows-msvc\dist"
+          $wix = Join-Path $env:WIX "bin"
+          & "$wix\candle.exe" -arch x64 "-dVersion=$version" "-dCargoTargetBinDir=$bin" -out target\installer.wixobj wix\main.wxs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & "$wix\light.exe" -ext WixUIExtension -ext WixUtilExtension -out target\drastic-smurf.msi target\installer.wixobj
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
   check:
     name: Check
     runs-on: ubuntu-latest
