@@ -8,7 +8,7 @@ use serde::de::DeserializeOwned;
 use serde_json::json;
 
 use crate::core::auth;
-use crate::core::config::{CaCert, ClusterConfig};
+use crate::core::config::{AuthMethod, CaCert, ClusterConfig};
 
 #[derive(Debug, thiserror::Error)]
 pub enum EsError {
@@ -24,6 +24,18 @@ pub enum EsError {
     Request(String),
 }
 
+/// Accepts either the base64 `encoded` API key or a raw `id:api_key` pair
+/// and returns the base64 credential for the `ApiKey` Authorization scheme.
+pub fn api_key_credentials(key: &str) -> String {
+    use base64::Engine;
+    let key = key.trim();
+    if key.contains(':') {
+        base64::engine::general_purpose::STANDARD.encode(key)
+    } else {
+        key.to_string()
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct EsClient {
     config: ClusterConfig,
@@ -35,6 +47,17 @@ pub struct EsClient {
 impl EsClient {
     pub fn password(&self) -> &str {
         &self.password
+    }
+
+    /// Attach credentials per the cluster's auth method (Basic or API key).
+    fn apply_auth(&self, req: RequestBuilder) -> RequestBuilder {
+        match self.config.auth_method {
+            AuthMethod::Basic => req.basic_auth(&self.config.username, Some(&self.password)),
+            AuthMethod::ApiKey => req.header(
+                "Authorization",
+                format!("ApiKey {}", api_key_credentials(&self.password)),
+            ),
+        }
     }
     fn build_client(config: &ClusterConfig) -> Result<Client> {
         let mut builder = ClientBuilder::new()
@@ -142,9 +165,7 @@ impl EsClient {
             format!("{}/{}", host_trimmed, path)
         };
         let req = self
-            .client
-            .request(method.clone(), &url)
-            .basic_auth(&self.config.username, Some(&self.password))
+            .apply_auth(self.client.request(method.clone(), &url))
             .header("Content-Type", "application/json");
         (req, method, url)
     }
@@ -674,9 +695,7 @@ impl EsClient {
             format!("{}/{}", base, path)
         };
         let mut req = self
-            .client
-            .request(method.clone(), &url)
-            .basic_auth(&self.config.username, Some(&self.password))
+            .apply_auth(self.client.request(method.clone(), &url))
             .header("kbn-xsrf", "true")
             .header("Content-Type", "application/json");
 
@@ -717,9 +736,7 @@ impl EsClient {
             format!("{}/{}", base, path)
         };
         let mut req = self
-            .client
-            .request(method.clone(), &url)
-            .basic_auth(&self.config.username, Some(&self.password))
+            .apply_auth(self.client.request(method.clone(), &url))
             .header("kbn-xsrf", "true")
             .header("Content-Type", "application/json");
 
@@ -1525,5 +1542,20 @@ mod tests {
             parsed.decider_reasons,
             vec!["node-us-east-1: high watermark reached on this node".to_string()]
         );
+    }
+}
+
+#[cfg(test)]
+mod api_key_tests {
+    use super::api_key_credentials;
+
+    #[test]
+    fn encoded_key_passes_through() {
+        assert_eq!(api_key_credentials("  abc123==  "), "abc123==");
+    }
+
+    #[test]
+    fn id_key_pair_is_base64_encoded() {
+        assert_eq!(api_key_credentials("id:key"), "aWQ6a2V5");
     }
 }

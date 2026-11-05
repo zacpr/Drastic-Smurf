@@ -1,6 +1,6 @@
 use egui::{Ui, Widget};
 
-use crate::core::config::{ClusterConfig, ClusterData};
+use crate::core::config::{AuthMethod, ClusterConfig, ClusterData};
 use crate::ui::theme::Theme;
 use crate::ui::widgets::ConnectionDot;
 
@@ -233,18 +233,35 @@ fn render_edit_form(
     ui.horizontal(|ui| {
         ui.label("Name:");
         ui.text_edit_singleline(&mut form.name);
+        crate::ui::widgets::required_tag(ui, "Required");
     });
     ui.horizontal(|ui| {
         ui.label("Host:");
         ui.text_edit_singleline(&mut form.host);
+        crate::ui::widgets::required_tag(ui, "Required");
     });
     ui.horizontal(|ui| {
-        ui.label("Username:");
-        ui.text_edit_singleline(&mut form.username);
+        ui.label("Auth:");
+        egui::ComboBox::from_id_salt("edit_cluster_auth")
+            .selected_text(form.auth_method.label())
+            .show_ui(ui, |ui| {
+                for m in [AuthMethod::Basic, AuthMethod::ApiKey] {
+                    ui.selectable_value(&mut form.auth_method, m, m.label());
+                }
+            });
     });
+    if form.auth_method == AuthMethod::Basic {
+        ui.horizontal(|ui| {
+            ui.label("Username:");
+            ui.text_edit_singleline(&mut form.username);
+            crate::ui::widgets::required_tag(ui, "Required");
+        });
+    }
     ui.horizontal(|ui| {
-        ui.label("Password:");
+        let (label, tag) = crate::ui::widgets::secret_labels(form.auth_method);
+        ui.label(label);
         ui.add(egui::TextEdit::singleline(&mut state.edit_password).password(true));
+        crate::ui::widgets::required_tag(ui, tag);
     });
     ui.horizontal(|ui| {
         ui.label("Snapshot Repo(s):");
@@ -292,6 +309,7 @@ fn render_edit_form(
     ui.horizontal(|ui| {
         ui.label("Kibana Host:");
         ui.text_edit_singleline(&mut form.kibana_host);
+        crate::ui::widgets::optional_tag(ui);
     });
     if !state.fetched_slm_policies.is_empty() {
         ui.indent("slm_indent", |ui| {
@@ -313,6 +331,7 @@ fn render_edit_form(
     ui.horizontal(|ui| {
         ui.label("HAProxy Host:");
         ui.text_edit_singleline(&mut form.haproxy_host);
+        crate::ui::widgets::optional_tag(ui);
     });
 
     ui.add_space(4.0);
