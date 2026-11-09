@@ -5,21 +5,15 @@ use std::time::{Duration, Instant};
 
 use crate::core::config::ClusterConfig;
 use crate::core::es_client::EsClient;
-use crate::core::ssh_tunnel::SshTunnel;
 
 const SAVE_DEBOUNCE: Duration = Duration::from_secs(5);
 
 #[derive(Debug, Clone)]
-pub struct TunnelInfo {
-    pub local_port: u16,
-    pub pid: u32,
-}
-
-#[derive(Debug, Clone)]
 pub struct ClusterManager {
     clusters: Arc<Mutex<Vec<ClusterConfig>>>,
+    /// SSH-tunnelled clusters' clients own their tunnel (see `EsClient`); dropping a
+    /// cluster's last client clone closes it.
     clients: Arc<Mutex<HashMap<String, EsClient>>>,
-    tunnels: Arc<Mutex<HashMap<String, TunnelInfo>>>,
     cluster_data: Arc<Mutex<HashMap<String, crate::core::config::ClusterData>>>,
     auto_refresh: Arc<Mutex<bool>>,
     refresh_interval_secs: Arc<Mutex<u64>>,
@@ -48,7 +42,6 @@ impl ClusterManager {
         Self {
             clusters: Arc::new(Mutex::new(Vec::new())),
             clients: Arc::new(Mutex::new(HashMap::new())),
-            tunnels: Arc::new(Mutex::new(HashMap::new())),
             cluster_data: Arc::new(Mutex::new(HashMap::new())),
             auto_refresh: Arc::new(Mutex::new(true)),
             refresh_interval_secs: Arc::new(Mutex::new(15)),
@@ -294,13 +287,17 @@ impl ClusterManager {
         }
         {
             let mut clients = self.clients.lock().unwrap();
-            clients.remove(old_name);
+            let previous = clients.remove(old_name);
             let client_result = match password {
                 Some(pw) => EsClient::with_password(&config, pw),
                 None => EsClient::new(&config),
             };
             match client_result {
                 Ok(client) => {
+                    let client = match &previous {
+                        Some(prev) => client.adopt_tunnel(prev),
+                        None => client,
+                    };
                     clients.insert(config.name.clone(), client);
                 }
                 Err(e) => {
@@ -312,9 +309,7 @@ impl ClusterManager {
                 }
             }
         }
-        // Remove old tunnel if name changed
         if old_name != config.name {
-            self.kill_tunnel(old_name);
             // Migrate cluster data to new name
             if let Some(data) = self.get_cluster_data(old_name) {
                 self.set_cluster_data(&config.name, data);
@@ -336,7 +331,6 @@ impl ClusterManager {
             let mut clients = self.clients.lock().unwrap();
             clients.remove(name);
         }
-        self.kill_tunnel(name);
         let _ = crate::core::auth::delete_password(name);
         self.remove_cluster_data(name);
         self.mark_dirty();
@@ -347,6 +341,8 @@ impl ClusterManager {
         self.clients.lock().unwrap().get(name).cloned()
     }
 
+    /// Replaces the cluster's client outright, tunnel included: after "Test", the test's
+    /// freshly opened tunnel becomes the one refreshes use.
     pub fn set_client(&self, name: &str, client: EsClient) {
         self.clients
             .lock()
@@ -360,10 +356,8 @@ impl ClusterManager {
             clusters.iter().find(|c| c.name == name).cloned()
         };
 
-        let existing_password = {
-            let clients = self.clients.lock().unwrap();
-            clients.get(name).map(|c| c.password().to_string())
-        };
+        let previous = self.clients.lock().unwrap().get(name).cloned();
+        let existing_password = previous.as_ref().map(|c| c.password().to_string());
 
         if let Some(config) = config {
             let result = match &existing_password {
@@ -386,6 +380,10 @@ impl ClusterManager {
 
             match result {
                 Ok(client) => {
+                    let client = match &previous {
+                        Some(prev) => client.adopt_tunnel(prev),
+                        None => client,
+                    };
                     let mut clients = self.clients.lock().unwrap();
                     clients.insert(name.to_string(), client);
                     tracing::info!("Successfully rebuilt ES client for '{}'", name);
@@ -529,77 +527,5 @@ impl ClusterManager {
 
     pub fn remove_cluster_data(&self, name: &str) {
         self.cluster_data.lock().unwrap().remove(name);
-    }
-
-    pub async fn ensure_tunnel(&self, name: &str) -> anyhow::Result<()> {
-        // Check if tunnel already exists
-        {
-            let tunnels = self.tunnels.lock().unwrap();
-            if tunnels.contains_key(name) {
-                return Ok(());
-            }
-        }
-
-        let cluster = {
-            let clusters = self.clusters.lock().unwrap();
-            clusters.iter().find(|c| c.name == name).cloned()
-        };
-
-        if let Some(cluster) = cluster
-            && cluster.ssh_tunnel
-            && !cluster.ssh_host.is_empty()
-        {
-            let info = SshTunnel::spawn(&cluster).await?;
-            let protocol = if cluster.host.starts_with("https://") {
-                "https"
-            } else {
-                "http"
-            };
-            let url = format!("{}://127.0.0.1:{}", protocol, info.local_port);
-
-            // Double-check after async op
-            let mut tunnels = self.tunnels.lock().unwrap();
-            if tunnels.contains_key(name) {
-                // Another task already created the tunnel; kill ours
-                SshTunnel::kill_by_pid(info.pid);
-                return Ok(());
-            }
-
-            // Recreate client with tunnel URL, preserving existing password
-            let existing_password = {
-                let clients = self.clients.lock().unwrap();
-                clients.get(name).map(|c| c.password().to_string())
-            };
-            match existing_password {
-                Some(pw) => {
-                    if let Ok(client) = EsClient::with_password(&cluster, &pw) {
-                        let client = client.with_tunnel(&url);
-                        self.clients
-                            .lock()
-                            .unwrap()
-                            .insert(name.to_string(), client);
-                    }
-                }
-                None => {
-                    if let Ok(client) = EsClient::new(&cluster) {
-                        let client = client.with_tunnel(&url);
-                        self.clients
-                            .lock()
-                            .unwrap()
-                            .insert(name.to_string(), client);
-                    }
-                }
-            }
-
-            tunnels.insert(name.to_string(), info);
-        }
-        Ok(())
-    }
-
-    fn kill_tunnel(&self, name: &str) {
-        let mut tunnels = self.tunnels.lock().unwrap();
-        if let Some(info) = tunnels.remove(name) {
-            SshTunnel::kill_by_pid(info.pid);
-        }
     }
 }

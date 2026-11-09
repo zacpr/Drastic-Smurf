@@ -7,7 +7,7 @@ use eframe::egui;
 
 use crate::core::cluster_manager::ClusterManager;
 use crate::core::config::ChatMessage;
-use crate::core::config::{AuthMethod, ClusterConfig};
+use crate::core::config::ClusterConfig;
 use crate::core::es_client::{ClusterHealth, EsClient, LogEntry, LogFieldNames, LogFilters};
 use crate::modules::appearance::{AppearanceState, render_appearance_module};
 use crate::modules::clusters::{ClustersState, render_clusters_module};
@@ -435,12 +435,8 @@ impl DrasticSmurfApp {
             let tx = self.refresh_tx.clone();
             let name = cluster.name.clone();
 
+            // SSH-tunnelled clusters' clients open their tunnel on first request.
             tokio::spawn(async move {
-                // Ensure SSH tunnel is up if configured
-                if let Err(e) = manager.ensure_tunnel(&name).await {
-                    tracing::warn!("SSH tunnel failed for '{}': {}", name, e);
-                }
-
                 // Snapshot refresh
                 let tx2 = tx.clone();
                 let name2 = name.clone();
@@ -1301,8 +1297,9 @@ impl DrasticSmurfApp {
         let default_open = screen_height >= 750.0;
 
         // Calculate the maximum height we want to allocate for the scrollable middle section.
-        // We leave exactly 75 pixels for the bottom status footer.
-        let scroll_max_height = (ui.available_height() - 75.0).max(100.0);
+        // Reserve space for the status footer and app version.
+        let footer_height = 95.0;
+        let scroll_max_height = (ui.available_height() - footer_height).max(100.0);
 
         egui::ScrollArea::vertical()
             .max_height(scroll_max_height)
@@ -1445,7 +1442,7 @@ impl DrasticSmurfApp {
             });
 
         // 4. Spacer to push the footer to the bottom
-        let remaining_space = ui.available_height() - 75.0;
+        let remaining_space = ui.available_height() - footer_height;
         if remaining_space > 0.0 {
             ui.add_space(remaining_space);
         }
@@ -1492,6 +1489,12 @@ impl DrasticSmurfApp {
                 );
             });
         });
+        ui.add_space(4.0);
+        ui.label(
+            egui::RichText::new(concat!("v", env!("CARGO_PKG_VERSION")))
+                .size(10.0)
+                .color(Theme::text_muted()),
+        );
         ui.add_space(12.0); // bottom padding
     }
 
@@ -3233,13 +3236,9 @@ impl DrasticSmurfApp {
         let settings = self.assistant_state.settings.clone();
         let tools = tools_on.then(crate::modules::assistant_tools::tool_specs);
         let send_temperature = self.assistant_state.send_temperature();
-        self.assistant_state.stream_rx = Some(spawn_stream(
-            settings,
-            api_key,
-            messages,
-            tools,
-            send_temperature,
-        ));
+        let (rx, abort) = spawn_stream(settings, api_key, messages, tools, send_temperature);
+        self.assistant_state.stream_rx = Some(rx);
+        self.assistant_state.stream_abort = Some(abort);
         self.assistant_state.is_streaming = true;
         self.assistant_state.last_error = None;
     }
@@ -3470,6 +3469,7 @@ impl DrasticSmurfApp {
         egui::Window::new(title)
             .collapsible(false)
             .resizable(false)
+            .max_width(640.0)
             .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
             .show(ctx, |ui| {
                 ui.set_min_width(400.0);
@@ -3484,34 +3484,11 @@ impl DrasticSmurfApp {
                     ui.text_edit_singleline(&mut self.new_cluster.host);
                     crate::ui::widgets::required_tag(ui, "Required");
                 });
-                ui.horizontal(|ui| {
-                    ui.label("Auth:");
-                    egui::ComboBox::from_id_salt("new_cluster_auth")
-                        .selected_text(self.new_cluster.auth_method.label())
-                        .show_ui(ui, |ui| {
-                            for m in [AuthMethod::Basic, AuthMethod::ApiKey] {
-                                ui.selectable_value(
-                                    &mut self.new_cluster.auth_method,
-                                    m,
-                                    m.label(),
-                                );
-                            }
-                        });
-                });
-                if self.new_cluster.auth_method == AuthMethod::Basic {
-                    ui.horizontal(|ui| {
-                        ui.label("Username:");
-                        ui.text_edit_singleline(&mut self.new_cluster.username);
-                        crate::ui::widgets::required_tag(ui, "Required");
-                    });
-                }
-                ui.horizontal(|ui| {
-                    let (label, tag) =
-                        crate::ui::widgets::secret_labels(self.new_cluster.auth_method);
-                    ui.label(label);
-                    ui.add(egui::TextEdit::singleline(&mut self.new_password).password(true));
-                    crate::ui::widgets::required_tag(ui, tag);
-                });
+                let credentials_valid = crate::modules::clusters::render_auth_fields(
+                    ui,
+                    &mut self.new_cluster,
+                    &mut self.new_password,
+                );
                 ui.horizontal(|ui| {
                     ui.label("Snapshot Repo:");
                     ui.text_edit_singleline(&mut self.new_cluster.snapshot_repo);
@@ -3552,7 +3529,10 @@ impl DrasticSmurfApp {
 
                 ui.add_space(8.0);
                 ui.horizontal(|ui| {
-                    if ui.button("Test Connection").clicked() {
+                    if ui
+                        .add_enabled(credentials_valid, egui::Button::new("Test Connection"))
+                        .clicked()
+                    {
                         let client = EsClient::with_password(&self.new_cluster, &self.new_password);
                         match client {
                             Ok(c) => {
@@ -3574,16 +3554,18 @@ impl DrasticSmurfApp {
                             }
                         }
                     }
-
-                    if let Some(ref result) = self.test_result {
-                        ui.label(result);
-                    }
                 });
+                if let Some(ref result) = self.test_result {
+                    crate::modules::clusters::render_test_result(ui, result);
+                }
 
                 ui.add_space(12.0);
                 let mut save_clicked = false;
                 ui.horizontal(|ui| {
-                    if ui.button("Save").clicked() {
+                    if ui
+                        .add_enabled(credentials_valid, egui::Button::new("Save"))
+                        .clicked()
+                    {
                         save_clicked = true;
                     }
                     if ui.button("Cancel").clicked() {

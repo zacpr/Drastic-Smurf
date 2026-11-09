@@ -362,7 +362,9 @@ pub struct ChatConversation {
 #[serde(rename_all = "snake_case")]
 pub enum AuthMethod {
     #[default]
+    #[serde(alias = "Basic")]
     Basic,
+    #[serde(alias = "ApiKey")]
     ApiKey,
 }
 
@@ -702,6 +704,20 @@ mod tests {
         config.migrate();
         assert_eq!(config.timezone_clocks[0].label, "APAC (Sydney)");
         assert_eq!(config.timezone_clocks[1].label, "Sydney (APAC)");
+    }
+
+    #[test]
+    fn auth_method_accepts_local_and_released_config_values() {
+        for value in ["basic", "Basic"] {
+            let method: AuthMethod = serde_json::from_value(serde_json::json!(value)).unwrap();
+            assert_eq!(method, AuthMethod::Basic);
+            assert_eq!(serde_json::to_value(method).unwrap(), "basic");
+        }
+        for value in ["api_key", "ApiKey"] {
+            let method: AuthMethod = serde_json::from_value(serde_json::json!(value)).unwrap();
+            assert_eq!(method, AuthMethod::ApiKey);
+            assert_eq!(serde_json::to_value(method).unwrap(), "api_key");
+        }
     }
 
     #[test]

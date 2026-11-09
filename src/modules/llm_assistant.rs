@@ -121,6 +121,7 @@ pub struct AssistantState {
     pub draft: String,
     pub mode: PanelMode,
     pub stream_rx: Option<Receiver<StreamMsg>>,
+    pub stream_abort: Option<tokio::task::AbortHandle>,
     pub is_streaming: bool,
     pub last_error: Option<String>,
     /// A reply finished; the host should save conversations.
@@ -173,6 +174,7 @@ impl AssistantState {
             draft: String::new(),
             mode: PanelMode::Chat,
             stream_rx: None,
+            stream_abort: None,
             is_streaming: false,
             last_error: None,
             needs_persist: false,
@@ -207,9 +209,16 @@ impl AssistantState {
     }
 
     pub fn new_conversation(&mut self) {
+        if self.is_streaming || self.agent.is_some() {
+            self.cancel();
+        }
         let now = chrono::Utc::now();
         let conv = ChatConversation {
-            id: format!("conv-{}", now.timestamp_millis()),
+            id: format!(
+                "conv-{}",
+                now.timestamp_nanos_opt()
+                    .unwrap_or_else(|| now.timestamp_millis())
+            ),
             title: "New conversation".to_string(),
             messages: Vec::new(),
             created_at: now,
@@ -220,6 +229,44 @@ impl AssistantState {
         self.active_conversation_id = Some(id);
         self.draft.clear();
         self.last_error = None;
+        self.notice = None;
+    }
+
+    pub fn select_conversation(&mut self, id: &str) {
+        if self.active_conversation_id.as_deref() == Some(id)
+            || !self.conversations.iter().any(|c| c.id == id)
+        {
+            return;
+        }
+        if self.is_streaming || self.agent.is_some() {
+            self.cancel();
+        }
+        self.active_conversation_id = Some(id.to_string());
+        self.draft.clear();
+        self.last_error = None;
+        self.notice = None;
+        self.scroll_to_bottom = true;
+    }
+
+    pub fn take_send_request(&mut self, include_cluster_context: bool) -> Option<SendRequest> {
+        if !self.settings.enabled || self.is_streaming || self.agent.is_some() {
+            return None;
+        }
+        let user_text = self.draft.trim().to_string();
+        if user_text.is_empty() {
+            return None;
+        }
+        if self.active_conversation().is_none() {
+            self.new_conversation();
+        }
+        let conversation_id = self.active_conversation_id.clone()?;
+        self.draft.clear();
+        self.scroll_to_bottom = true;
+        Some(SendRequest {
+            conversation_id,
+            user_text,
+            include_cluster_context,
+        })
     }
 
     /// Whether the next request should offer tools to the model.
@@ -234,7 +281,8 @@ impl AssistantState {
     }
 
     pub fn tools_active(&self) -> bool {
-        self.settings.tools_enabled
+        self.settings.enabled
+            && self.settings.tools_enabled
             && self.tools_unsupported_model.as_deref() != Some(self.settings.model.as_str())
     }
 
@@ -256,6 +304,8 @@ impl AssistantState {
         self.agent = None;
         self.continue_requested = false;
         finish_stream(self, StreamOutcome::default(), None);
+        self.last_error = None;
+        self.notice = Some("Stopped. Requests already sent may still complete.".into());
     }
 
     fn pending_mut(&mut self, call_id: &str) -> Option<&mut PendingTool> {
@@ -286,6 +336,12 @@ impl AssistantState {
     /// Tools ready to run, marked Running. The host executes them and reports each
     /// result through [`AssistantState::complete_tool`] or `tool_tx`.
     pub fn take_ready_tools(&mut self) -> Vec<(u64, String, ToolAction)> {
+        if !self.tools_active() {
+            if self.agent.is_some() {
+                self.cancel();
+            }
+            return Vec::new();
+        }
         let Some(agent) = self.agent.as_mut() else {
             return Vec::new();
         };
@@ -372,6 +428,11 @@ impl AssistantState {
     }
 
     pub fn delete_conversation(&mut self, id: &str) {
+        if self.active_conversation_id.as_deref() == Some(id)
+            && (self.is_streaming || self.agent.is_some())
+        {
+            self.cancel();
+        }
         self.conversations.retain(|c| c.id != id);
         if self.active_conversation_id.as_deref() == Some(id) {
             self.active_conversation_id = self.conversations.first().map(|c| c.id.clone());
@@ -415,8 +476,6 @@ pub fn render_assistant_panel(
 ) {
     // Stream and tool results are drained by the host every frame (see `poll`), so a
     // run keeps going while the dock is closed.
-    drain_models(state, ui.ctx());
-
     let frame = egui::Frame::new()
         .fill(Theme::bg_card())
         .corner_radius(Theme::CARD_ROUNDING)
@@ -553,6 +612,22 @@ fn render_chat(
         if ui.button("➕ New").clicked() {
             *on_new_conversation = true;
         }
+        let mut selected = state.active_conversation_id.clone();
+        let title = state
+            .active_conversation()
+            .map(|c| c.title.as_str())
+            .unwrap_or("Conversations");
+        egui::ComboBox::from_id_salt("assistant_conversations")
+            .width((ui.available_width() - 42.0).clamp(80.0, 180.0))
+            .selected_text(title.chars().take(22).collect::<String>())
+            .show_ui(ui, |ui| {
+                for conv in &state.conversations {
+                    ui.selectable_value(&mut selected, Some(conv.id.clone()), &conv.title);
+                }
+            });
+        if let Some(id) = selected {
+            state.select_conversation(&id);
+        }
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if let Some(conv) = state.active_conversation()
                 && ui
@@ -576,7 +651,7 @@ fn render_chat(
         let mut decisions: Vec<(String, bool)> = Vec::new();
         egui::ScrollArea::vertical()
             .id_salt("assistant_messages_scroll")
-            .max_height(ui.available_height() - 180.0)
+            .max_height((ui.available_height() - 180.0).max(80.0))
             .stick_to_bottom(true)
             .auto_shrink([false, false])
             .show(ui, |ui| {
@@ -670,6 +745,14 @@ fn render_chat(
     ui.add_space(4.0);
 
     ui.horizontal(|ui| {
+        let busy = state.is_streaming || state.agent.is_some();
+        if ui.add_enabled(!busy, egui::Checkbox::new(&mut state.settings.tools_enabled, "App access"))
+            .on_hover_text("Allow requested cluster lookups and app actions. Writes always require approval. Change this after the current run finishes.")
+            .changed()
+        {
+            state.tools_unsupported_model = None;
+            state.notice = None;
+        }
         ui.label(
             egui::RichText::new(format!("→ {}", state.settings.model))
                 .color(Theme::text_muted())
@@ -683,7 +766,8 @@ fn render_chat(
             .desired_width(f32::INFINITY)
             .id_source("assistant_input"),
     );
-    let submit_pressed = ui.input(|i| i.key_pressed(egui::Key::Enter) && i.modifiers.command);
+    let submit_pressed = response.has_focus()
+        && ui.input(|i| i.key_pressed(egui::Key::Enter) && i.modifiers.command);
 
     ui.horizontal(|ui| {
         let send_btn = ui.add_enabled(
@@ -700,22 +784,10 @@ fn render_chat(
         );
         let clicked_send = send_btn.clicked();
 
-        if (clicked_send || submit_pressed)
-            && !state.is_streaming
-            && state.agent.is_none()
-            && let Some(conv_id) = state.active_conversation_id.clone()
-        {
-            let user_text = state.draft.trim().to_string();
-            if !user_text.is_empty() {
-                *on_send = Some(SendRequest {
-                    conversation_id: conv_id,
-                    user_text,
-                    include_cluster_context: state.settings.auto_cluster_context
-                        && !cluster_ctx.summary.is_empty(),
-                });
-                state.draft.clear();
-                state.scroll_to_bottom = true;
-            }
+        if clicked_send || submit_pressed {
+            *on_send = state.take_send_request(
+                state.settings.auto_cluster_context && !cluster_ctx.summary.is_empty(),
+            );
         }
 
         if (state.is_streaming || state.agent.is_some()) && ui.button("✖ Cancel").clicked() {
@@ -1387,6 +1459,9 @@ fn streaming_message(state: &mut AssistantState) -> Option<&mut ChatMessage> {
 /// answer, no thinking and no tool calls is removed, so a blank turn never sits in
 /// the history, and the reason is shown instead.
 fn finish_stream(state: &mut AssistantState, outcome: StreamOutcome, error: Option<String>) {
+    if let Some(abort) = state.stream_abort.take() {
+        abort.abort();
+    }
     state.is_streaming = false;
     state.stream_rx = None;
     state.needs_persist = true;
@@ -1399,7 +1474,7 @@ fn finish_stream(state: &mut AssistantState, outcome: StreamOutcome, error: Opti
         .agent
         .as_ref()
         .is_some_and(|a| Some(&a.conversation_id) == state.active_conversation_id.as_ref());
-    if error.is_none() && !tool_calls.is_empty() && run_matches {
+    if error.is_none() && !tool_calls.is_empty() && run_matches && state.tools_active() {
         let auto_run_reads = state.settings.auto_run_reads;
         if let Some(msg) = streaming_message(state) {
             msg.tool_calls = tool_calls.clone();
@@ -1477,6 +1552,7 @@ fn finish_stream(state: &mut AssistantState, outcome: StreamOutcome, error: Opti
 /// Per-frame update, called by the host whether or not the dock is open: drains the
 /// stream and finished tool results, then moves the tool loop on.
 pub fn poll(state: &mut AssistantState, ctx: &egui::Context) {
+    drain_models(state, ctx);
     drain_stream(state, ctx);
     while let Ok(msg) = state.tool_rx.try_recv() {
         state.complete_tool(msg.run_id, &msg.call_id, msg.result);
@@ -1705,7 +1781,7 @@ pub fn build_llm_messages_with(
     for m in conversation.messages.iter().chain(user_turn.as_ref()) {
         if m.role == "tool" {
             let id = m.tool_call_id.clone().unwrap_or_default();
-            if tools.is_some() && sent_calls.contains(&id) {
+            if sent_calls.contains(&id) {
                 out.push(LlmMessage {
                     role: "tool".into(),
                     content: if m.content.is_empty() {
@@ -1719,15 +1795,12 @@ pub fn build_llm_messages_with(
             }
             continue;
         }
-        let tool_calls: Vec<ToolCall> = if tools.is_some() {
-            m.tool_calls
-                .iter()
-                .filter(|c| answered.contains(c.id.as_str()))
-                .cloned()
-                .collect()
-        } else {
-            Vec::new()
-        };
+        let tool_calls: Vec<ToolCall> = m
+            .tool_calls
+            .iter()
+            .filter(|c| answered.contains(c.id.as_str()))
+            .cloned()
+            .collect();
         // Empty turns (the streaming placeholder, or a reply that never arrived)
         // must not be sent: a trailing empty assistant turn reads as "already
         // answered" and makes some models stop immediately with no output.
@@ -1753,6 +1826,47 @@ pub fn build_llm_messages_with(
             tool_calls,
             ..Default::default()
         });
+    }
+    if tools.is_some() {
+        out
+    } else {
+        plain_chat_messages(&out)
+    }
+}
+
+fn plain_chat_messages(messages: &[LlmMessage]) -> Vec<LlmMessage> {
+    let mut out: Vec<LlmMessage> = Vec::with_capacity(messages.len());
+    let unavailable = "App tools are unavailable for this reply. Treat earlier tool results as historical data; do not claim to execute new actions.";
+    for msg in messages {
+        let mut plain = LlmMessage {
+            role: if msg.role == "tool" {
+                "assistant".into()
+            } else {
+                msg.role.clone()
+            },
+            content: if msg.role == "tool" {
+                format!("Previous app tool result: {}", msg.content)
+            } else {
+                msg.content.clone()
+            },
+            ..Default::default()
+        };
+        if plain.content.trim().is_empty() {
+            continue;
+        }
+        if plain.role == "system" && !plain.content.contains(unavailable) {
+            plain.content.push_str("\n\n");
+            plain.content.push_str(unavailable);
+        }
+        if plain.role != "system"
+            && let Some(prev) = out.last_mut()
+            && prev.role == plain.role
+        {
+            prev.content.push_str("\n\n");
+            prev.content.push_str(&plain.content);
+        } else {
+            out.push(plain);
+        }
     }
     out
 }
@@ -1786,9 +1900,9 @@ pub fn spawn_stream(
     messages: Vec<LlmMessage>,
     tools: Option<serde_json::Value>,
     send_temperature: bool,
-) -> Receiver<StreamMsg> {
+) -> (Receiver<StreamMsg>, tokio::task::AbortHandle) {
     let (tx, rx): (Sender<StreamMsg>, Receiver<StreamMsg>) = channel();
-    tokio::spawn(async move {
+    let task = tokio::spawn(async move {
         // No overall timeout: a slow local model may legitimately stream for
         // minutes (thinking, then answering). Only a stall between chunks fails.
         let client = reqwest::Client::builder()
@@ -1805,7 +1919,11 @@ pub fn spawn_stream(
             let client = client.clone();
             let settings = settings.clone();
             let api_key = api_key.clone();
-            let messages = messages.clone();
+            let messages = if tools.is_some() {
+                messages.clone()
+            } else {
+                plain_chat_messages(&messages)
+            };
             async move {
                 let mut sent_any = false;
                 let result = llm::chat_stream(
@@ -1866,7 +1984,7 @@ pub fn spawn_stream(
             }
         }
     });
-    rx
+    (rx, task.abort_handle())
 }
 
 /// Spawn an async fetch of the provider's `/models` listing.
@@ -2261,6 +2379,163 @@ mod tests {
     }
 
     #[test]
+    fn models_fetch_results_are_polled_without_opening_the_dock() {
+        let mut state = AssistantState::new(LlmSettings::default(), Vec::new());
+        let (tx, rx) = channel();
+        state.models_rx = Some(rx);
+        state.models_status = ModelsStatus::Loading;
+        tx.send(ModelsMsg::Ok(vec!["gpt-4o-mini".into()])).unwrap();
+        poll(&mut state, &egui::Context::default());
+        assert!(matches!(state.models_status, ModelsStatus::Ok(1)));
+        assert_eq!(state.fetched_models, ["gpt-4o-mini"]);
+        assert!(state.models_rx.is_none());
+    }
+
+    #[test]
+    fn models_fetch_errors_are_polled_without_opening_the_dock() {
+        let mut state = AssistantState::new(LlmSettings::default(), Vec::new());
+        let (tx, rx) = channel();
+        state.models_rx = Some(rx);
+        state.models_status = ModelsStatus::Loading;
+        tx.send(ModelsMsg::Err("401 Unauthorized".into())).unwrap();
+        poll(&mut state, &egui::Context::default());
+        assert!(
+            matches!(&state.models_status, ModelsStatus::Error(err) if err == "401 Unauthorized")
+        );
+        assert!(state.models_rx.is_none());
+    }
+
+    #[tokio::test]
+    async fn new_conversation_cancels_stream_and_pending_actions() {
+        let mut state = state_with_question();
+        let old_id = state.active_conversation_id.clone().unwrap();
+        let task = tokio::spawn(std::future::pending::<()>());
+        state.stream_abort = Some(task.abort_handle());
+        state.new_conversation();
+        assert!(task.await.unwrap_err().is_cancelled());
+        assert_ne!(
+            state.active_conversation_id.as_deref(),
+            Some(old_id.as_str())
+        );
+        assert!(state.agent.is_none());
+        assert!(!state.is_streaming);
+        assert!(state.last_error.is_none());
+        state.select_conversation(&old_id);
+        assert_eq!(
+            state.active_conversation_id.as_deref(),
+            Some(old_id.as_str())
+        );
+        assert_eq!(state.active_conversation().unwrap().messages.len(), 1);
+        state.draft = "follow-up".into();
+        state.select_conversation("unknown");
+        assert_eq!(state.draft, "follow-up");
+    }
+
+    #[test]
+    fn cancelled_queued_writes_never_reach_the_host() {
+        let mut state = state_with_question();
+        finish_stream(
+            &mut state,
+            StreamOutcome {
+                tool_calls: vec![call(
+                    "w",
+                    "es_request",
+                    r#"{"cluster":"a","method":"DELETE","path":"/x"}"#,
+                )],
+                ..Default::default()
+            },
+            None,
+        );
+        state.decide("w", true);
+        state.cancel();
+        assert!(state.take_ready_tools().is_empty());
+        assert!(state.last_error.is_none());
+        assert!(state.notice.as_deref().unwrap().starts_with("Stopped"));
+    }
+
+    #[test]
+    fn plain_chat_keeps_tool_results_without_tool_protocol() {
+        let conv = ChatConversation {
+            messages: vec![
+                ChatMessage {
+                    role: "user".into(),
+                    content: "Check the cluster".into(),
+                    ..Default::default()
+                },
+                ChatMessage {
+                    role: "assistant".into(),
+                    tool_calls: vec![call("r", "es_request", "{}")],
+                    ..Default::default()
+                },
+                ChatMessage {
+                    role: "tool".into(),
+                    content: "{\"status\":\"green\"}".into(),
+                    tool_call_id: Some("r".into()),
+                    ..Default::default()
+                },
+                ChatMessage {
+                    role: "user".into(),
+                    content: "What did you find?".into(),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+        let plain = build_llm_messages_with(&conv, None, "", None);
+        assert!(
+            plain
+                .iter()
+                .all(|m| m.role != "tool" && m.tool_calls.is_empty() && m.tool_call_id.is_none())
+        );
+        assert_eq!(
+            plain.iter().map(|m| m.role.as_str()).collect::<Vec<_>>(),
+            ["system", "user", "assistant", "user"]
+        );
+        assert!(plain[2].content.contains("green"));
+        let with_tools = build_llm_messages_with(&conv, None, "", Some(&[]));
+        let retry = plain_chat_messages(&with_tools);
+        assert_eq!(retry[2].content, plain[2].content);
+        assert!(retry[0].content.contains("App tools are unavailable"));
+    }
+
+    #[test]
+    fn first_send_creates_a_conversation_and_preserves_question() {
+        let settings = LlmSettings {
+            enabled: true,
+            ..Default::default()
+        };
+        let mut state = AssistantState::new(settings, Vec::new());
+        state.draft = "  Hello, can you help?  ".into();
+        let req = state.take_send_request(true).unwrap();
+        assert_eq!(req.user_text, "Hello, can you help?");
+        assert!(req.include_cluster_context);
+        assert_eq!(state.active_conversation().unwrap().id, req.conversation_id);
+        assert_eq!(state.conversations.len(), 1);
+        assert!(state.draft.is_empty());
+        assert!(state.scroll_to_bottom);
+    }
+
+    #[test]
+    fn send_requires_enabled_idle_assistant_and_nonempty_question() {
+        let mut state = AssistantState::new(LlmSettings::default(), Vec::new());
+        state.draft = "question".into();
+        assert!(state.take_send_request(false).is_none());
+        state.settings.enabled = true;
+        state.is_streaming = true;
+        assert!(state.take_send_request(false).is_none());
+        assert_eq!(state.draft, "question");
+        state.is_streaming = false;
+        let req = state.take_send_request(false).unwrap();
+        state.begin_run(&req.conversation_id, false);
+        state.draft = "another question".into();
+        assert!(state.take_send_request(false).is_none());
+        state.agent = None;
+        state.draft = "   ".into();
+        assert!(state.take_send_request(false).is_none());
+        assert_eq!(state.conversations.len(), 1);
+    }
+
+    #[test]
     fn cluster_context_truncates_long_output() {
         let long_version = "8.10.0".repeat(20);
         let ctx = build_cluster_context(Some("big"), None, None, Some(&long_version), None, 40);
@@ -2354,7 +2629,13 @@ mod tests {
     }
 
     fn state_with_question() -> AssistantState {
-        let mut state = AssistantState::new(LlmSettings::default(), Vec::new());
+        let mut state = AssistantState::new(
+            LlmSettings {
+                enabled: true,
+                ..Default::default()
+            },
+            Vec::new(),
+        );
         state.new_conversation();
         let id = state.active_conversation_id.clone().unwrap();
         let conv = state.active_conversation_mut().unwrap();
@@ -2473,6 +2754,29 @@ mod tests {
         last.content = "apac is green; I didn't delete idx.".into();
         finish_stream(&mut state, StreamOutcome::default(), None);
         assert!(state.agent.is_none());
+    }
+
+    #[test]
+    fn turning_app_access_off_blocks_queued_tools() {
+        let mut state = state_with_question();
+        finish_stream(
+            &mut state,
+            StreamOutcome {
+                tool_calls: vec![call(
+                    "r",
+                    "es_request",
+                    r#"{"cluster":"a","method":"GET","path":"/"}"#,
+                )],
+                ..Default::default()
+            },
+            None,
+        );
+        state.settings.tools_enabled = false;
+        assert!(state.take_ready_tools().is_empty());
+        assert!(state.agent.is_none());
+        state.settings.tools_enabled = true;
+        state.settings.enabled = false;
+        assert!(!state.tools_active());
     }
 
     #[test]
