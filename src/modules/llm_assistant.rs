@@ -225,7 +225,12 @@ impl AssistantState {
     /// Whether the next request should offer tools to the model.
     /// Whether to send the temperature setting to the current model.
     pub fn send_temperature(&self) -> bool {
-        self.temperature_unsupported_model.as_deref() != Some(self.settings.model.as_str())
+        !self.settings.use_default_temperature && !self.temperature_rejected()
+    }
+
+    /// The current model rejected the temperature setting earlier this session.
+    pub fn temperature_rejected(&self) -> bool {
+        self.temperature_unsupported_model.as_deref() == Some(self.settings.model.as_str())
     }
 
     pub fn tools_active(&self) -> bool {
@@ -1151,13 +1156,38 @@ pub fn render_settings_section(
     ui.add_space(8.0);
     ui.horizontal(|ui| {
         ui.label("Temperature:");
+        let use_default = state.settings.use_default_temperature;
         if ui
-            .add(egui::Slider::new(&mut state.settings.temperature, 0.0..=2.0).step_by(0.05))
+            .add_enabled(
+                !use_default,
+                egui::Slider::new(&mut state.settings.temperature, 0.0..=2.0).step_by(0.05),
+            )
+            .on_hover_text("Lower is more focused and repeatable; higher is more varied.")
+            .changed()
+        {
+            state.last_saved_at = Some(chrono::Utc::now());
+        }
+        if ui
+            .checkbox(&mut state.settings.use_default_temperature, "Model default")
+            .on_hover_text(
+                "Don't send a temperature; the model uses its own default. Reasoning models \
+                 (e.g. OpenAI's o-series and GPT-5+) only accept their default.",
+            )
             .changed()
         {
             state.last_saved_at = Some(chrono::Utc::now());
         }
     });
+    if !state.settings.use_default_temperature && state.temperature_rejected() {
+        ui.label(
+            egui::RichText::new(
+                "This model rejected the temperature setting; its default is being used. \
+                 Tick \"Model default\" to stop trying.",
+            )
+            .color(Theme::warning())
+            .size(10.5),
+        );
+    }
 
     ui.horizontal(|ui| {
         ui.label("Max context chars:");
@@ -2204,6 +2234,19 @@ fn shell_split(input: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn send_temperature_respects_default_and_rejection() {
+        let mut state = AssistantState::new(LlmSettings::default(), Vec::new());
+        assert!(state.send_temperature());
+        state.settings.use_default_temperature = true;
+        assert!(!state.send_temperature());
+        state.settings.use_default_temperature = false;
+        state.temperature_unsupported_model = Some(state.settings.model.clone());
+        assert!(!state.send_temperature());
+        state.settings.model = "another-model".into();
+        assert!(state.send_temperature());
+    }
 
     #[test]
     fn retry_for_temperature_then_tools() {

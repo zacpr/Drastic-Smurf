@@ -143,6 +143,10 @@ pub struct LlmSettings {
     pub model: String,
     #[serde(default = "default_llm_temperature")]
     pub temperature: f32,
+    /// Don't send `temperature`; the model uses its own default. Needed for models
+    /// that reject any other value (e.g. OpenAI reasoning models).
+    #[serde(default)]
+    pub use_default_temperature: bool,
     #[serde(default = "default_llm_max_context_chars")]
     pub max_context_chars: usize,
     #[serde(default = "default_true")]
@@ -176,6 +180,7 @@ impl Default for LlmSettings {
             base_url: "https://api.openai.com/v1".to_string(),
             model: default_llm_model(),
             temperature: default_llm_temperature(),
+            use_default_temperature: false,
             max_context_chars: default_llm_max_context_chars(),
             auto_cluster_context: true,
             extra_headers: Vec::new(),
