@@ -4,11 +4,25 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.5.19] - 2026-11-10
+
+Version 0.5.18 was tagged but not published because GitHub retired the
+`macos-14` runner used for Apple Silicon builds; this release includes its
+changes.
+
 ### Added
+- API key authentication for clusters (base64 encoded key or raw `id:api_key`), alongside Basic auth.
+- Required/optional tags on cluster configuration fields.
+- AI Assistant "Model default" temperature option that never sends `temperature`.
 - AI Assistant conversation picker and visible App access control.
 - Application version displayed at the bottom of the sidebar.
 
+### Changed
+- Apple Silicon (`aarch64-apple-darwin`) release builds run on the `macos-15` runner.
+
 ### Fixed
+- AI Assistant retries without `temperature` when a provider rejects it (e.g. OpenAI reasoning models) and omits it for that model for the rest of the session.
+- AI Assistant provider errors lead with a plain-language cause for quota/billing exhaustion, rate limits and rejected API keys.
 - SSH requests use client-owned, on-demand tunnels with reconnection, correct URL ports, hostname-based TLS verification, and detailed connection logs.
 - Cluster authentication fields share validation and clear credentials when switching authentication methods; API-key headers are marked sensitive and client debug output omits credentials.
 - Cluster configurations saved by the earlier local build accept both legacy and released authentication method values.
