@@ -148,12 +148,15 @@ $ cargo generate-rpm
 
 - **Do not commit credentials.** Passwords and API keys are stored in the OS keyring.
 - Use `directories` crate for config storage (`~/.config/drastic-smurf/` on Linux).
-- **Export JSON never contains passwords.** Exported cluster configs omit credentials; imported clusters require password re-entry.
+- **Export JSON never contains passwords or API keys.** Exported cluster configs omit credentials; imported clusters require credential re-entry.
 - Per-cluster cached module data (status history, tasks cache, snapshot cache, saved queries) is stored in `config.json` alongside cluster configs.
 - Application state flags, including theme choices, VFX toggles, and onboarding tour status (`wizard_completed`), are persisted in `config.json`.
 - TLS verification is on by default; per-cluster override available.
 - Custom CA certificate support is partially implemented (`CaCert::Custom` works; `CaCert::Bundled` is a TODO).
-- Clusters authenticate with username/password or an Elasticsearch API key (base64 `encoded` key or raw `id:api_key`); both secrets live in the OS keyring. Generic `token:` helpers in `auth.rs` remain unused.
+- `ClusterConfig::auth_method` selects Basic (default for legacy configs) or ApiKey (base64 `encoded` key or raw `id:api_key`). Both use the existing `cluster:<name>` keyring credential slot; only the authentication method is persisted. `AuthMethod` writes snake_case values and accepts the earlier local `Basic`/`ApiKey` values. `EsClient::apply_auth` applies the selected auth to Elasticsearch and Kibana requests, marks API-key headers sensitive, and its Debug implementation omits credentials. Generic `token:` helpers in `auth.rs` remain unused.
+- SSH tunnels are owned and shared by client clones, opened on demand, and reopened after process exit. Hostname targets preserve TLS verification; IP targets currently bypass certificate checks. A separate Kibana host is not tunnelled. Keep these boundaries explicit in user-facing documentation.
+- Assistant first-send creates a conversation automatically; the conversation picker selects saved chats and App access controls tool calling. New/switch/delete-active/cancel aborts the stream and discards queued actions, but requests already sent may complete. Tool-free chat converts prior tool results into historical text; JSON completions and SSE are supported. Never send unresolved tool calls or allow queued tools to run after app access is disabled.
+- Model discovery is drained in `llm_assistant::poll` every frame, not only when the assistant dock is rendered, so the main Settings tab receives model lists and errors with the dock closed.
 
 ---
 

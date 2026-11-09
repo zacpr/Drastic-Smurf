@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Added
+- AI Assistant conversation picker and visible App access control.
+- Application version displayed at the bottom of the sidebar.
+
+### Fixed
+- SSH requests use client-owned, on-demand tunnels with reconnection, correct URL ports, hostname-based TLS verification, and detailed connection logs.
+- Cluster authentication fields share validation and clear credentials when switching authentication methods; API-key headers are marked sensitive and client debug output omits credentials.
+- Cluster configurations saved by the earlier local build accept both legacy and released authentication method values.
+- The first assistant message automatically creates a conversation instead of silently doing nothing.
+- Model discovery completes in the main Settings tab even when the assistant dock is closed; provider errors are surfaced instead of leaving the model list loading indefinitely.
+- Tool-free retries remove tool protocol messages while retaining historical results; providers returning JSON completions are supported alongside SSE streaming.
+- Cancelling or changing conversations stops the stream and discards queued tool actions; generated tool-call identifiers are unique across rounds.
+
 ## [0.5.17] - 2026-11-05
 
 Version 0.5.16 was not published because Windows MSI validation failed; this

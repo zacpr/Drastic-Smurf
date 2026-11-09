@@ -18,9 +18,10 @@ A fast, native desktop GUI for monitoring and interacting with multiple Elastics
 | **Elastic Console** | Send raw API requests with saved queries, without re-entering credentials. Picking a preset also fills in request and response examples from Elastic's API docs, under `####### EXAMPLE` marker lines (the preset's own body is Example 0). Keep one example, remove them all, or show them again from the body toolbar; you're prompted if any remain when you send |
 | **God-mode Console** | Run one request across many selected clusters in turn, optionally looping over a list of values via `{{loop_item}}`, or chaining one level by extracting JSON paths from every response (one `*` wildcard, `&&` for multiple columns, e.g. `*&&*.settings.index.lifecycle.name`) into a list fed back via `{{results_item}}` / `{{results_item.N}}`, with labelled per-cluster/per-value results, dry run and write confirmation |
 | **Osquery** | Run live Osquery queries on Fleet agents found by type-to-search, or on groups (all agents, platforms, agent policies), optionally starting from a Kibana saved query, and inspect their status and results |
+| **AI Assistant** | Chat with an OpenAI-compatible model, review saved conversations, and request cluster lookups or app actions with approval required for writes |
 
 - **Multi-cluster** — manage separate credentials and auth per cluster
-- **Secure** — passwords and API keys stored in your OS keyring, never on disk
+- **Secure** — passwords and API keys stored in your OS keyring, never in exported configs
 - **Persistent** — module data (queries, history, cache) survives restarts
 - **Import / Export** — move your cluster config between machines via JSON
 - **SSH Tunnels** — connect through jump hosts automatically
@@ -90,7 +91,23 @@ tasks run `cargo` directly and do not require `flatpak-spawn`.
 4. Click **Test Connection**, then **Save**
 5. Switch between tabs to monitor snapshots, status, tasks, or open the console
 
-Clusters are saved to `~/.config/drastic-smurf/config.json`. Passwords and API keys are stored in your OS keyring. Module data (saved queries, status history, tasks cache, snapshot cache) is stored alongside the config.
+Clusters are saved to `~/.config/drastic-smurf/config.json`. Passwords and API keys are stored in your OS keyring, not in this file or exports. If the keyring is unavailable, credentials remain in memory for the current session only. Module data (saved queries, status history, tasks cache, snapshot cache) is stored alongside the config.
+
+API-key authentication applies to Elasticsearch and the cluster's Kibana host. The key must have the privileges needed by the modules you use, including cluster monitoring for the connection health test. Existing configurations continue to use username/password authentication.
+
+### AI Assistant
+
+Open the assistant's settings, choose a provider and model, set the API key when required, and enable the assistant. The first message creates a conversation automatically; use the conversation picker to return to earlier chats.
+
+**App access** controls tool calling. A compatible model can list clusters, inspect the Console, fetch cluster data, load a request into the Console without sending it, or switch tabs when asked. GET/HEAD requests can run automatically (configurable in settings); other methods always require approval. Models without tool support can still chat.
+
+Cancel, starting a new chat, switching chats, or deleting the active chat stops the reply and discards queued actions. Requests already sent may still complete. Conversation history and tool results are saved in `config.json`; cluster context and approved tool results are sent to the selected provider.
+
+### SSH Connections
+
+SSH tunnels open on demand and reconnect after SSH exits. Configure key-based authentication and host trust in OpenSSH; the app cannot type an SSH password into a terminal prompt. The cluster URL's hostname and port must be reachable from the SSH server. **Test Connection** checks both tunnel startup and Elasticsearch health and shows SSH logs.
+
+Hostname-based HTTPS tunnels preserve SNI, the original Host header, and certificate verification. IP-address targets bypass TLS certificate checks; prefer a hostname matching the certificate. A separate Kibana host is not forwarded by the Elasticsearch tunnel.
 
 For Osquery, configure the cluster's Kibana host and install the Osquery Manager
 integration on the target Fleet agents. The Kibana account needs Fleet agent
@@ -133,6 +150,18 @@ cargo install --locked cargo-deb cargo-generate-rpm
 cargo deb          # Debian/Ubuntu
 cargo generate-rpm # RHEL/Fedora
 ```
+
+### Linux Graphics
+
+A local debug run crashed in Mesa's threaded OpenGL renderer. If this occurs,
+disable threaded OpenGL for that process only:
+
+```bash
+mesa_glthread=false ./target/debug/drastic-smurf
+```
+
+The app started successfully with this workaround; long-term stability is not
+yet verified. It does not change system graphics settings.
 
 Version-tag releases build x86_64 DEB/RPM packages in GitHub Actions and attach
 them to the GitHub Release. A missing package fails the release rather than

@@ -11,7 +11,7 @@ repository = "https://github.com/zacpr/a_drastic_smurf"
 
 egui = "0.31"
 egui_extras = { version = "0.31", features = ["image"] }
-tokio = { version = "1.44", features = ["rt-multi-thread", "sync", "time", "macros", "process"] }
+tokio = { version = "1.44", features = ["rt-multi-thread", "sync", "time", "macros", "process", "net", "io-util"] }
 libc = "0.2"
 reqwest = { version = "0.12", features = ["json", "rustls-tls", "stream"], default-features = false }
 base64 = "0.22"

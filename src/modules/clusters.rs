@@ -11,6 +11,8 @@ pub struct ClustersState {
     pub edit_form: ClusterConfig,
     pub edit_password: String,
     pub test_result: Option<String>,
+    /// The cluster whose "🔌 Test" produced `test_result`; shown under its card.
+    pub tested_cluster: Option<String>,
     pub show_import: bool,
     pub import_path: String,
     pub import_include_data: bool,
@@ -156,6 +158,7 @@ pub fn render_clusters_module(
                                             .flatten()
                                             .unwrap_or_default();
                                         *on_test = Some((cluster.name.clone(), pwd));
+                                        state.tested_cluster = Some(cluster.name.clone());
                                     }
                                 },
                             );
@@ -195,6 +198,11 @@ pub fn render_clusters_module(
                             ui.separator();
                             ui.add_space(8.0);
                             render_edit_form(ui, state, on_save, on_fetch_repos, on_fetch_slm);
+                        } else if state.tested_cluster.as_deref() == Some(cluster.name.as_str())
+                            && let Some(result) = &state.test_result
+                        {
+                            ui.add_space(6.0);
+                            render_test_result(ui, result);
                         }
                     });
 
@@ -240,29 +248,7 @@ fn render_edit_form(
         ui.text_edit_singleline(&mut form.host);
         crate::ui::widgets::required_tag(ui, "Required");
     });
-    ui.horizontal(|ui| {
-        ui.label("Auth:");
-        egui::ComboBox::from_id_salt("edit_cluster_auth")
-            .selected_text(form.auth_method.label())
-            .show_ui(ui, |ui| {
-                for m in [AuthMethod::Basic, AuthMethod::ApiKey] {
-                    ui.selectable_value(&mut form.auth_method, m, m.label());
-                }
-            });
-    });
-    if form.auth_method == AuthMethod::Basic {
-        ui.horizontal(|ui| {
-            ui.label("Username:");
-            ui.text_edit_singleline(&mut form.username);
-            crate::ui::widgets::required_tag(ui, "Required");
-        });
-    }
-    ui.horizontal(|ui| {
-        let (label, tag) = crate::ui::widgets::secret_labels(form.auth_method);
-        ui.label(label);
-        ui.add(egui::TextEdit::singleline(&mut state.edit_password).password(true));
-        crate::ui::widgets::required_tag(ui, tag);
-    });
+    let credentials_valid = render_auth_fields(ui, form, &mut state.edit_password);
     ui.horizontal(|ui| {
         ui.label("Snapshot Repo(s):");
         ui.text_edit_singleline(&mut form.snapshot_repo);
@@ -416,23 +402,15 @@ fn render_edit_form(
     }
 
     if let Some(ref result) = state.test_result {
-        let is_success = result.contains("Connected")
-            || result.contains("connected")
-            || result.contains("Fetched")
-            || result.contains("fetched")
-            || result.contains("successful")
-            || result.contains("Success");
-        let color = if is_success {
-            Theme::success()
-        } else {
-            Theme::danger()
-        };
-        ui.label(egui::RichText::new(result).color(color).size(12.0));
+        render_test_result(ui, result);
     }
 
     ui.add_space(8.0);
     ui.horizontal(|ui| {
-        if ui.button("💾 Save").clicked() {
+        if ui
+            .add_enabled(credentials_valid, egui::Button::new("💾 Save"))
+            .clicked()
+        {
             let old_name = state.editing_cluster.clone();
             *on_save = Some((old_name, form.clone(), state.edit_password.clone()));
             state.editing_cluster = None;
@@ -445,6 +423,83 @@ fn render_edit_form(
             state.test_result = None;
         }
     });
+}
+
+pub fn render_auth_fields(
+    ui: &mut Ui,
+    config: &mut ClusterConfig,
+    credential: &mut String,
+) -> bool {
+    let previous = config.auth_method;
+    ui.horizontal(|ui| {
+        ui.label("Authentication:");
+        ui.selectable_value(
+            &mut config.auth_method,
+            AuthMethod::Basic,
+            AuthMethod::Basic.label(),
+        );
+        ui.selectable_value(
+            &mut config.auth_method,
+            AuthMethod::ApiKey,
+            AuthMethod::ApiKey.label(),
+        );
+    });
+    if config.auth_method != previous {
+        credential.clear();
+    }
+    if config.auth_method == AuthMethod::Basic {
+        ui.horizontal(|ui| {
+            ui.label("Username:");
+            ui.text_edit_singleline(&mut config.username);
+            crate::ui::widgets::required_tag(ui, "Required");
+        });
+    }
+    ui.horizontal(|ui| {
+        let is_key = config.auth_method == AuthMethod::ApiKey;
+        let (label, tag) = crate::ui::widgets::secret_labels(config.auth_method);
+        ui.label(label);
+        ui.add(
+            egui::TextEdit::singleline(credential)
+                .password(true)
+                .hint_text(if is_key {
+                    "Encoded key or id:api_key"
+                } else {
+                    "Password"
+                }),
+        );
+        crate::ui::widgets::required_tag(ui, tag);
+    });
+    config.auth_method == AuthMethod::Basic || !credential.trim().is_empty()
+}
+
+/// A connection test or fetch result, colored by its first line. Long output (SSH logs)
+/// scrolls inside a bounded box instead of growing the page or dialog.
+pub fn render_test_result(ui: &mut Ui, result: &str) {
+    let headline = result.lines().next().unwrap_or_default();
+    let is_success = [
+        "Connected",
+        "connected",
+        "Fetched",
+        "fetched",
+        "successful",
+        "Success",
+    ]
+    .iter()
+    .any(|w| headline.contains(w));
+    let color = if result.starts_with("Testing") || result.starts_with("Fetching") {
+        Theme::text_muted()
+    } else if is_success {
+        Theme::success()
+    } else {
+        Theme::danger()
+    };
+    egui::ScrollArea::vertical()
+        .id_salt("cluster_test_result")
+        .max_height(260.0)
+        .auto_shrink([false, true])
+        .show(ui, |ui| {
+            ui.label(egui::RichText::new(result).color(color).size(12.0));
+        });
 }
 
 fn render_import_section(

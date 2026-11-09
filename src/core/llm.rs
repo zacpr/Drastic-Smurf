@@ -461,8 +461,6 @@ pub async fn chat_stream(
         return Err(anyhow!(describe_api_error(status, &text)));
     }
 
-    let mut stream = resp.bytes_stream();
-    let mut parser = SseParser::default();
     let mut outcome = StreamOutcome::default();
 
     let mut handle = |events: Vec<SseEvent>, outcome: &mut StreamOutcome| -> Result<bool> {
@@ -499,23 +497,46 @@ pub async fn chat_stream(
         Ok(false)
     };
 
-    let mut done = false;
-    while let Some(chunk_res) = stream.next().await {
-        let chunk = chunk_res.context("Error reading the response stream")?;
-        if handle(parser.push(&chunk), &mut outcome)? {
-            done = true;
-            break;
+    let is_json = resp
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| {
+            v.split(';')
+                .next()
+                .unwrap_or_default()
+                .trim()
+                .eq_ignore_ascii_case("application/json")
+        });
+    if is_json {
+        let value = resp
+            .json::<Value>()
+            .await
+            .context("Failed to parse LLM completion JSON")?;
+        handle(vec![SseEvent::Data(value)], &mut outcome)?;
+    } else {
+        let mut stream = resp.bytes_stream();
+        let mut parser = SseParser::default();
+        let mut done = false;
+        while let Some(chunk_res) = stream.next().await {
+            let chunk = chunk_res.context("Error reading the response stream")?;
+            if handle(parser.push(&chunk), &mut outcome)? {
+                done = true;
+                break;
+            }
         }
-    }
-    if !done {
-        handle(parser.finish(), &mut outcome)?;
+        if !done {
+            handle(parser.finish(), &mut outcome)?;
+        }
     }
     // Drop fragments that never got a name; give id-less calls a stable id so the
     // tool result can be matched back to them.
     outcome.tool_calls.retain(|c| !c.name.trim().is_empty());
+    static NEXT_CALL_BATCH: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+    let batch = NEXT_CALL_BATCH.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     for (i, call) in outcome.tool_calls.iter_mut().enumerate() {
         if call.id.is_empty() {
-            call.id = format!("call_{}", i);
+            call.id = format!("call_smurf_{}_{}", batch, i);
         }
     }
     Ok(outcome)
@@ -585,6 +606,7 @@ pub async fn list_models(
 fn extract_delta(value: &Value) -> Option<String> {
     if let Some(s) = value
         .pointer("/choices/0/delta/content")
+        .or_else(|| value.pointer("/choices/0/message/content"))
         .and_then(|v| v.as_str())
     {
         return Some(s.to_string());
@@ -652,6 +674,59 @@ pub fn parse_sse_chunk(chunk: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn chat_stream_accepts_json_answers_and_tool_calls() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base_url = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move {
+            for _ in 0..2 {
+                let (mut socket, _) = listener.accept().await.unwrap();
+                let mut request = [0_u8; 8192];
+                let received = socket.read(&mut request).await.unwrap();
+                assert!(received > 0, "expected an HTTP request");
+                let body = json!({"choices":[{"message":{"content":"Hello!", "tool_calls":[{"function":{"name":"list_clusters", "arguments":"{}"}}]}, "finish_reason":"tool_calls"}]}).to_string();
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                    body.len(),
+                    body
+                );
+                socket.write_all(response.as_bytes()).await.unwrap();
+            }
+        });
+        let settings = LlmSettings {
+            base_url,
+            ..Default::default()
+        };
+        let client = reqwest::Client::builder()
+            .no_proxy()
+            .timeout(std::time::Duration::from_secs(3))
+            .build()
+            .unwrap();
+        let messages = vec![ChatMessage {
+            role: "user".into(),
+            content: "Hello".into(),
+            ..Default::default()
+        }];
+        let mut ids = Vec::new();
+        for _ in 0..2 {
+            let mut answer = String::new();
+            let outcome = chat_stream(&client, &settings, None, &messages, None, true, |delta| {
+                if let StreamDelta::Content(text) = delta {
+                    answer.push_str(text);
+                }
+            })
+            .await
+            .unwrap();
+            assert_eq!(answer, "Hello!");
+            assert_eq!(outcome.finish_reason.as_deref(), Some("tool_calls"));
+            assert_eq!(outcome.tool_calls[0].name, "list_clusters");
+            ids.push(outcome.tool_calls[0].id.clone());
+        }
+        assert_ne!(ids[0], ids[1]);
+        server.await.unwrap();
+    }
 
     #[test]
     fn resolves_openai_base() {

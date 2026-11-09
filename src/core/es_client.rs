@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
-use std::time::Duration;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 use reqwest::{Client, ClientBuilder, RequestBuilder, StatusCode};
@@ -9,6 +10,11 @@ use serde_json::json;
 
 use crate::core::auth;
 use crate::core::config::{AuthMethod, CaCert, ClusterConfig};
+use crate::core::ssh_tunnel::{self, SshTunnel, TunnelError, TunnelTarget};
+
+/// After a tunnel fails to open, requests fail fast with that error for this long instead of
+/// each starting ssh again.
+const TUNNEL_RETRY_COOLDOWN: Duration = Duration::from_secs(10);
 
 #[derive(Debug, thiserror::Error)]
 pub enum EsError {
@@ -36,12 +42,156 @@ pub fn api_key_credentials(key: &str) -> String {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct EsClient {
     config: ClusterConfig,
     client: Client,
     pub(crate) password: String,
-    tunnel_url: Option<String>,
+    /// Set for SSH-tunnelled clusters. Shared by all clones, so one ssh process serves them.
+    tunnel: Option<Arc<TunnelSlot>>,
+}
+
+impl std::fmt::Debug for EsClient {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("EsClient")
+            .field("config", &self.config)
+            .field("tunnel", &self.tunnel)
+            .finish_non_exhaustive()
+    }
+}
+
+/// An SSH-tunnelled cluster's tunnel: opened on first use, reopened when ssh exits.
+struct TunnelSlot {
+    target: TunnelTarget,
+    state: tokio::sync::Mutex<TunnelState>,
+}
+
+#[derive(Default)]
+struct TunnelState {
+    active: Option<ActiveTunnel>,
+    last_failure: Option<(Instant, TunnelError)>,
+}
+
+struct ActiveTunnel {
+    tunnel: SshTunnel,
+    /// Built for this tunnel: resolves the target's domain to the local end of the forward.
+    client: Client,
+}
+
+impl std::fmt::Debug for TunnelSlot {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TunnelSlot")
+            .field("target", &self.target)
+            .finish_non_exhaustive()
+    }
+}
+
+impl TunnelSlot {
+    fn for_config(config: &ClusterConfig) -> Option<Arc<Self>> {
+        if !config.ssh_tunnel || config.ssh_host.trim().is_empty() {
+            return None;
+        }
+        match TunnelTarget::from_host(&config.host) {
+            Ok(target) => Some(Arc::new(Self {
+                target,
+                state: tokio::sync::Mutex::new(TunnelState::default()),
+            })),
+            Err(e) => {
+                tracing::warn!("[{}] SSH tunnel disabled: {}", config.name, e);
+                None
+            }
+        }
+    }
+
+    /// Open (alive, or being opened), so a rebuilt client can keep using it.
+    fn is_usable(&self) -> bool {
+        match self.state.try_lock() {
+            Ok(state) => state.active.as_ref().is_some_and(|a| a.tunnel.is_alive()),
+            Err(_) => true,
+        }
+    }
+
+    /// The tunnel's HTTP client and local port, opening the tunnel if needed. `fresh` closes
+    /// any open tunnel and skips the failure cooldown (used by the connection test).
+    async fn connect(
+        &self,
+        config: &ClusterConfig,
+        fresh: bool,
+    ) -> Result<(Client, u16), TunnelError> {
+        let mut state = self.state.lock().await;
+        if fresh {
+            state.active = None;
+            state.last_failure = None;
+        }
+        if let Some(active) = &state.active {
+            if active.tunnel.is_alive() {
+                return Ok((active.client.clone(), active.tunnel.local_port));
+            }
+            tracing::warn!(
+                "[{}] SSH tunnel closed ({}); reconnecting",
+                config.name,
+                active.tunnel.recent_errors().join(" | ")
+            );
+            state.active = None;
+        }
+        if let Some((at, err)) = &state.last_failure
+            && at.elapsed() < TUNNEL_RETRY_COOLDOWN
+        {
+            return Err(err.clone());
+        }
+
+        let result = match SshTunnel::open(config, &self.target, fresh).await {
+            Ok(tunnel) => {
+                match EsClient::tunnel_http_client(config, &self.target, tunnel.local_port) {
+                    Ok(client) => Ok(ActiveTunnel { tunnel, client }),
+                    Err(e) => Err(TunnelError {
+                        summary: format!("Failed to build HTTP client for the tunnel: {:#}", e),
+                        command: tunnel.command().to_string(),
+                        logs: tunnel.logs(),
+                    }),
+                }
+            }
+            Err(e) => Err(e),
+        };
+        match result {
+            Ok(active) => {
+                let out = (active.client.clone(), active.tunnel.local_port);
+                state.active = Some(active);
+                state.last_failure = None;
+                Ok(out)
+            }
+            Err(err) => {
+                tracing::warn!("[{}] SSH tunnel failed: {}", config.name, err.summary);
+                state.last_failure = Some((Instant::now(), err.clone()));
+                Err(err)
+            }
+        }
+    }
+
+    /// ssh's recent stderr and full log, for error messages.
+    async fn logs(&self) -> (Vec<String>, Vec<String>) {
+        let state = self.state.lock().await;
+        match &state.active {
+            Some(a) => (a.tunnel.recent_errors(), a.tunnel.logs()),
+            None => (Vec::new(), Vec::new()),
+        }
+    }
+}
+
+/// An error with its causes: reqwest's own message ("error sending request for url (…)")
+/// leaves out whether the connection was refused, timed out, or failed TLS.
+fn error_chain(e: &(dyn std::error::Error + 'static)) -> String {
+    let mut out = e.to_string();
+    let mut source = e.source();
+    while let Some(cause) = source {
+        let msg = cause.to_string();
+        if !out.contains(&msg) {
+            out.push_str(": ");
+            out.push_str(&msg);
+        }
+        source = cause.source();
+    }
+    out
 }
 
 impl EsClient {
@@ -53,13 +203,48 @@ impl EsClient {
     fn apply_auth(&self, req: RequestBuilder) -> RequestBuilder {
         match self.config.auth_method {
             AuthMethod::Basic => req.basic_auth(&self.config.username, Some(&self.password)),
-            AuthMethod::ApiKey => req.header(
-                "Authorization",
-                format!("ApiKey {}", api_key_credentials(&self.password)),
-            ),
+            AuthMethod::ApiKey => {
+                let key = self.password.trim();
+                let key = key.strip_prefix("ApiKey ").unwrap_or(key).trim();
+                if reqwest::header::HeaderValue::from_str(key).is_err() {
+                    return req.header(reqwest::header::AUTHORIZATION, key);
+                }
+                let value = format!("ApiKey {}", api_key_credentials(key));
+                match reqwest::header::HeaderValue::from_str(&value) {
+                    Ok(mut value) => {
+                        value.set_sensitive(true);
+                        req.header(reqwest::header::AUTHORIZATION, value)
+                    }
+                    Err(_) => req.header(reqwest::header::AUTHORIZATION, value),
+                }
+            }
         }
     }
     fn build_client(config: &ClusterConfig) -> Result<Client> {
+        Self::client_builder(config)?
+            .build()
+            .context("Failed to build HTTP client")
+    }
+
+    /// The HTTP client for requests through a tunnel. A domain target keeps its name in the
+    /// URL (so SNI and certificate checks work as on a direct connection) and resolves to the
+    /// local end of the forward. An IP target is rewritten to 127.0.0.1, which its
+    /// certificate cannot match, so certificate checks are skipped for it.
+    fn tunnel_http_client(
+        config: &ClusterConfig,
+        target: &TunnelTarget,
+        local_port: u16,
+    ) -> Result<Client> {
+        let mut builder = Self::client_builder(config)?.no_proxy();
+        if target.is_ip {
+            builder = builder.danger_accept_invalid_certs(true);
+        } else {
+            builder = builder.resolve(&target.host, TunnelTarget::local_addr(local_port));
+        }
+        builder.build().context("Failed to build HTTP client")
+    }
+
+    fn client_builder(config: &ClusterConfig) -> Result<ClientBuilder> {
         let mut builder = ClientBuilder::new()
             .timeout(Duration::from_secs(30))
             .connect_timeout(Duration::from_secs(10));
@@ -84,11 +269,11 @@ impl EsClient {
             builder = builder.add_root_certificate(cert);
         }
 
-        if !config.verify_ssl || config.ssh_tunnel {
+        if !config.verify_ssl {
             builder = builder.danger_accept_invalid_certs(true);
         }
 
-        builder.build().context("Failed to build HTTP client")
+        Ok(builder)
     }
 
     pub fn new(config: &ClusterConfig) -> Result<Self> {
@@ -125,7 +310,7 @@ impl EsClient {
             config: config.clone(),
             client,
             password,
-            tunnel_url: None,
+            tunnel: TunnelSlot::for_config(config),
         })
     }
 
@@ -135,13 +320,63 @@ impl EsClient {
             config: config.clone(),
             client,
             password: password.into(),
-            tunnel_url: None,
+            tunnel: TunnelSlot::for_config(config),
         })
     }
 
-    pub fn with_tunnel(mut self, tunnel_url: impl Into<String>) -> Self {
-        self.tunnel_url = Some(tunnel_url.into());
+    /// Keeps `previous`'s open SSH tunnel when this client would open an identical one, so
+    /// rebuilding a client (new password, edited non-SSH settings) doesn't reconnect ssh.
+    pub fn adopt_tunnel(mut self, previous: &EsClient) -> Self {
+        if let (Some(_), Some(prev)) = (&self.tunnel, &previous.tunnel)
+            && Self::same_tunnel(&self.config, &previous.config)
+            && prev.is_usable()
+        {
+            self.tunnel = Some(prev.clone());
+        }
         self
+    }
+
+    fn same_tunnel(a: &ClusterConfig, b: &ClusterConfig) -> bool {
+        a.host.trim() == b.host.trim()
+            && a.ssh_host.trim() == b.ssh_host.trim()
+            && a.ssh_user.trim() == b.ssh_user.trim()
+            && a.ssh_port == b.ssh_port
+            // The tunnel's HTTP client carries the TLS settings.
+            && a.verify_ssl == b.verify_ssl
+            && a.ca_cert == b.ca_cert
+            && a.ca_cert_pem == b.ca_cert_pem
+    }
+
+    /// Sends a request, through the SSH tunnel if it is for a tunnelled cluster's own host.
+    async fn dispatch(&self, req: RequestBuilder) -> Result<reqwest::Response, EsError> {
+        let unreachable = |e: reqwest::Error| EsError::Unreachable(error_chain(&e));
+        let Some(slot) = &self.tunnel else {
+            return req.send().await.map_err(unreachable);
+        };
+        let request = req.build().map_err(|e| EsError::Request(error_chain(&e)))?;
+        if !slot.target.matches(request.url()) {
+            return self.client.execute(request).await.map_err(unreachable);
+        }
+        let (client, local_port) = slot
+            .connect(&self.config, false)
+            .await
+            .map_err(|e| EsError::Unreachable(format!("SSH tunnel failed: {}", e.summary)))?;
+        let request = slot.target.redirect(request, local_port);
+        match client.execute(request).await {
+            Ok(resp) => Ok(resp),
+            Err(e) => {
+                let (recent, _) = slot.logs().await;
+                let mut msg = format!(
+                    "{} (via SSH tunnel {})",
+                    error_chain(&e),
+                    ssh_tunnel::describe(&self.config, &slot.target, local_port)
+                );
+                if !recent.is_empty() {
+                    msg.push_str(&format!("; ssh: {}", recent.join(" | ")));
+                }
+                Err(EsError::Unreachable(msg))
+            }
+        }
     }
 
     fn request(
@@ -149,10 +384,7 @@ impl EsClient {
         method: reqwest::Method,
         path: &str,
     ) -> (RequestBuilder, reqwest::Method, String) {
-        let host = self
-            .tunnel_url
-            .as_deref()
-            .unwrap_or(self.config.host.trim());
+        let host = self.config.host.trim();
         let host = if host.starts_with("http://") || host.starts_with("https://") {
             host.to_string()
         } else {
@@ -195,17 +427,15 @@ impl EsClient {
         };
 
         let start = std::time::Instant::now();
-        let resp = req.send().await.map_err(|e| {
-            let elapsed = start.elapsed();
+        let resp = self.dispatch(req).await.inspect_err(|e| {
             tracing::error!(
                 "[{}] {} {} — FAILED after {}: {}",
                 self.config.name,
                 method,
                 url,
-                elapsed_millis(elapsed),
+                elapsed_millis(start.elapsed()),
                 e
             );
-            EsError::Unreachable(e.to_string())
         })?;
 
         let status = resp.status();
@@ -286,17 +516,15 @@ impl EsClient {
         tracing::info!("[{}] {} {}", self.config.name, method, url);
 
         let start = std::time::Instant::now();
-        let resp = req.send().await.map_err(|e| {
-            let elapsed = start.elapsed();
+        let resp = self.dispatch(req).await.inspect_err(|e| {
             tracing::error!(
                 "[{}] {} {} — FAILED after {}: {}",
                 self.config.name,
                 method,
                 url,
-                elapsed_millis(elapsed),
+                elapsed_millis(start.elapsed()),
                 e
             );
-            EsError::Unreachable(e.to_string())
         })?;
 
         let status = resp.status();
@@ -1178,12 +1406,8 @@ fn truncate(s: &str, max_len: usize) -> String {
 
 impl EsClient {
     pub async fn test_connection_detailed(&self) -> Result<String, String> {
-        use std::process::Stdio;
-        use tokio::io::AsyncBufReadExt;
-
-        if !self.config.ssh_tunnel || self.config.ssh_host.is_empty() {
-            // Direct connection
-            match self.cluster_health().await {
+        let Some(slot) = &self.tunnel else {
+            return match self.cluster_health().await {
                 Ok(h) => Ok(format!(
                     "Connected successfully!\n\n• Cluster: {}\n• Status: {}\n• Nodes: {}\n• Active Shards: {}",
                     h.cluster_name, h.status, h.number_of_nodes, h.active_shards
@@ -1192,184 +1416,40 @@ impl EsClient {
                     "HTTP Request Failed!\n\nError: {}\n\nPossible causes:\n1. Elasticsearch is not running at {}\n2. Incorrect username or password\n3. Network/firewall blocking connection\n4. TLS/SSL verification failed (override available in cluster settings)",
                     e, self.config.host
                 )),
+            };
+        };
+
+        // A fresh, verbose tunnel, so the test reflects the current settings and shows ssh's log.
+        let local_port = match slot.connect(&self.config, true).await {
+            Ok((_, port)) => port,
+            Err(e) => {
+                return Err(format!(
+                    "SSH tunnel failed!\n\n{}\n\nCommand: {}\n\n=== SSH Connection Logs ===\n{}",
+                    e.summary,
+                    e.command,
+                    e.logs.join("\n")
+                ));
             }
-        } else {
-            // SSH tunnel connection
-            let local_port = match Self::find_free_port() {
-                Ok(p) => p,
-                Err(e) => return Err(format!("Failed to find free local port: {}", e)),
-            };
-
-            let es_host = Self::parse_host(&self.config.host);
-            let es_port = Self::parse_port(&self.config.host).unwrap_or(9200);
-
-            let ssh_target = if self.config.ssh_user.is_empty() {
-                self.config.ssh_host.clone()
-            } else {
-                format!("{}@{}", self.config.ssh_user, self.config.ssh_host)
-            };
-
-            let mut cmd = tokio::process::Command::new("ssh");
-            cmd.arg("-N")
-                .arg("-v") // Verbose mode is essential for log output!
-                .arg("-o")
-                .arg("ServerAliveInterval=30")
-                .arg("-o")
-                .arg("ServerAliveCountMax=2")
-                .arg("-o")
-                .arg("ExitOnForwardFailure=yes")
-                .arg("-L")
-                .arg(format!("127.0.0.1:{}:{}:{}", local_port, es_host, es_port))
-                .arg("-p")
-                .arg(self.config.ssh_port.to_string())
-                .arg(&ssh_target)
-                .stdin(Stdio::null())
-                .stdout(Stdio::null())
-                .stderr(Stdio::piped());
-
-            let mut child = match cmd.spawn() {
-                Ok(c) => c,
-                Err(e) => {
-                    return Err(format!(
-                        "Failed to spawn SSH process: {}\nIs 'ssh' installed and in PATH?",
-                        e
-                    ));
-                }
-            };
-
-            let stderr = child.stderr.take().unwrap();
-            let mut reader = tokio::io::BufReader::new(stderr).lines();
-
-            // Collect SSH logs in the background while waiting for connection or timeout
-            let log_lines = std::sync::Arc::new(tokio::sync::Mutex::new(Vec::<String>::new()));
-            let log_lines_clone = log_lines.clone();
-
-            let mut ssh_finished = false;
-            let mut child_exit_status = None;
-
-            // Spawn a task to read stderr logs
-            let log_reader_handle = tokio::spawn(async move {
-                while let Ok(Some(line)) = reader.next_line().await {
-                    let mut logs = log_lines_clone.lock().await;
-                    // Keep the last 100 lines
-                    if logs.len() > 100 {
-                        logs.remove(0);
-                    }
-                    logs.push(line);
-                }
-            });
-
-            // Wait for a few seconds to let SSH establish connection
-            let mut tunnel_ready = false;
-            for _ in 0..15 {
-                // Max 3 seconds (15 * 200ms)
-                tokio::time::sleep(Duration::from_millis(200)).await;
-
-                // Check if child exited early
-                if let Ok(Some(status)) = child.try_wait() {
-                    ssh_finished = true;
-                    child_exit_status = Some(status);
-                    break;
-                }
-
-                // Read current logs to see if connection is established
-                let logs = log_lines.lock().await;
-                let established = logs.iter().any(|line| {
-                    line.contains("Entering interactive session")
-                        || line.contains("Authentication succeeded")
-                        || line.contains("Local connections to")
-                        || line.contains("Local forwarding listening")
-                });
-
-                if established {
-                    tunnel_ready = true;
-                    break;
-                }
-            }
-
-            // If not found in logs but process is still alive, we can also assume it's running
-            if !ssh_finished && !tunnel_ready {
-                tunnel_ready = true;
-            }
-
-            let result = if tunnel_ready {
-                // Build a temporary test client pointing to the tunnel's local port
-                let mut test_config = self.config.clone();
-                let protocol = if self.config.host.starts_with("https://") {
-                    "https"
-                } else {
-                    "http"
-                };
-                test_config.host = format!("{}://127.0.0.1:{}", protocol, local_port);
-
-                if let Ok(test_client) = Self::with_password(&test_config, &self.password) {
-                    // Execute HTTP request
-                    match test_client.cluster_health().await {
-                        Ok(h) => {
-                            let ssh_logs = log_lines.lock().await.join("\n");
-                            Ok(format!(
-                                "Connected successfully through SSH tunnel!\n\n• Cluster: {}\n• Status: {}\n• Nodes: {}\n• Active Shards: {}\n\n=== SSH Connection Logs ===\n{}",
-                                h.cluster_name,
-                                h.status,
-                                h.number_of_nodes,
-                                h.active_shards,
-                                ssh_logs
-                            ))
-                        }
-                        Err(e) => {
-                            let ssh_logs = log_lines.lock().await.join("\n");
-                            Err(format!(
-                                "SSH Tunnel established, but Elasticsearch HTTP request failed!\n\nHTTP Error: {}\n\nPossible causes:\n1. Elasticsearch is not running on target host at {}\n2. Incorrect Elasticsearch credentials\n\n=== SSH Connection Logs ===\n{}",
-                                e, self.config.host, ssh_logs
-                            ))
-                        }
-                    }
-                } else {
-                    Err("Failed to build internal test client".to_string())
-                }
-            } else {
-                let ssh_logs = log_lines.lock().await.join("\n");
-                let exit_desc = match child_exit_status {
-                    Some(status) => format!("SSH exited with status: {}", status),
-                    None => "SSH connection timed out".to_string(),
-                };
-                Err(format!(
-                    "SSH Connection Failed!\n\nReason: {}\n\n=== SSH Connection Logs ===\n{}",
-                    exit_desc, ssh_logs
-                ))
-            };
-
-            // Clean up: abort reader and kill child process
-            log_reader_handle.abort();
-            let _ = child.kill().await;
-
-            result
+        };
+        let route = ssh_tunnel::describe(&self.config, &slot.target, local_port);
+        let health = self.cluster_health().await;
+        let (_, logs) = slot.logs().await;
+        let logs = logs.join("\n");
+        match health {
+            Ok(h) => Ok(format!(
+                "Connected successfully through SSH tunnel!\n\n• Tunnel: {}\n• Cluster: {}\n• Status: {}\n• Nodes: {}\n• Active Shards: {}\n\n=== SSH Connection Logs ===\n{}",
+                route, h.cluster_name, h.status, h.number_of_nodes, h.active_shards, logs
+            )),
+            Err(e) => Err(format!(
+                "SSH tunnel is up, but the Elasticsearch request through it failed!\n\nError: {}\n\nTunnel: {}\n\nPossible causes:\n1. Elasticsearch is not reachable from {} at {}:{} (an https:// host without a port uses 443, http:// uses 80)\n2. Incorrect username or password\n3. TLS/SSL verification failed (override available in cluster settings)\n\n=== SSH Connection Logs ===\n{}",
+                e,
+                route,
+                self.config.ssh_host.trim(),
+                slot.target.host,
+                slot.target.port,
+                logs
+            )),
         }
-    }
-
-    fn find_free_port() -> Result<u16> {
-        let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
-        let port = listener.local_addr()?.port();
-        drop(listener);
-        Ok(port)
-    }
-
-    fn parse_host(host: &str) -> String {
-        let host = host.trim();
-        let host = host
-            .strip_prefix("http://")
-            .or_else(|| host.strip_prefix("https://"))
-            .unwrap_or(host);
-        host.split(':').next().unwrap_or(host).to_string()
-    }
-
-    fn parse_port(host: &str) -> Option<u16> {
-        let host = host.trim();
-        let host = host
-            .strip_prefix("http://")
-            .or_else(|| host.strip_prefix("https://"))
-            .unwrap_or(host);
-        host.split(':').nth(1)?.parse().ok()
     }
 }
 
@@ -1501,6 +1581,67 @@ pub fn parse_allocation_explain(raw: &serde_json::Value) -> AllocationExplain {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn cluster_auth_headers_and_config_roundtrip() {
+        let mut config = ClusterConfig {
+            name: "test".into(),
+            host: "http://example.invalid:9200".into(),
+            username: "user".into(),
+            ..Default::default()
+        };
+        let client = EsClient::with_password(&config, "password").unwrap();
+        let (req, _, _) = client.request(reqwest::Method::GET, "/_cluster/health");
+        let req = req.build().unwrap();
+        assert_eq!(
+            req.headers()[reqwest::header::AUTHORIZATION],
+            "Basic dXNlcjpwYXNzd29yZA=="
+        );
+
+        config.auth_method = AuthMethod::ApiKey;
+        for (key, expected) in [
+            ("encoded-test-key", "encoded-test-key"),
+            ("  ApiKey encoded-test-key  ", "encoded-test-key"),
+            ("id:key", "aWQ6a2V5"),
+            ("ApiKey id:key", "aWQ6a2V5"),
+        ] {
+            let client = EsClient::with_password(&config, key).unwrap();
+            let (req, _, _) = client.request(reqwest::Method::GET, "/_cluster/health");
+            let req = req.build().unwrap();
+            let header = &req.headers()[reqwest::header::AUTHORIZATION];
+            assert_eq!(header, format!("ApiKey {expected}").as_str());
+            assert!(header.is_sensitive());
+            let kibana = client.apply_auth(client.client.get("http://example.invalid/api/status"));
+            assert_eq!(
+                kibana.build().unwrap().headers()[reqwest::header::AUTHORIZATION],
+                header
+            );
+            assert!(!format!("{client:?}").contains(expected));
+        }
+        let serialized = serde_json::to_value(&config).unwrap();
+        assert_eq!(serialized["auth_method"], "api_key");
+        assert!(!serialized.to_string().contains("encoded-test-key"));
+        let mut legacy = serialized;
+        legacy.as_object_mut().unwrap().remove("auth_method");
+        assert_eq!(
+            serde_json::from_value::<ClusterConfig>(legacy)
+                .unwrap()
+                .auth_method,
+            AuthMethod::Basic
+        );
+    }
+
+    #[test]
+    fn api_key_rejects_header_injection() {
+        let config = ClusterConfig {
+            host: "http://example.invalid".into(),
+            auth_method: AuthMethod::ApiKey,
+            ..Default::default()
+        };
+        let client = EsClient::with_password(&config, "key\r\nInjected: value").unwrap();
+        let (req, _, _) = client.request(reqwest::Method::GET, "/");
+        assert!(req.build().is_err());
+    }
 
     #[test]
     fn test_parse_allocation_explain() {
