@@ -40,6 +40,9 @@ pub struct ChatRequest<'a> {
     pub stream: bool,
     /// OpenAI `tools` array; `None` sends no tools.
     pub tools: Option<&'a Value>,
+    /// Send `settings.temperature`. Off for models that only accept their default
+    /// (OpenAI reasoning models reject anything else with a 400).
+    pub send_temperature: bool,
 }
 
 fn message_json(m: &ChatMessage) -> Value {
@@ -70,9 +73,11 @@ pub fn build_request_body(req: &ChatRequest<'_>) -> Value {
     let mut body = json!({
         "model": req.settings.model,
         "messages": messages,
-        "temperature": req.settings.temperature,
         "stream": req.stream,
     });
+    if req.send_temperature {
+        body["temperature"] = json!(req.settings.temperature);
+    }
     if let Some(tools) = req.tools
         && tools.as_array().is_some_and(|t| !t.is_empty())
     {
@@ -182,6 +187,7 @@ pub async fn chat_complete(
         messages,
         stream: false,
         tools: None,
+        send_temperature: true,
     };
     let body = build_request_body(&req);
     let mut req_builder = client
@@ -199,12 +205,7 @@ pub async fn chat_complete(
     let status = resp.status();
     if !status.is_success() {
         let text = resp.text().await.unwrap_or_default();
-        return Err(anyhow!(
-            "LLM API returned {} {}: {}",
-            status.as_u16(),
-            status.canonical_reason().unwrap_or(""),
-            truncate(&text, 500)
-        ));
+        return Err(anyhow!(describe_api_error(status, &text)));
     }
     let parsed: Value = resp
         .json()
@@ -350,6 +351,64 @@ fn parse_frame(frame: &str, events: &mut Vec<SseEvent>) {
     }
 }
 
+/// Plain-language explanation for quota / billing failures, which providers report
+/// with codes like `insufficient_quota` rather than a readable message.
+fn quota_hint(body: &str) -> Option<&'static str> {
+    let lower = body.to_lowercase();
+    [
+        "insufficient_quota",
+        "credit_balance",
+        "no credits",
+        "exceeded your current quota",
+        "billing",
+    ]
+    .iter()
+    .any(|k| lower.contains(k))
+    .then_some(
+        "Your provider account is out of credits or quota. Add credits or check billing \
+             with the provider, then try again",
+    )
+}
+
+/// Turn a failed HTTP response into a readable error: a plain-language lead for the
+/// common cases (quota, rate limit, bad key), then the provider's own message.
+pub fn describe_api_error(status: reqwest::StatusCode, body: &str) -> String {
+    let detail = serde_json::from_str::<Value>(body)
+        .ok()
+        .and_then(|v| stream_error(&v))
+        .unwrap_or_else(|| body.trim().to_string());
+    let lead = match (status.as_u16(), quota_hint(body)) {
+        (_, Some(hint)) => Some(hint.to_string()),
+        (429, None) => {
+            Some("Rate-limited by the provider (429). Wait a moment and try again".to_string())
+        }
+        (401 | 403, None) => Some(format!(
+            "The provider rejected the API key ({}). Check the key in settings",
+            status.as_u16()
+        )),
+        _ => None,
+    };
+    let code = format!(
+        "{} {}",
+        status.as_u16(),
+        status.canonical_reason().unwrap_or("")
+    );
+    match lead {
+        Some(lead) => format!("{}. [{}] {}", lead, code.trim(), truncate(&detail, 500)),
+        None => format!(
+            "LLM API returned {}: {}",
+            code.trim(),
+            truncate(&detail, 500)
+        ),
+    }
+}
+
+/// Whether a failed request was rejected because of the `temperature` parameter
+/// (e.g. "Unsupported value: 'temperature' does not support 0.3 with this model").
+pub fn is_temperature_rejection(error: &str) -> bool {
+    error.to_lowercase().contains("temperature")
+}
+
 /// An error object sent inside the stream (LM Studio, OpenRouter and others report
 /// mid-stream failures this way with HTTP 200).
 fn stream_error(value: &Value) -> Option<String> {
@@ -369,6 +428,7 @@ pub async fn chat_stream(
     api_key: Option<&str>,
     messages: &[ChatMessage],
     tools: Option<&Value>,
+    send_temperature: bool,
     mut on_delta: impl FnMut(StreamDelta<'_>) + Send,
 ) -> Result<StreamOutcome> {
     let url = resolve_chat_url(&settings.base_url);
@@ -379,6 +439,7 @@ pub async fn chat_stream(
         messages,
         stream: true,
         tools,
+        send_temperature,
     };
     let body = build_request_body(&req);
     let mut req_builder = client
@@ -397,12 +458,7 @@ pub async fn chat_stream(
     let status = resp.status();
     if !status.is_success() {
         let text = resp.text().await.unwrap_or_default();
-        return Err(anyhow!(
-            "LLM API returned {} {}: {}",
-            status.as_u16(),
-            status.canonical_reason().unwrap_or(""),
-            truncate(&text, 500)
-        ));
+        return Err(anyhow!(describe_api_error(status, &text)));
     }
 
     let mut stream = resp.bytes_stream();
@@ -416,6 +472,10 @@ pub async fn chat_stream(
                 SseEvent::Data(value) => value,
             };
             if let Some(message) = stream_error(&value) {
+                let message = match quota_hint(&value.to_string()) {
+                    Some(hint) => format!("{} ({})", hint, message),
+                    None => message,
+                };
                 return Err(anyhow!("LLM stream error: {}", truncate(&message, 500)));
             }
             if let Some(reason) = value
@@ -745,8 +805,15 @@ mod tests {
             messages: &msgs,
             stream: true,
             tools: None,
+            send_temperature: true,
         };
         let body = build_request_body(&req);
+        assert!(body.get("temperature").is_some());
+        let body_no_temp = build_request_body(&ChatRequest {
+            send_temperature: false,
+            ..req.clone()
+        });
+        assert!(body_no_temp.get("temperature").is_none());
         assert_eq!(body["model"], "gpt-4o-mini");
         assert_eq!(body["stream"], true);
         assert_eq!(body["messages"].as_array().unwrap().len(), 2);
@@ -877,6 +944,7 @@ mod tests {
             messages: &msgs,
             stream: true,
             tools: Some(&tools),
+            send_temperature: true,
         };
         let body = build_request_body(&req);
         assert_eq!(body["tools"][0]["function"]["name"], "list_clusters");
@@ -884,6 +952,42 @@ mod tests {
         assert_eq!(body["messages"][0]["tool_calls"][0]["type"], "function");
         assert_eq!(body["messages"][1]["tool_call_id"], "abc");
         assert!(body["messages"][1].get("tool_calls").is_none());
+    }
+
+    #[test]
+    fn describes_quota_rate_limit_and_auth_errors() {
+        use reqwest::StatusCode;
+        let quota = r#"{"error":{"message":"You have no credits remaining.","type":"insufficient_quota","code":"credit_balance_exhausted"}}"#;
+        let e = describe_api_error(StatusCode::TOO_MANY_REQUESTS, quota);
+        assert!(
+            e.starts_with("Your provider account is out of credits"),
+            "{e}"
+        );
+        assert!(e.contains("You have no credits remaining."));
+        assert!(
+            !e.contains("\"type\""),
+            "raw JSON should be reduced to the message: {e}"
+        );
+
+        let e = describe_api_error(
+            StatusCode::TOO_MANY_REQUESTS,
+            r#"{"error":{"message":"slow down"}}"#,
+        );
+        assert!(e.starts_with("Rate-limited"), "{e}");
+
+        let e = describe_api_error(StatusCode::UNAUTHORIZED, "bad key");
+        assert!(e.contains("rejected the API key (401)"), "{e}");
+
+        let e = describe_api_error(
+            StatusCode::BAD_REQUEST,
+            r#"{"error":{"message":"Unsupported value: 'temperature' does not support 0.3 with this model."}}"#,
+        );
+        assert!(
+            e.starts_with("LLM API returned 400 Bad Request: Unsupported value"),
+            "{e}"
+        );
+        assert!(is_temperature_rejection(&e));
+        assert!(!is_temperature_rejection("model does not support tools"));
     }
 
     #[test]

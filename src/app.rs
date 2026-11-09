@@ -3232,7 +3232,14 @@ impl DrasticSmurfApp {
 
         let settings = self.assistant_state.settings.clone();
         let tools = tools_on.then(crate::modules::assistant_tools::tool_specs);
-        self.assistant_state.stream_rx = Some(spawn_stream(settings, api_key, messages, tools));
+        let send_temperature = self.assistant_state.send_temperature();
+        self.assistant_state.stream_rx = Some(spawn_stream(
+            settings,
+            api_key,
+            messages,
+            tools,
+            send_temperature,
+        ));
         self.assistant_state.is_streaming = true;
         self.assistant_state.last_error = None;
     }
