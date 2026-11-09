@@ -7,7 +7,7 @@ use eframe::egui;
 
 use crate::core::cluster_manager::ClusterManager;
 use crate::core::config::ChatMessage;
-use crate::core::config::ClusterConfig;
+use crate::core::config::{AuthMethod, ClusterConfig};
 use crate::core::es_client::{ClusterHealth, EsClient, LogEntry, LogFieldNames, LogFilters};
 use crate::modules::appearance::{AppearanceState, render_appearance_module};
 use crate::modules::clusters::{ClustersState, render_clusters_module};
@@ -3232,7 +3232,14 @@ impl DrasticSmurfApp {
 
         let settings = self.assistant_state.settings.clone();
         let tools = tools_on.then(crate::modules::assistant_tools::tool_specs);
-        self.assistant_state.stream_rx = Some(spawn_stream(settings, api_key, messages, tools));
+        let send_temperature = self.assistant_state.send_temperature();
+        self.assistant_state.stream_rx = Some(spawn_stream(
+            settings,
+            api_key,
+            messages,
+            tools,
+            send_temperature,
+        ));
         self.assistant_state.is_streaming = true;
         self.assistant_state.last_error = None;
     }
@@ -3470,30 +3477,55 @@ impl DrasticSmurfApp {
                 ui.horizontal(|ui| {
                     ui.label("Name:");
                     ui.text_edit_singleline(&mut self.new_cluster.name);
+                    crate::ui::widgets::required_tag(ui, "Required");
                 });
                 ui.horizontal(|ui| {
                     ui.label("Host:");
                     ui.text_edit_singleline(&mut self.new_cluster.host);
+                    crate::ui::widgets::required_tag(ui, "Required");
                 });
                 ui.horizontal(|ui| {
-                    ui.label("Username:");
-                    ui.text_edit_singleline(&mut self.new_cluster.username);
+                    ui.label("Auth:");
+                    egui::ComboBox::from_id_salt("new_cluster_auth")
+                        .selected_text(self.new_cluster.auth_method.label())
+                        .show_ui(ui, |ui| {
+                            for m in [AuthMethod::Basic, AuthMethod::ApiKey] {
+                                ui.selectable_value(
+                                    &mut self.new_cluster.auth_method,
+                                    m,
+                                    m.label(),
+                                );
+                            }
+                        });
                 });
+                if self.new_cluster.auth_method == AuthMethod::Basic {
+                    ui.horizontal(|ui| {
+                        ui.label("Username:");
+                        ui.text_edit_singleline(&mut self.new_cluster.username);
+                        crate::ui::widgets::required_tag(ui, "Required");
+                    });
+                }
                 ui.horizontal(|ui| {
-                    ui.label("Password:");
+                    let (label, tag) =
+                        crate::ui::widgets::secret_labels(self.new_cluster.auth_method);
+                    ui.label(label);
                     ui.add(egui::TextEdit::singleline(&mut self.new_password).password(true));
+                    crate::ui::widgets::required_tag(ui, tag);
                 });
                 ui.horizontal(|ui| {
                     ui.label("Snapshot Repo:");
                     ui.text_edit_singleline(&mut self.new_cluster.snapshot_repo);
+                    crate::ui::widgets::optional_tag(ui);
                 });
                 ui.horizontal(|ui| {
                     ui.label("SLM Policy:");
                     ui.text_edit_singleline(&mut self.new_cluster.slm_policy);
+                    crate::ui::widgets::optional_tag(ui);
                 });
                 ui.horizontal(|ui| {
                     ui.label("Kibana Host:");
                     ui.text_edit_singleline(&mut self.new_cluster.kibana_host);
+                    crate::ui::widgets::optional_tag(ui);
                 });
                 ui.checkbox(&mut self.new_cluster.verify_ssl, "Verify SSL");
 

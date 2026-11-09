@@ -143,6 +143,10 @@ pub struct LlmSettings {
     pub model: String,
     #[serde(default = "default_llm_temperature")]
     pub temperature: f32,
+    /// Don't send `temperature`; the model uses its own default. Needed for models
+    /// that reject any other value (e.g. OpenAI reasoning models).
+    #[serde(default)]
+    pub use_default_temperature: bool,
     #[serde(default = "default_llm_max_context_chars")]
     pub max_context_chars: usize,
     #[serde(default = "default_true")]
@@ -176,6 +180,7 @@ impl Default for LlmSettings {
             base_url: "https://api.openai.com/v1".to_string(),
             model: default_llm_model(),
             temperature: default_llm_temperature(),
+            use_default_temperature: false,
             max_context_chars: default_llm_max_context_chars(),
             auto_cluster_context: true,
             extra_headers: Vec::new(),
@@ -351,11 +356,32 @@ pub struct ChatConversation {
     pub updated_at: chrono::DateTime<chrono::Utc>,
 }
 
+/// How a cluster authenticates. For `ApiKey` the secret kept in the keyring is the
+/// Elasticsearch API key (the base64 `encoded` value, or `id:api_key`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum AuthMethod {
+    #[default]
+    Basic,
+    ApiKey,
+}
+
+impl AuthMethod {
+    pub fn label(&self) -> &'static str {
+        match self {
+            AuthMethod::Basic => "Username / Password",
+            AuthMethod::ApiKey => "API Key",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClusterConfig {
     pub name: String,
     pub host: String,
     pub username: String,
+    #[serde(default)]
+    pub auth_method: AuthMethod,
     pub snapshot_repo: String,
     pub slm_policy: String,
     #[serde(default)]
@@ -392,6 +418,7 @@ impl Default for ClusterConfig {
             name: String::new(),
             host: String::new(),
             username: String::new(),
+            auth_method: AuthMethod::Basic,
             snapshot_repo: String::new(),
             slm_policy: String::new(),
             kibana_host: String::new(),
@@ -684,6 +711,7 @@ mod tests {
             name: "test-cluster".to_string(),
             host: "http://localhost:9200".to_string(),
             username: "admin".to_string(),
+            auth_method: AuthMethod::ApiKey,
             snapshot_repo: "backup-repo".to_string(),
             slm_policy: "daily-snapshots".to_string(),
             kibana_host: "http://localhost:5601".to_string(),
@@ -708,6 +736,7 @@ mod tests {
         assert_eq!(cluster.name, "test-cluster");
         assert_eq!(cluster.host, "http://localhost:9200");
         assert_eq!(cluster.username, "admin");
+        assert_eq!(cluster.auth_method, AuthMethod::ApiKey);
         assert_eq!(cluster.snapshot_repo, "backup-repo");
         assert_eq!(cluster.slm_policy, "daily-snapshots");
         assert_eq!(cluster.kibana_host, "http://localhost:5601");

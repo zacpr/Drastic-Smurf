@@ -36,6 +36,8 @@ pub enum StreamMsg {
     DoneWith(StreamOutcome),
     /// The provider rejected the tools; the request is being retried without them.
     ToolsUnsupported,
+    /// The provider rejected the temperature setting; retrying with the model's default.
+    TemperatureUnsupported,
     Error(String),
 }
 
@@ -132,6 +134,9 @@ pub struct AssistantState {
     tool_rx: Receiver<ToolResultMsg>,
     /// Model that rejected tool calls; tools are not sent to it again this session.
     pub tools_unsupported_model: Option<String>,
+    /// Model that rejected the temperature setting; it's left out for this model
+    /// for the rest of the session.
+    pub temperature_unsupported_model: Option<String>,
     /// Informational line under the chat (not an error).
     pub notice: Option<String>,
     pub scroll_to_bottom: bool,
@@ -177,6 +182,7 @@ impl AssistantState {
             tool_tx,
             tool_rx,
             tools_unsupported_model: None,
+            temperature_unsupported_model: None,
             notice: None,
             scroll_to_bottom: false,
             last_saved_at: None,
@@ -217,6 +223,16 @@ impl AssistantState {
     }
 
     /// Whether the next request should offer tools to the model.
+    /// Whether to send the temperature setting to the current model.
+    pub fn send_temperature(&self) -> bool {
+        !self.settings.use_default_temperature && !self.temperature_rejected()
+    }
+
+    /// The current model rejected the temperature setting earlier this session.
+    pub fn temperature_rejected(&self) -> bool {
+        self.temperature_unsupported_model.as_deref() == Some(self.settings.model.as_str())
+    }
+
     pub fn tools_active(&self) -> bool {
         self.settings.tools_enabled
             && self.tools_unsupported_model.as_deref() != Some(self.settings.model.as_str())
@@ -1140,13 +1156,38 @@ pub fn render_settings_section(
     ui.add_space(8.0);
     ui.horizontal(|ui| {
         ui.label("Temperature:");
+        let use_default = state.settings.use_default_temperature;
         if ui
-            .add(egui::Slider::new(&mut state.settings.temperature, 0.0..=2.0).step_by(0.05))
+            .add_enabled(
+                !use_default,
+                egui::Slider::new(&mut state.settings.temperature, 0.0..=2.0).step_by(0.05),
+            )
+            .on_hover_text("Lower is more focused and repeatable; higher is more varied.")
+            .changed()
+        {
+            state.last_saved_at = Some(chrono::Utc::now());
+        }
+        if ui
+            .checkbox(&mut state.settings.use_default_temperature, "Model default")
+            .on_hover_text(
+                "Don't send a temperature; the model uses its own default. Reasoning models \
+                 (e.g. OpenAI's o-series and GPT-5+) only accept their default.",
+            )
             .changed()
         {
             state.last_saved_at = Some(chrono::Utc::now());
         }
     });
+    if !state.settings.use_default_temperature && state.temperature_rejected() {
+        ui.label(
+            egui::RichText::new(
+                "This model rejected the temperature setting; its default is being used. \
+                 Tick \"Model default\" to stop trying.",
+            )
+            .color(Theme::warning())
+            .size(10.5),
+        );
+    }
 
     ui.horizontal(|ui| {
         ui.label("Max context chars:");
@@ -1487,6 +1528,14 @@ fn drain_stream(state: &mut AssistantState, ctx: &egui::Context) {
                     state.settings.model
                 ));
             }
+            Ok(StreamMsg::TemperatureUnsupported) => {
+                state.temperature_unsupported_model = Some(state.settings.model.clone());
+                state.notice = Some(format!(
+                    "{} only accepts its default temperature, so the temperature setting is \
+                     ignored for it.",
+                    state.settings.model
+                ));
+            }
             Ok(StreamMsg::Error(err)) => {
                 state.agent = None;
                 finish_stream(state, StreamOutcome::default(), Some(err));
@@ -1708,14 +1757,35 @@ pub fn build_llm_messages_with(
     out
 }
 
+/// How a failed attempt that produced no output should be retried, if at all.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Retry {
+    WithoutTemperature,
+    WithoutTools,
+}
+
+/// Pick the retry for an error: a rejected temperature (models that only accept
+/// their default) is retried without it; an error mentioning tools (a model or
+/// server without tool support) is retried without tools.
+fn retry_for(error: &str, send_temperature: bool, has_tools: bool) -> Option<Retry> {
+    if send_temperature && llm::is_temperature_rejection(error) {
+        Some(Retry::WithoutTemperature)
+    } else if has_tools && error.to_lowercase().contains("tool") {
+        Some(Retry::WithoutTools)
+    } else {
+        None
+    }
+}
+
 /// Spawn the streaming call on the tokio runtime and wire it into a channel.
-/// With `tools`, a provider error that mentions tools (a model or server without
-/// tool support) is retried once without them.
+/// A request the provider rejects before any output is retried (see [`retry_for`]),
+/// at most once per kind.
 pub fn spawn_stream(
     settings: LlmSettings,
     api_key: Option<String>,
     messages: Vec<LlmMessage>,
     tools: Option<serde_json::Value>,
+    send_temperature: bool,
 ) -> Receiver<StreamMsg> {
     let (tx, rx): (Sender<StreamMsg>, Receiver<StreamMsg>) = channel();
     tokio::spawn(async move {
@@ -1730,7 +1800,7 @@ pub fn spawn_stream(
             .build()
             .unwrap_or_else(|_| reqwest::Client::new());
 
-        let run = |tools: Option<serde_json::Value>| {
+        let run = |tools: Option<serde_json::Value>, send_temperature: bool| {
             let tx = tx.clone();
             let client = client.clone();
             let settings = settings.clone();
@@ -1744,6 +1814,7 @@ pub fn spawn_stream(
                     api_key.as_deref(),
                     &messages,
                     tools.as_ref(),
+                    send_temperature,
                     |delta| {
                         sent_any = true;
                         let msg = match delta {
@@ -1758,16 +1829,31 @@ pub fn spawn_stream(
             }
         };
 
-        let had_tools = tools.is_some();
-        let (mut result, sent_any) = run(tools).await;
-        if had_tools
-            && !sent_any
-            && let Err(e) = &result
-            && format!("{:#}", e).to_lowercase().contains("tool")
-        {
-            tracing::info!("Provider rejected tools, retrying without: {:#}", e);
-            let _ = tx.send(StreamMsg::ToolsUnsupported);
-            result = run(None).await.0;
+        let mut tools = tools;
+        let mut send_temperature = send_temperature;
+        let mut result;
+        loop {
+            let (res, sent_any) = run(tools.clone(), send_temperature).await;
+            result = res;
+            let retry = match &result {
+                Err(e) if !sent_any => {
+                    retry_for(&format!("{:#}", e), send_temperature, tools.is_some())
+                }
+                _ => None,
+            };
+            match retry {
+                Some(Retry::WithoutTemperature) => {
+                    tracing::info!("Provider rejected temperature, retrying with default");
+                    let _ = tx.send(StreamMsg::TemperatureUnsupported);
+                    send_temperature = false;
+                }
+                Some(Retry::WithoutTools) => {
+                    tracing::info!("Provider rejected tools, retrying without them");
+                    let _ = tx.send(StreamMsg::ToolsUnsupported);
+                    tools = None;
+                }
+                None => break,
+            }
         }
 
         match result {
@@ -2148,6 +2234,31 @@ fn shell_split(input: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn send_temperature_respects_default_and_rejection() {
+        let mut state = AssistantState::new(LlmSettings::default(), Vec::new());
+        assert!(state.send_temperature());
+        state.settings.use_default_temperature = true;
+        assert!(!state.send_temperature());
+        state.settings.use_default_temperature = false;
+        state.temperature_unsupported_model = Some(state.settings.model.clone());
+        assert!(!state.send_temperature());
+        state.settings.model = "another-model".into();
+        assert!(state.send_temperature());
+    }
+
+    #[test]
+    fn retry_for_temperature_then_tools() {
+        let temp = "LLM API returned 400 Bad Request: Unsupported value: 'temperature' does not support 0.3";
+        assert_eq!(retry_for(temp, true, true), Some(Retry::WithoutTemperature));
+        assert_eq!(retry_for(temp, false, false), None);
+        let tools = "LLM API returned 400: this model does not support tools";
+        assert_eq!(retry_for(tools, true, true), Some(Retry::WithoutTools));
+        assert_eq!(retry_for(tools, true, false), None);
+        let quota = "Your provider account is out of credits or quota.";
+        assert_eq!(retry_for(quota, true, true), None);
+    }
 
     #[test]
     fn cluster_context_truncates_long_output() {

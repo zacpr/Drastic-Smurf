@@ -2,7 +2,7 @@ use egui::{Color32, Stroke};
 
 use crate::app::Tab;
 use crate::core::cluster_manager::ClusterManager;
-use crate::core::config::ClusterConfig;
+use crate::core::config::{AuthMethod, ClusterConfig};
 use crate::ui::theme::Theme;
 use crate::ui::toasts::Toasts;
 
@@ -97,6 +97,7 @@ pub struct WizardState {
     pub step: WizardStep,
     pub name: String,
     pub host: String,
+    pub auth_method: AuthMethod,
     pub username: String,
     pub password: String,
     pub error_msg: Option<String>,
@@ -109,6 +110,7 @@ impl Default for WizardState {
             step: WizardStep::Welcome,
             name: "Local Dev".to_string(),
             host: "http://127.0.0.1:9200".to_string(),
+            auth_method: AuthMethod::Basic,
             username: "elastic".to_string(),
             password: "".to_string(),
             error_msg: None,
@@ -235,19 +237,44 @@ pub fn render_wizard_overlay(
                                 .spacing([8.0, 8.0])
                                 .show(ui, |ui| {
                                     ui.label("Cluster Name:");
-                                    ui.text_edit_singleline(&mut state.name);
+                                    ui.horizontal(|ui| {
+                                        ui.text_edit_singleline(&mut state.name);
+                                        crate::ui::widgets::required_tag(ui, "Required");
+                                    });
                                     ui.end_row();
 
                                     ui.label("ES Host URL:");
-                                    ui.text_edit_singleline(&mut state.host);
+                                    ui.horizontal(|ui| {
+                                        ui.text_edit_singleline(&mut state.host);
+                                        crate::ui::widgets::required_tag(ui, "Required");
+                                    });
                                     ui.end_row();
 
-                                    ui.label("Username:");
-                                    ui.text_edit_singleline(&mut state.username);
+                                    ui.label("Auth:");
+                                    egui::ComboBox::from_id_salt("wizard_auth")
+                                        .selected_text(state.auth_method.label())
+                                        .show_ui(ui, |ui| {
+                                            for m in [AuthMethod::Basic, AuthMethod::ApiKey] {
+                                                ui.selectable_value(&mut state.auth_method, m, m.label());
+                                            }
+                                        });
                                     ui.end_row();
 
-                                    ui.label("Password:");
-                                    ui.add(egui::TextEdit::singleline(&mut state.password).password(true));
+                                    if state.auth_method == AuthMethod::Basic {
+                                        ui.label("Username:");
+                                        ui.horizontal(|ui| {
+                                            ui.text_edit_singleline(&mut state.username);
+                                            crate::ui::widgets::required_tag(ui, "Required");
+                                        });
+                                        ui.end_row();
+                                    }
+
+                                    let (label, tag) = crate::ui::widgets::secret_labels(state.auth_method);
+                                    ui.label(label);
+                                    ui.horizontal(|ui| {
+                                        ui.add(egui::TextEdit::singleline(&mut state.password).password(true));
+                                        crate::ui::widgets::required_tag(ui, tag);
+                                    });
                                     ui.end_row();
                                 });
 
@@ -273,7 +300,12 @@ pub fn render_wizard_overlay(
                                     let cfg = ClusterConfig {
                                         name: state.name.trim().to_string(),
                                         host: state.host.trim().to_string(),
-                                        username: state.username.trim().to_string(),
+                                        auth_method: state.auth_method,
+                                        username: if state.auth_method == AuthMethod::Basic {
+                                            state.username.trim().to_string()
+                                        } else {
+                                            String::new()
+                                        },
                                         ..Default::default()
                                     };
 

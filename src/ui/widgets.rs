@@ -968,6 +968,28 @@ pub fn filterable_select(
     changed
 }
 
+/// Small muted-red "Required" style tag shown beside a form field.
+pub fn required_tag(ui: &mut Ui, text: &str) {
+    ui.label(egui::RichText::new(text).size(11.0).color(Theme::danger()));
+}
+
+/// Small muted "Optional" tag shown beside a form field.
+pub fn optional_tag(ui: &mut Ui) {
+    ui.label(
+        egui::RichText::new("Optional")
+            .size(11.0)
+            .color(Theme::text_muted()),
+    );
+}
+
+/// Label for the secret field and the tag text, depending on the auth method.
+pub fn secret_labels(method: crate::core::config::AuthMethod) -> (&'static str, &'static str) {
+    match method {
+        crate::core::config::AuthMethod::Basic => ("Password:", "Password required"),
+        crate::core::config::AuthMethod::ApiKey => ("API Key:", "API key required"),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

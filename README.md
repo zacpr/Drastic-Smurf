@@ -20,7 +20,7 @@ A fast, native desktop GUI for monitoring and interacting with multiple Elastics
 | **Osquery** | Run live Osquery queries on Fleet agents found by type-to-search, or on groups (all agents, platforms, agent policies), optionally starting from a Kibana saved query, and inspect their status and results |
 
 - **Multi-cluster** — manage separate credentials and auth per cluster
-- **Secure** — passwords stored in your OS keyring, never on disk
+- **Secure** — passwords and API keys stored in your OS keyring, never on disk
 - **Persistent** — module data (queries, history, cache) survives restarts
 - **Import / Export** — move your cluster config between machines via JSON
 - **SSH Tunnels** — connect through jump hosts automatically
@@ -81,12 +81,16 @@ tasks run `cargo` directly and do not require `flatpak-spawn`.
 3. Fill in:
    - **Name** — e.g. `Production`
    - **Host** — e.g. `https://elastic.example.com:9200`
-   - **Username** & **Password**
-   - *(Optional)* **Snapshot Repo** and **SLM Policy** for snapshot monitoring
+   - **Authentication** — choose **Username / Password** (enter both) or **API Key**
+     (paste the base64 `encoded` key from Kibana, or a raw `id:api_key` pair)
+   - *(Optional)* **Snapshot Repo**, **SLM Policy** and **Kibana Host**
+
+   Required fields (Name, Host, Username for password auth, and the password or API key)
+   are marked in the form; everything else is labelled *Optional*.
 4. Click **Test Connection**, then **Save**
 5. Switch between tabs to monitor snapshots, status, tasks, or open the console
 
-Clusters are saved to `~/.config/drastic-smurf/config.json`. Passwords are stored in your OS keyring. Module data (saved queries, status history, tasks cache, snapshot cache) is stored alongside the config.
+Clusters are saved to `~/.config/drastic-smurf/config.json`. Passwords and API keys are stored in your OS keyring. Module data (saved queries, status history, tasks cache, snapshot cache) is stored alongside the config.
 
 For Osquery, configure the cluster's Kibana host and install the Osquery Manager
 integration on the target Fleet agents. The Kibana account needs Fleet agent
