@@ -166,7 +166,7 @@ $ cargo generate-rpm
 | `ci.yml` | Push/PR to `main`/`master` | `cargo check`, `cargo test`, `cargo fmt --check`, `cargo clippy` |
 | `release.yml` | Tag push (`v*.*.*`) | cargo-dist builds archives + MSI installers + DEB/RPM packages + shell/PowerShell installers, and creates the GitHub Release |
 
-DEB/RPM packaging runs only for the x86_64 Linux target. Missing package outputs
+The `aarch64-apple-darwin` build is pinned to the `macos-15` runner via `[dist.github-custom-runners]` in `dist-workspace.toml` (GitHub retired dist's default `macos-14` image). DEB/RPM packaging runs only for the x86_64 Linux target. Missing package outputs
 fail the workflow. Packaging reuses the `dist` profile binary instead of
 rebuilding with the `release` profile. Both packages declare the dynamically
 loaded Ayatana AppIndicator runtime dependency explicitly. Keep Linux system
