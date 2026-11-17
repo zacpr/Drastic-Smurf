@@ -594,6 +594,7 @@ pub fn render_assistant_panel(
             PanelMode::Settings => {
                 egui::ScrollArea::vertical()
                     .id_salt("assistant_settings_scroll")
+                    .horizontal_scroll_offset(0.0)
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
                         render_settings_section(ui, state, on_open_docs);
@@ -764,11 +765,13 @@ fn render_chat(
         let mut decisions: Vec<(String, bool)> = Vec::new();
         egui::ScrollArea::vertical()
             .id_salt("assistant_messages_scroll")
+            .max_width(ui.available_width())
             .max_height(ui.available_height().max(60.0))
+            .horizontal_scroll_offset(0.0)
             .stick_to_bottom(true)
             .auto_shrink([false, false])
             .show(ui, |ui| {
-                let avail_w = ui.available_width();
+                let avail_w = (ui.available_width() - 4.0).max(80.0);
                 ui.set_min_width(avail_w);
                 ui.set_max_width(avail_w);
                 ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
@@ -880,21 +883,28 @@ fn render_message(ui: &mut egui::Ui, msg: &ChatMessage, index: usize, streaming:
                     egui::ScrollArea::vertical()
                         .id_salt(("assistant_reasoning_scroll", index, msg.timestamp))
                         .max_height(200.0)
+                        .horizontal_scroll_offset(0.0)
                         .stick_to_bottom(thinking)
                         .show(ui, |ui| {
-                            ui.label(
-                                egui::RichText::new(&msg.reasoning)
-                                    .color(Theme::text_muted())
-                                    .size(11.0),
+                            ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new(&msg.reasoning)
+                                        .color(Theme::text_muted())
+                                        .size(11.0),
+                                )
+                                .wrap(),
                             );
                         });
                 });
             }
             if !msg.content.is_empty() {
-                ui.label(
-                    egui::RichText::new(&msg.content)
-                        .color(Theme::text_primary())
-                        .size(12.0),
+                ui.add(
+                    egui::Label::new(
+                        egui::RichText::new(&msg.content)
+                            .color(Theme::text_primary())
+                            .size(12.0),
+                    )
+                    .wrap(),
                 );
             } else if streaming {
                 if msg.reasoning.is_empty() {
@@ -974,7 +984,9 @@ fn render_tool_card(
                             .size(11.0),
                     );
                 }
-                ui.label(egui::RichText::new(&summary).monospace().size(11.0));
+                ui.add(
+                    egui::Label::new(egui::RichText::new(&summary).monospace().size(11.0)).wrap(),
+                );
                 if matches!(status, Some(ToolStatus::Ready | ToolStatus::Running)) {
                     ui.spinner();
                 }
@@ -986,8 +998,14 @@ fn render_tool_card(
                     egui::ScrollArea::vertical()
                         .id_salt(("tool_body", &call.id))
                         .max_height(140.0)
+                        .horizontal_scroll_offset(0.0)
                         .show(ui, |ui| {
-                            ui.label(egui::RichText::new(preview).monospace().size(10.0));
+                            ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new(preview).monospace().size(10.0),
+                                )
+                                .wrap(),
+                            );
                         });
                 }
                 ui.label(
@@ -1028,8 +1046,14 @@ fn render_tool_card(
                     egui::ScrollArea::vertical()
                         .id_salt(("tool_result_scroll", &call.id))
                         .max_height(200.0)
+                        .horizontal_scroll_offset(0.0)
                         .show(ui, |ui| {
-                            ui.label(egui::RichText::new(result).monospace().size(10.0));
+                            ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new(result).monospace().size(10.0),
+                                )
+                                .wrap(),
+                            );
                         });
                 });
             }

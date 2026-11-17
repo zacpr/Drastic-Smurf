@@ -191,6 +191,8 @@ pub struct DrasticSmurfApp {
     _tray_icon: Option<tray_icon::TrayIcon>,
     tray_show_id: Option<tray_icon::menu::MenuId>,
     tray_quit_id: Option<tray_icon::menu::MenuId>,
+    pub minimize_to_tray: bool,
+    was_minimized: bool,
 }
 
 fn load_tray_icon() -> Option<(
@@ -379,6 +381,8 @@ impl DrasticSmurfApp {
             _tray_icon: tray,
             tray_show_id: show_id,
             tray_quit_id: quit_id,
+            minimize_to_tray: config.minimize_to_tray,
+            was_minimized: false,
         };
 
         for cluster in &clusters {
@@ -2757,6 +2761,44 @@ impl DrasticSmurfApp {
                             && let Err(e) = self.cluster_manager.save_timezone_clocks(self.timezone_clocks.clone()) {
                                 self.toasts.error(format!("Failed to save timezone settings: {}", e));
                             }
+
+                        ui.add_space(16.0);
+
+                        // System Tray Card
+                        egui::Frame::new()
+                            .fill(Theme::bg_card())
+                            .corner_radius(Theme::CARD_ROUNDING)
+                            .inner_margin(Theme::CARD_PADDING)
+                            .show(ui, |ui| {
+                                ui.heading("🖥 Window & System Tray");
+                                ui.add_space(4.0);
+                                if ui
+                                    .checkbox(
+                                        &mut self.minimize_to_tray,
+                                        "Minimize to system tray",
+                                    )
+                                    .on_hover_text(
+                                        "Hide the window to the system tray when minimized. Click the tray icon or choose Show Window to restore.",
+                                    )
+                                    .changed()
+                                {
+                                    let val = self.minimize_to_tray;
+                                    if let Err(e) = crate::core::config::AppConfig::update(|c| {
+                                        c.minimize_to_tray = val;
+                                    }) {
+                                        self.toasts.error(format!("Failed to save tray setting: {}", e));
+                                    }
+                                }
+                                if self._tray_icon.is_none() {
+                                    ui.label(
+                                        egui::RichText::new(
+                                            "System tray icon is unavailable on this desktop session; minimizing will use the taskbar.",
+                                        )
+                                        .color(Theme::text_muted())
+                                        .size(11.0),
+                                    );
+                                }
+                            });
                     });
 
                 if tour_triggered {
@@ -3704,6 +3746,7 @@ impl eframe::App for DrasticSmurfApp {
             } = event
             {
                 ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
+                ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
                 ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
             }
         }
@@ -3712,12 +3755,20 @@ impl eframe::App for DrasticSmurfApp {
         while let Ok(event) = tray_icon::menu::MenuEvent::receiver().try_recv() {
             if self.tray_show_id.as_ref() == Some(&event.id) {
                 ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
+                ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
                 ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
             }
             if self.tray_quit_id.as_ref() == Some(&event.id) {
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
         }
+
+        // Hide to system tray when minimized (if enabled and tray icon is active).
+        let is_minimized = ctx.input(|i| i.viewport().minimized) == Some(true);
+        if self.minimize_to_tray && self._tray_icon.is_some() && is_minimized && !self.was_minimized {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
+        }
+        self.was_minimized = is_minimized;
 
         if let Some(notice) = crate::core::config::take_load_notice() {
             self.toasts.error(notice);

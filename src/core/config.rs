@@ -585,7 +585,7 @@ pub struct PinnedMonitorLayout {
     pub h: f32,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
     pub clusters: Vec<ClusterConfig>,
     #[serde(default)]
@@ -630,6 +630,39 @@ pub struct AppConfig {
     pub assistant_active_conversation_id: Option<String>,
     #[serde(default)]
     pub logs: LogSettings,
+    /// Hide the main window to the system tray when minimized (default true).
+    #[serde(default = "default_true")]
+    pub minimize_to_tray: bool,
+}
+
+impl Default for AppConfig {
+    fn default() -> Self {
+        Self {
+            clusters: Vec::new(),
+            cluster_data: HashMap::new(),
+            auto_refresh: false,
+            refresh_interval_secs: default_refresh_interval_secs(),
+            theme: AppTheme::default(),
+            vfx: VfxSettings::default(),
+            timezone_clocks: default_timezone_clocks(),
+            cluster_filter: String::new(),
+            window_width: None,
+            window_height: None,
+            window_pos_x: None,
+            window_pos_y: None,
+            wizard_completed: false,
+            pinned_monitor_ids: Vec::new(),
+            pinned_monitor_layouts: HashMap::new(),
+            pipeline_test_presets: Vec::new(),
+            god_console_saved_queries: Vec::new(),
+            llm: LlmSettings::default(),
+            assistant_dock_visible: false,
+            assistant_conversations: Vec::new(),
+            assistant_active_conversation_id: None,
+            logs: LogSettings::default(),
+            minimize_to_tray: true,
+        }
+    }
 }
 
 fn default_refresh_interval_secs() -> u64 {
