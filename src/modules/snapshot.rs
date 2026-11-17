@@ -680,7 +680,7 @@ fn render_item_card(
             painter.add(egui::Shape::convex_polygon(
                 points,
                 Theme::accent().linear_multiply(0.035), // extremely subtle, premium vibe!
-                egui::Stroke::new(1.0, Theme::accent().linear_multiply(0.08)),
+                egui::Stroke::new(1.0_f32, Theme::accent().linear_multiply(0.08)),
             ));
         }
 

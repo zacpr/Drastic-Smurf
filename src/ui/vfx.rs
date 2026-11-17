@@ -187,7 +187,7 @@ fn paint_mesh(ctx: &Context, rect: Rect, settings: &VfxSettings) {
             for k in 0..points.len() - 1 {
                 painter.line_segment(
                     [points[k], points[k + 1]],
-                    egui::Stroke::new(0.5, line_color),
+                    egui::Stroke::new(0.5_f32, line_color),
                 );
             }
         }
@@ -208,7 +208,7 @@ fn paint_mesh(ctx: &Context, rect: Rect, settings: &VfxSettings) {
             for k in 0..points.len() - 1 {
                 painter.line_segment(
                     [points[k], points[k + 1]],
-                    egui::Stroke::new(0.5, line_color),
+                    egui::Stroke::new(0.5_f32, line_color),
                 );
             }
         }
@@ -371,7 +371,7 @@ fn paint_particles(ctx: &Context, rect: Rect, settings: &VfxSettings) {
                             accent.b(),
                             alpha,
                         );
-                        painter.line_segment([p1.pos, p2.pos], egui::Stroke::new(0.5, color));
+                        painter.line_segment([p1.pos, p2.pos], egui::Stroke::new(0.5_f32, color));
                     }
                 }
             }

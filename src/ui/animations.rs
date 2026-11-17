@@ -54,7 +54,7 @@ pub fn pulse_glow(ui: &Ui, rect: Rect, color: Color32, speed: f32) {
     ui.painter().rect_stroke(
         glow_rect,
         egui::CornerRadius::same(6),
-        egui::Stroke::new(1.5, glow_color),
+        egui::Stroke::new(1.5_f32, glow_color),
         egui::StrokeKind::Middle,
     );
 }
@@ -86,7 +86,7 @@ pub fn animated_card<R>(
         .fill(Theme::bg_card())
         .corner_radius(Theme::CARD_ROUNDING)
         .inner_margin(Theme::CARD_PADDING)
-        .stroke(egui::Stroke::new(1.0, Theme::bg_input()));
+        .stroke(egui::Stroke::new(1.0_f32, Theme::bg_input()));
 
     if !hover_effects {
         return frame.show(ui, add_contents).inner;
@@ -116,7 +116,7 @@ pub fn animated_card<R>(
         ui.painter().rect_stroke(
             glow_rect,
             Theme::CARD_ROUNDING,
-            egui::Stroke::new(1.0, glow_color),
+            egui::Stroke::new(1.0_f32, glow_color),
             egui::StrokeKind::Middle,
         );
     }

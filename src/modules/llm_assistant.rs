@@ -953,7 +953,7 @@ fn render_tool_card(
     egui::Frame::new()
         .fill(Theme::bg_card())
         .stroke(egui::Stroke::new(
-            1.0,
+            1.0_f32,
             if awaiting {
                 Theme::warning()
             } else {
@@ -1460,7 +1460,7 @@ fn render_action_card(
 
     egui::Frame::new()
         .fill(Theme::bg_card())
-        .stroke(egui::Stroke::new(1.0, Theme::accent()))
+        .stroke(egui::Stroke::new(1.0_f32, Theme::accent()))
         .corner_radius(6.0)
         .inner_margin(egui::Margin::same(8))
         .show(ui, |ui| {

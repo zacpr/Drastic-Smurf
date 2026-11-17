@@ -136,7 +136,7 @@ pub fn render_wizard_overlay(
         .frame(
             egui::Frame::new()
                 .fill(Theme::bg_card())
-                .stroke(Stroke::new(1.5, Theme::accent()))
+                .stroke(Stroke::new(1.5_f32, Theme::accent()))
                 .corner_radius(Theme::CARD_ROUNDING)
                 .inner_margin(egui::Margin::same(24))
         )

@@ -314,7 +314,7 @@ pub fn render_online_pipeline_module(
                 !state.selected_cluster.is_empty() && !state.indices_loading,
                 egui::Button::new(egui::RichText::new("🔄").color(Theme::text_primary()))
                     .fill(Theme::bg_input())
-                    .stroke(egui::Stroke::new(1.0, Theme::border())),
+                    .stroke(egui::Stroke::new(1.0_f32, Theme::border())),
             )
             .on_hover_text("Re-fetch indices / data streams from the cluster")
             .clicked()

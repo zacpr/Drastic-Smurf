@@ -124,7 +124,7 @@ impl Toasts {
                         .fill(bg)
                         .corner_radius(egui::CornerRadius::same(8))
                         .inner_margin(Vec2::new(12.0, 10.0))
-                        .stroke(egui::Stroke::new(1.0, stroke_color));
+                        .stroke(egui::Stroke::new(1.0_f32, stroke_color));
 
                     frame.show(ui, |ui| {
                         ui.set_max_width(toast_width);

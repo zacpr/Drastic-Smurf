@@ -95,7 +95,7 @@ pub fn render_clusters_module(
                     .corner_radius(Theme::CARD_ROUNDING)
                     .inner_margin(Theme::CARD_PADDING)
                     .stroke(if is_selected {
-                        egui::Stroke::new(1.5, Theme::accent())
+                        egui::Stroke::new(1.5_f32, Theme::accent())
                     } else {
                         egui::Stroke::NONE
                     })

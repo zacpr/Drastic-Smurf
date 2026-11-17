@@ -4401,7 +4401,7 @@ impl eframe::App for DrasticSmurfApp {
             .frame(
                 egui::Frame::new()
                     .fill(sidebar_fill)
-                    .stroke(egui::Stroke::new(1.0, Theme::border()))
+                    .stroke(egui::Stroke::new(1.0_f32, Theme::border()))
                     .inner_margin(egui::Margin {
                         left: 12,
                         right: 12,
@@ -4418,7 +4418,7 @@ impl eframe::App for DrasticSmurfApp {
             .frame(
                 egui::Frame::new()
                     .fill(central_fill)
-                    .stroke(egui::Stroke::new(1.0, Theme::border()))
+                    .stroke(egui::Stroke::new(1.0_f32, Theme::border()))
                     .inner_margin(egui::Vec2::new(16.0, 16.0)),
             )
             .show(ctx, |ui| {
@@ -4767,7 +4767,7 @@ impl eframe::App for DrasticSmurfApp {
                                             .fill(bg_color)
                                             .corner_radius(Theme::CARD_ROUNDING)
                                             .inner_margin(8.0)
-                                            .stroke(egui::Stroke::new(1.0, Theme::bg_input()))
+                                            .stroke(egui::Stroke::new(1.0_f32, Theme::bg_input()))
                                             .show(ui, |ui| {
                                                 ui.horizontal(|ui| {
                                                     ui.label(

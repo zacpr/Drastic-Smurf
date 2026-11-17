@@ -265,7 +265,7 @@ fn render_theme_preview(ui: &mut Ui, theme: &AppTheme) {
         .fill(theme.bg_card)
         .corner_radius(Theme::CARD_ROUNDING)
         .inner_margin(Theme::CARD_PADDING)
-        .stroke(egui::Stroke::new(1.0, theme.accent))
+        .stroke(egui::Stroke::new(1.0_f32, theme.accent))
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
 

@@ -2817,7 +2817,7 @@ pub fn render_console_module(
                     let y = rect.center().y;
                     painter.line_segment(
                         [egui::pos2(rect.min.x, y), egui::pos2(rect.max.x, y)],
-                        egui::Stroke::new(2.0, divider_color),
+                        egui::Stroke::new(2.0_f32, divider_color),
                     );
 
                     if separator_response.hovered() || separator_response.dragged() {

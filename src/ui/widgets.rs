@@ -242,7 +242,7 @@ impl Widget for MiniSparkline {
 
             // Draw line
             ui.painter()
-                .add(Shape::line(points.clone(), Stroke::new(1.5, self.color)));
+                .add(Shape::line(points.clone(), Stroke::new(1.5_f32, self.color)));
 
             // Draw area under line
             let mut path = points.clone();
@@ -404,12 +404,12 @@ impl Widget for WarningLight {
                         Pos2::new(center_x, base_y - 3.0),
                         Pos2::new(center_x, base_y - 9.0),
                     ],
-                    Stroke::new(1.0, Color32::from_rgb(100, 100, 100)),
+                    Stroke::new(1.0_f32, Color32::from_rgb(100, 100, 100)),
                 );
                 painter.circle_stroke(
                     bulb_center,
                     2.0,
-                    Stroke::new(1.0, Color32::from_rgb(140, 140, 140)),
+                    Stroke::new(1.0_f32, Color32::from_rgb(140, 140, 140)),
                 );
             }
 
@@ -435,7 +435,7 @@ impl Widget for WarningLight {
 
             // 5. Fresnel ribs
             let rib_stroke = Stroke::new(
-                0.8,
+                0.8_f32,
                 match self.status.as_str() {
                     "green" => Color32::from_rgba_premultiplied(100, 220, 110, 80),
                     "yellow" => Color32::from_rgba_premultiplied(255, 230, 100, 80),
@@ -457,7 +457,7 @@ impl Widget for WarningLight {
             }
 
             // 6. Protective Metal Cage
-            let cage_stroke = Stroke::new(1.2, Color32::from_rgb(110, 110, 115));
+            let cage_stroke = Stroke::new(1.2_f32, Color32::from_rgb(110, 110, 115));
 
             // Left curved bar
             let left_points = vec![
@@ -904,7 +904,7 @@ pub fn filterable_select(
 
     let button = egui::Button::new(button_text)
         .fill(Theme::bg_input())
-        .stroke(egui::Stroke::new(1.0, Theme::border()));
+        .stroke(egui::Stroke::new(1.0_f32, Theme::border()));
 
     let response = ui.add_sized([ui.available_width(), 24.0], button);
 

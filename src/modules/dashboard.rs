@@ -147,7 +147,7 @@ fn render_overview_card(
         .fill(Theme::bg_card())
         .corner_radius(Theme::CARD_ROUNDING)
         .inner_margin(Theme::CARD_PADDING)
-        .stroke(egui::Stroke::new(1.0, Theme::bg_input()));
+        .stroke(egui::Stroke::new(1.0_f32, Theme::bg_input()));
 
     let response = frame.show(ui, |ui| {
         ui.set_min_width(col_width - Theme::CARD_PADDING.x * 2.0);
@@ -316,7 +316,7 @@ fn render_overview_card(
             ui.painter().rect_stroke(
                 rect.expand(1.0),
                 Theme::CARD_ROUNDING,
-                egui::Stroke::new(1.0, glow_color),
+                egui::Stroke::new(1.0_f32, glow_color),
                 egui::StrokeKind::Middle,
             );
         }
@@ -406,7 +406,7 @@ fn render_detailed_view(
                 .fill(Theme::bg_card())
                 .corner_radius(Theme::CARD_ROUNDING)
                 .inner_margin(Theme::CARD_PADDING)
-                .stroke(egui::Stroke::new(1.0, Theme::bg_input()))
+                .stroke(egui::Stroke::new(1.0_f32, Theme::bg_input()))
                 .show(ui, |ui| {
                     ui.horizontal(|ui| {
                         ui.heading(format!("Dashboard: {}", active_name));
@@ -498,7 +498,7 @@ fn render_detailed_view(
                 .fill(Theme::bg_card())
                 .corner_radius(Theme::CARD_ROUNDING)
                 .inner_margin(Theme::CARD_PADDING)
-                .stroke(egui::Stroke::new(1.0, Theme::bg_input()))
+                .stroke(egui::Stroke::new(1.0_f32, Theme::bg_input()))
                 .show(ui, |ui| {
                     if let Some(ref nodes) = nodes_list {
                         if nodes.is_empty() {
@@ -581,7 +581,7 @@ fn render_detailed_view(
                 .fill(Theme::bg_card())
                 .corner_radius(Theme::CARD_ROUNDING)
                 .inner_margin(Theme::CARD_PADDING)
-                .stroke(egui::Stroke::new(1.0, Theme::bg_input()))
+                .stroke(egui::Stroke::new(1.0_f32, Theme::bg_input()))
                 .show(ui, |ui| {
                     if let Some(allocs) = &allocations {
                         let data_nodes: Vec<_> = allocs.iter()
