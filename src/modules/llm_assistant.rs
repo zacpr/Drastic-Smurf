@@ -592,7 +592,12 @@ pub fn render_assistant_panel(
                 );
             }
             PanelMode::Settings => {
-                render_settings_section(ui, state, on_open_docs);
+                egui::ScrollArea::vertical()
+                    .id_salt("assistant_settings_scroll")
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        render_settings_section(ui, state, on_open_docs);
+                    });
             }
         }
     });
@@ -640,6 +645,114 @@ fn render_chat(
         });
     });
 
+    // Anchor the composer (status/errors, app-access toggle, input box, Send)
+    // to the bottom of the panel first so it is never pushed offscreen by
+    // messages or long error banners; the message list fills the remaining
+    // height above it with a vertical scrollbar.
+    egui::TopBottomPanel::bottom("assistant_chat_composer")
+        .frame(egui::Frame::NONE)
+        .show_inside(ui, |ui| {
+            if state.notice.is_some() || state.last_error.is_some() {
+                ui.add_space(4.0);
+                egui::ScrollArea::vertical()
+                    .id_salt("assistant_status_scroll")
+                    .max_height(72.0)
+                    .show(ui, |ui| {
+                        if let Some(notice) = &state.notice {
+                            ui.label(
+                                egui::RichText::new(format!("ℹ {}", notice))
+                                    .color(Theme::text_muted())
+                                    .size(11.0),
+                            );
+                        }
+                        if let Some(err) = &state.last_error {
+                            ui.label(
+                                egui::RichText::new(format!("⚠ {}", err))
+                                    .color(Theme::danger())
+                                    .size(11.0),
+                            );
+                        }
+                    });
+            }
+
+            ui.add_space(6.0);
+            ui.separator();
+            ui.add_space(4.0);
+
+            ui.horizontal_wrapped(|ui| {
+                let busy = state.is_streaming || state.agent.is_some();
+                if ui
+                    .add_enabled(
+                        !busy,
+                        egui::Checkbox::new(&mut state.settings.tools_enabled, "App access"),
+                    )
+                    .on_hover_text(
+                        "Allow requested cluster lookups and app actions. Writes always require approval. Change this after the current run finishes.",
+                    )
+                    .changed()
+                {
+                    state.tools_unsupported_model = None;
+                    state.notice = None;
+                }
+                ui.label(
+                    egui::RichText::new(format!("→ {}", state.settings.model))
+                        .color(Theme::text_muted())
+                        .size(10.0),
+                );
+            });
+
+            let response = egui::ScrollArea::vertical()
+                .id_salt("assistant_input_scroll")
+                .max_height(110.0)
+                .show(ui, |ui| {
+                    ui.add(
+                        egui::TextEdit::multiline(&mut state.draft)
+                            .hint_text(
+                                "Ask about cluster health, ES API, error messages, DSL queries...",
+                            )
+                            .desired_rows(3)
+                            .desired_width(f32::INFINITY)
+                            .id_source("assistant_input"),
+                    )
+                })
+                .inner;
+
+            let submit_pressed = response.has_focus()
+                && ui.input(|i| i.key_pressed(egui::Key::Enter) && i.modifiers.command);
+
+            ui.add_space(4.0);
+            ui.horizontal(|ui| {
+                let send_btn = ui.add_enabled(
+                    !state.is_streaming && state.agent.is_none() && !state.draft.trim().is_empty(),
+                    egui::Button::new(
+                        egui::RichText::new(if state.is_streaming {
+                            "⏳ Streaming..."
+                        } else {
+                            "📤 Send"
+                        })
+                        .color(Theme::contrast_text_color(Theme::accent())),
+                    )
+                    .fill(Theme::accent()),
+                );
+                let clicked_send = send_btn.clicked();
+
+                if clicked_send || submit_pressed {
+                    *on_send = state.take_send_request(
+                        state.settings.auto_cluster_context && !cluster_ctx.summary.is_empty(),
+                    );
+                }
+
+                if (state.is_streaming || state.agent.is_some()) && ui.button("✖ Cancel").clicked()
+                {
+                    state.cancel();
+                }
+            });
+
+            if response.has_focus() {
+                ui.ctx().request_repaint();
+            }
+        });
+
     if state.conversations.is_empty() {
         ui.add_space(8.0);
         ui.label(
@@ -651,11 +764,14 @@ fn render_chat(
         let mut decisions: Vec<(String, bool)> = Vec::new();
         egui::ScrollArea::vertical()
             .id_salt("assistant_messages_scroll")
-            .max_height((ui.available_height() - 180.0).max(80.0))
+            .max_height(ui.available_height().max(60.0))
             .stick_to_bottom(true)
             .auto_shrink([false, false])
             .show(ui, |ui| {
-                ui.set_min_width(ui.available_width());
+                let avail_w = ui.available_width();
+                ui.set_min_width(avail_w);
+                ui.set_max_width(avail_w);
+                ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
                 if state.scroll_to_bottom {
                     ui.scroll_to_cursor(Some(egui::Align::BOTTOM));
                     state.scroll_to_bottom = false;
@@ -721,83 +837,6 @@ fn render_chat(
             state.decide(&call_id, approve);
         }
     }
-
-    if let Some(notice) = &state.notice {
-        ui.add_space(4.0);
-        ui.label(
-            egui::RichText::new(format!("ℹ {}", notice))
-                .color(Theme::text_muted())
-                .size(11.0),
-        );
-    }
-
-    if let Some(err) = &state.last_error {
-        ui.add_space(4.0);
-        ui.label(
-            egui::RichText::new(format!("⚠ {}", err))
-                .color(Theme::danger())
-                .size(11.0),
-        );
-    }
-
-    ui.add_space(6.0);
-    ui.separator();
-    ui.add_space(4.0);
-
-    ui.horizontal(|ui| {
-        let busy = state.is_streaming || state.agent.is_some();
-        if ui.add_enabled(!busy, egui::Checkbox::new(&mut state.settings.tools_enabled, "App access"))
-            .on_hover_text("Allow requested cluster lookups and app actions. Writes always require approval. Change this after the current run finishes.")
-            .changed()
-        {
-            state.tools_unsupported_model = None;
-            state.notice = None;
-        }
-        ui.label(
-            egui::RichText::new(format!("→ {}", state.settings.model))
-                .color(Theme::text_muted())
-                .size(10.0),
-        );
-    });
-    let response = ui.add(
-        egui::TextEdit::multiline(&mut state.draft)
-            .hint_text("Ask about cluster health, ES API, error messages, DSL queries...")
-            .desired_rows(3)
-            .desired_width(f32::INFINITY)
-            .id_source("assistant_input"),
-    );
-    let submit_pressed = response.has_focus()
-        && ui.input(|i| i.key_pressed(egui::Key::Enter) && i.modifiers.command);
-
-    ui.horizontal(|ui| {
-        let send_btn = ui.add_enabled(
-            !state.is_streaming && state.agent.is_none() && !state.draft.trim().is_empty(),
-            egui::Button::new(
-                egui::RichText::new(if state.is_streaming {
-                    "⏳ Streaming..."
-                } else {
-                    "📤 Send"
-                })
-                .color(Theme::contrast_text_color(Theme::accent())),
-            )
-            .fill(Theme::accent()),
-        );
-        let clicked_send = send_btn.clicked();
-
-        if clicked_send || submit_pressed {
-            *on_send = state.take_send_request(
-                state.settings.auto_cluster_context && !cluster_ctx.summary.is_empty(),
-            );
-        }
-
-        if (state.is_streaming || state.agent.is_some()) && ui.button("✖ Cancel").clicked() {
-            state.cancel();
-        }
-    });
-
-    if response.has_focus() {
-        ui.ctx().request_repaint();
-    }
 }
 
 fn render_message(ui: &mut egui::Ui, msg: &ChatMessage, index: usize, streaming: bool) {
@@ -812,6 +851,7 @@ fn render_message(ui: &mut egui::Ui, msg: &ChatMessage, index: usize, streaming:
         .corner_radius(6.0)
         .inner_margin(egui::Margin::same(8))
         .show(ui, |ui| {
+            ui.set_max_width(ui.available_width());
             ui.horizontal(|ui| {
                 ui.label(egui::RichText::new(label).color(color).strong().size(11.0));
                 if streaming {
@@ -923,6 +963,7 @@ fn render_tool_card(
         .corner_radius(6.0)
         .inner_margin(egui::Margin::same(6))
         .show(ui, |ui| {
+            ui.set_max_width(ui.available_width());
             ui.horizontal_wrapped(|ui| {
                 ui.label(egui::RichText::new("🔧").size(11.0));
                 if let Some(req) = &request {
@@ -1014,6 +1055,7 @@ pub fn render_settings_section(
     let providers = AssistantState::providers();
     let prev_id = state.settings.provider_id.clone();
     egui::ComboBox::from_id_salt("llm_provider_select")
+        .width(ui.available_width().min(260.0))
         .selected_text(
             providers
                 .iter()
@@ -1055,10 +1097,11 @@ pub fn render_settings_section(
     let mut base_url_changed_committed = false;
     ui.horizontal(|ui| {
         ui.label("Base URL:");
+        let w = ui.available_width().max(80.0);
         let url_resp = ui.add(
             egui::TextEdit::singleline(&mut state.settings.base_url)
                 .hint_text("https://api.openai.com/v1")
-                .desired_width(ui.available_width()),
+                .desired_width(w),
         );
         if url_resp.lost_focus() {
             state.last_saved_at = Some(chrono::Utc::now());
@@ -1076,11 +1119,13 @@ pub fn render_settings_section(
         } else {
             "paste key here..."
         };
+        let save_w = 64.0;
+        let w = (ui.available_width() - save_w - ui.spacing().item_spacing.x).max(60.0);
         let _key_edit = ui.add(
             egui::TextEdit::singleline(&mut state.api_key_input)
                 .password(true)
                 .hint_text(hint)
-                .desired_width(ui.available_width() - 90.0),
+                .desired_width(w),
         );
         if ui
             .add(
@@ -1088,7 +1133,7 @@ pub fn render_settings_section(
                     egui::RichText::new("Save").color(Theme::contrast_text_color(Theme::accent())),
                 )
                 .fill(Theme::accent())
-                .min_size(egui::Vec2::new(80.0, 22.0)),
+                .min_size(egui::Vec2::new(save_w, 22.0)),
             )
             .clicked()
             && !state.api_key_input.is_empty()
@@ -1132,29 +1177,39 @@ pub fn render_settings_section(
     }
 
     ui.add_space(8.0);
-    ui.horizontal(|ui| {
-        ui.label("Model:");
-        let preset = providers
-            .iter()
-            .find(|p| p.id == state.settings.provider_id)
-            .cloned();
-        let prev_model = state.settings.model.clone();
+    let preset = providers
+        .iter()
+        .find(|p| p.id == state.settings.provider_id)
+        .cloned();
+    let prev_model = state.settings.model.clone();
 
-        // Combine fetched models (live) with preset suggestions, deduped.
-        let mut options: Vec<String> = state.fetched_models.clone();
-        if let Some(p) = &preset {
-            for m in &p.models {
-                if !options.contains(m) {
-                    options.push(m.clone());
-                }
+    // Combine fetched models (live) with preset suggestions, deduped.
+    let mut options: Vec<String> = state.fetched_models.clone();
+    if let Some(p) = &preset {
+        for m in &p.models {
+            if !options.contains(m) {
+                options.push(m.clone());
             }
         }
-        let selected_text = if state.settings.model.is_empty() {
-            "(none)".to_string()
+    }
+    let selected_text = if state.settings.model.is_empty() {
+        "(none)".to_string()
+    } else {
+        state.settings.model.clone()
+    };
+    let refresh_enabled = !state.settings.base_url.trim().is_empty()
+        && !matches!(state.models_status, ModelsStatus::Loading);
+
+    let narrow = ui.available_width() < 460.0;
+    ui.horizontal(|ui| {
+        ui.label("Model:");
+        let combo_max_w = if narrow {
+            (ui.available_width() - 36.0).clamp(90.0, 280.0)
         } else {
-            state.settings.model.clone()
+            220.0
         };
         egui::ComboBox::from_id_salt("llm_model_select")
+            .width(combo_max_w)
             .selected_text(selected_text)
             .show_ui(ui, |ui| {
                 if options.is_empty() {
@@ -1169,21 +1224,19 @@ pub fn render_settings_section(
                     }
                 }
             });
-        let model_edit = ui.add(
-            egui::TextEdit::singleline(&mut state.settings.model)
-                .hint_text("model-name")
-                .desired_width(150.0),
-        );
-        if state.settings.model != prev_model {
-            state.last_saved_at = Some(chrono::Utc::now());
-        }
-        if model_edit.lost_focus() {
-            state.last_saved_at = Some(chrono::Utc::now());
+
+        if !narrow {
+            let model_edit = ui.add(
+                egui::TextEdit::singleline(&mut state.settings.model)
+                    .hint_text("model-name")
+                    .desired_width(180.0),
+            );
+            if model_edit.lost_focus() {
+                state.last_saved_at = Some(chrono::Utc::now());
+            }
         }
 
         // Refresh button: small, right-aligned-ish.
-        let refresh_enabled = !state.settings.base_url.trim().is_empty()
-            && !matches!(state.models_status, ModelsStatus::Loading);
         if ui
             .add_enabled(refresh_enabled, egui::Button::new("⟳"))
             .on_hover_text("Re-fetch the model list from the provider")
@@ -1192,6 +1245,19 @@ pub fn render_settings_section(
             start_models_fetch(state);
         }
     });
+    if narrow {
+        let model_edit = ui.add(
+            egui::TextEdit::singleline(&mut state.settings.model)
+                .hint_text("model-name")
+                .desired_width(ui.available_width().max(80.0)),
+        );
+        if model_edit.lost_focus() {
+            state.last_saved_at = Some(chrono::Utc::now());
+        }
+    }
+    if state.settings.model != prev_model {
+        state.last_saved_at = Some(chrono::Utc::now());
+    }
 
     // ---- Models status pill -------------------------------------------
     match &state.models_status {
@@ -1226,7 +1292,7 @@ pub fn render_settings_section(
 
     // ---- Generation parameters ----------------------------------------
     ui.add_space(8.0);
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         ui.label("Temperature:");
         let use_default = state.settings.use_default_temperature;
         if ui
@@ -1277,6 +1343,37 @@ pub fn render_settings_section(
         .changed()
     {
         state.settings.auto_cluster_context = auto_ctx;
+        state.last_saved_at = Some(chrono::Utc::now());
+    }
+
+    // ---- System prompt ----------------------------------------------------
+    ui.add_space(6.0);
+    ui.horizontal(|ui| {
+        ui.label("System prompt:");
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            if ui
+                .button("↺ Reset default")
+                .on_hover_text("Restore the default Elasticsearch/Kibana SME system prompt")
+                .clicked()
+            {
+                state.settings.system_prompt = crate::core::config::default_llm_system_prompt();
+                state.last_saved_at = Some(chrono::Utc::now());
+            }
+        });
+    });
+    let prompt_edit = egui::ScrollArea::vertical()
+        .id_salt("llm_system_prompt_scroll")
+        .max_height(110.0)
+        .show(ui, |ui| {
+            ui.add(
+                egui::TextEdit::multiline(&mut state.settings.system_prompt)
+                    .hint_text("Instructions for the AI (e.g. Elasticsearch & Kibana SME)...")
+                    .desired_rows(4)
+                    .desired_width(ui.available_width().max(80.0)),
+            )
+        })
+        .inner;
+    if prompt_edit.lost_focus() {
         state.last_saved_at = Some(chrono::Utc::now());
     }
 
@@ -1367,6 +1464,7 @@ fn render_action_card(
         .corner_radius(6.0)
         .inner_margin(egui::Margin::same(8))
         .show(ui, |ui| {
+            ui.set_max_width(ui.available_width());
             ui.label(
                 egui::RichText::new("⚡ Proposed Console command")
                     .color(Theme::accent())
@@ -1374,7 +1472,7 @@ fn render_action_card(
                     .size(11.0),
             );
             ui.add_space(2.0);
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 ui.label(
                     egui::RichText::new("Cluster:")
                         .size(11.0)
@@ -1719,14 +1817,9 @@ pub fn build_cluster_context(
     }
 }
 
-const SYSTEM_PROMPT: &str = "You are an expert Elasticsearch administrator and Drastic Smurf assistant. \
-You help with cluster troubleshooting, query optimization, index design, API usage, and \
-interpreting error messages. Be concise, accurate, and use code blocks for curl/DSL examples. \
-If cluster context is provided, reference it specifically.";
-
 /// Build the full `messages` array for the next API call, given the
 /// current conversation + optional cluster context.
-/// Plain-chat messages (no tools); the host uses [`build_llm_messages_with`].
+/// Plain-chat messages (no tools); the host uses [`build_llm_messages_with_prompt`].
 #[cfg(test)]
 pub fn build_llm_messages(
     conversation: &ChatConversation,
@@ -1736,18 +1829,35 @@ pub fn build_llm_messages(
     build_llm_messages_with(conversation, cluster_ctx, user_text, None)
 }
 
-/// Build the request messages. `tools` is the list of configured cluster names when
-/// tools are offered (adds tool guidance to the system prompt and keeps tool turns),
-/// or `None` to send plain chat (tool turns are dropped).
+/// Build the request messages using the default system prompt.
+#[cfg(test)]
 pub fn build_llm_messages_with(
     conversation: &ChatConversation,
     cluster_ctx: Option<&ClusterContext>,
     user_text: &str,
     tools: Option<&[String]>,
 ) -> Vec<LlmMessage> {
+    build_llm_messages_with_prompt(conversation, cluster_ctx, user_text, tools, "")
+}
+
+/// Build the request messages with a configurable `system_prompt` (falling back to
+/// [`crate::core::config::default_llm_system_prompt`] when empty). `tools` is the list
+/// of configured cluster names when tools are offered (adds tool guidance to the system
+/// prompt and keeps tool turns), or `None` to send plain chat (tool turns are dropped).
+pub fn build_llm_messages_with_prompt(
+    conversation: &ChatConversation,
+    cluster_ctx: Option<&ClusterContext>,
+    user_text: &str,
+    tools: Option<&[String]>,
+    system_prompt: &str,
+) -> Vec<LlmMessage> {
     let mut out: Vec<LlmMessage> = Vec::with_capacity(conversation.messages.len() + 3);
 
-    let mut system = SYSTEM_PROMPT.to_string();
+    let mut system = if system_prompt.trim().is_empty() {
+        crate::core::config::default_llm_system_prompt()
+    } else {
+        system_prompt.trim().to_string()
+    };
     if let Some(clusters) = tools {
         system.push_str(&assistant_tools::system_prompt_addendum(clusters));
     }
@@ -2991,5 +3101,17 @@ curl -X POST 'http://localhost:9200/_refresh'
             shell_split("curl -X POST 'http://h/p' -d '{\"a\":1}'"),
             vec!["curl", "-X", "POST", "http://h/p", "-d", "{\"a\":1}"]
         );
+    }
+
+    #[test]
+    fn custom_system_prompt_is_used_and_blank_falls_back_to_sme_default() {
+        let conv = ChatConversation::default();
+        let custom = build_llm_messages_with_prompt(&conv, None, "hi", None, "Custom SME prompt");
+        assert_eq!(custom[0].role, "system");
+        assert!(custom[0].content.starts_with("Custom SME prompt"));
+
+        let fallback = build_llm_messages_with_prompt(&conv, None, "hi", None, "   ");
+        assert!(fallback[0].content.contains("Elasticsearch and Kibana"));
+        assert!(fallback[0].content.contains("search_elastic_docs"));
     }
 }

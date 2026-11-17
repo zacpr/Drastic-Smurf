@@ -47,6 +47,48 @@ pub fn lookup(method: &str, path: &str) -> Option<&'static OperationExamples> {
     table().get(&format!("{} {}", method, path))
 }
 
+/// Search embedded OpenAPI operations by keyword tokens and optional product
+/// (`"elasticsearch"`, `"kibana"`, or `"all"`). Returns `(operation_key, doc_url)`.
+pub fn search_operations(
+    query: &str,
+    product: &str,
+    limit: usize,
+) -> Vec<(String, Option<String>)> {
+    let tokens: Vec<String> = query
+        .split(|c: char| !c.is_alphanumeric() && c != '_' && c != '-')
+        .filter(|t| t.len() >= 2)
+        .map(|t| t.to_lowercase())
+        .collect();
+    if tokens.is_empty() || limit == 0 {
+        return Vec::new();
+    }
+    let mut scored: Vec<(usize, String, Option<String>)> = table()
+        .iter()
+        .filter_map(|(key, op)| {
+            let is_kibana = key.contains(" /api/")
+                || op.doc_url.as_deref().is_some_and(|u| u.contains("kibana"));
+            match product {
+                "kibana" if !is_kibana => return None,
+                "elasticsearch" if is_kibana => return None,
+                _ => {}
+            }
+            let key_lower = key.to_lowercase();
+            let url_lower = op.doc_url.as_deref().unwrap_or("").to_lowercase();
+            let score = tokens
+                .iter()
+                .filter(|t| key_lower.contains(t.as_str()) || url_lower.contains(t.as_str()))
+                .count();
+            (score > 0).then(|| (score, key.clone(), op.doc_url.clone()))
+        })
+        .collect();
+    scored.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
+    scored
+        .into_iter()
+        .take(limit)
+        .map(|(_, k, u)| (k, u))
+        .collect()
+}
+
 fn header(label: &str, summary: &str) -> String {
     format!("{}{}: {}{}", EXAMPLE_MARKER, label, summary, MARKER_TAIL)
 }

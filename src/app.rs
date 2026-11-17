@@ -267,13 +267,15 @@ impl DrasticSmurfApp {
             painless_state.selected_cluster = first.clone();
         }
 
-        let mut config = crate::core::config::AppConfig::load().unwrap_or_default();
+        let config_loaded = crate::core::config::AppConfig::load();
+        let config_ok = config_loaded.is_ok();
+        let config = config_loaded.unwrap_or_default();
         crate::ui::theme::Theme::set(config.theme.clone());
 
-        let show_wizard = !config.wizard_completed;
+        // A config that can't be read at all isn't a first run: no tour, no write.
+        let show_wizard = config_ok && !config.wizard_completed;
         if show_wizard {
-            config.wizard_completed = true;
-            let _ = config.save();
+            let _ = crate::core::config::AppConfig::update(|c| c.wizard_completed = true);
         }
 
         let mut observability_state = ObservabilityState::new();
@@ -2636,9 +2638,8 @@ impl DrasticSmurfApp {
                     self.logs_send = Some(search);
                 }
                 if settings_changed {
-                    let mut config = crate::core::config::AppConfig::load().unwrap_or_default();
-                    config.logs = self.logs_state.to_settings();
-                    let _ = config.save();
+                    let logs = self.logs_state.to_settings();
+                    let _ = crate::core::config::AppConfig::update(|c| c.logs = logs);
                 }
             }
             Tab::Settings => {
@@ -2885,15 +2886,17 @@ impl DrasticSmurfApp {
         // previous setup let egui persist a user-dragged size, which could
         // run off the left edge on smaller displays).
         let screen = ctx.screen_rect();
-        let max_w = (screen.width() - 16.0).clamp(320.0, 460.0);
-        let max_h = (screen.height() - 72.0).max(380.0);
+        let max_w = (screen.width() - 16.0).clamp(300.0, 460.0);
+        let max_h = (screen.height() - 64.0).max(240.0);
+        let min_w = 320.0_f32.min(max_w);
+        let min_h = 380.0_f32.min(max_h);
 
         egui::Window::new("AI Assistant")
             .open(&mut open)
             .resizable(true)
             .collapsible(false)
-            .default_size([420.0, 600.0])
-            .min_size([320.0, 380.0])
+            .default_size([420.0_f32.min(max_w), 600.0_f32.min(max_h)])
+            .min_size([min_w, min_h])
             .max_width(max_w)
             .max_height(max_h)
             .anchor(egui::Align2::RIGHT_TOP, egui::Vec2::new(-8.0, 56.0))
@@ -3206,11 +3209,12 @@ impl DrasticSmurfApp {
             .map(|c| c.name.clone())
             .collect();
         // The user's message is already in the conversation, so no extra user text.
-        let messages = llm_assistant::build_llm_messages_with(
+        let messages = llm_assistant::build_llm_messages_with_prompt(
             &conv,
             cluster_ctx.as_ref(),
             "",
             tools_on.then_some(cluster_names.as_slice()),
+            &self.assistant_state.settings.system_prompt,
         );
 
         let api_key_res =
@@ -3441,6 +3445,22 @@ impl DrasticSmurfApp {
                     crate::modules::assistant_tools::tab_label(&id)
                 )
             }
+            ToolAction::SearchElasticDocs { query, product } => {
+                let tx = self.assistant_state.tool_tx.clone();
+                let ctx = ctx.clone();
+                tokio::spawn(async move {
+                    let result =
+                        crate::modules::assistant_tools::search_elastic_docs(&query, &product)
+                            .await;
+                    let _ = tx.send(llm_assistant::ToolResultMsg {
+                        run_id,
+                        call_id,
+                        result,
+                    });
+                    ctx.request_repaint();
+                });
+                return;
+            }
         };
         self.assistant_state.complete_tool(run_id, &call_id, result);
     }
@@ -3452,6 +3472,26 @@ impl DrasticSmurfApp {
             .save_assistant_conversations(self.assistant_state.conversations.clone(), active)
         {
             tracing::warn!("Failed to persist assistant conversations: {}", e);
+        }
+    }
+
+    /// Window geometry and pinned monitors are kept outside `ClusterManager`.
+    fn save_window_state(&self) {
+        let size = self.window_size;
+        let pos = self.window_pos;
+        let ids = self.observability_state.pinned_monitor_ids.clone();
+        let layouts = self.observability_state.pinned_monitor_layouts.clone();
+        if let Err(e) = crate::core::config::AppConfig::update(|config| {
+            config.window_width = Some(size[0]);
+            config.window_height = Some(size[1]);
+            if let Some(pos) = pos {
+                config.window_pos_x = Some(pos[0]);
+                config.window_pos_y = Some(pos[1]);
+            }
+            config.pinned_monitor_ids = ids;
+            config.pinned_monitor_layouts = layouts;
+        }) {
+            tracing::warn!("Failed to save window state: {}", e);
         }
     }
 
@@ -3677,6 +3717,10 @@ impl eframe::App for DrasticSmurfApp {
             if self.tray_quit_id.as_ref() == Some(&event.id) {
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
+        }
+
+        if let Some(notice) = crate::core::config::take_load_notice() {
+            self.toasts.error(notice);
         }
 
         // Apply theme to egui context
@@ -4418,9 +4462,7 @@ impl eframe::App for DrasticSmurfApp {
             self.wizard_state = Some(state);
             if on_dismiss {
                 self.wizard_state = None;
-                let mut config = crate::core::config::AppConfig::load().unwrap_or_default();
-                config.wizard_completed = true;
-                let _ = config.save();
+                let _ = crate::core::config::AppConfig::update(|c| c.wizard_completed = true);
                 self.toasts.info("Onboarding tour completed!");
             }
         }
@@ -5474,19 +5516,7 @@ impl eframe::App for DrasticSmurfApp {
         if let Err(e) = self.cluster_manager.save() {
             tracing::warn!("Failed to save config on exit: {}", e);
         }
-        // Save window state directly
-        let mut config = crate::core::config::AppConfig::load().unwrap_or_default();
-        config.window_width = Some(self.window_size[0]);
-        config.window_height = Some(self.window_size[1]);
-        if let Some(pos) = self.window_pos {
-            config.window_pos_x = Some(pos[0]);
-            config.window_pos_y = Some(pos[1]);
-        }
-        config.pinned_monitor_ids = self.observability_state.pinned_monitor_ids.clone();
-        config.pinned_monitor_layouts = self.observability_state.pinned_monitor_layouts.clone();
-        if let Err(e) = config.save() {
-            tracing::warn!("Failed to save window state: {}", e);
-        }
+        self.save_window_state();
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -5494,19 +5524,7 @@ impl eframe::App for DrasticSmurfApp {
         if let Err(e) = self.cluster_manager.save() {
             tracing::warn!("Failed to save config on exit: {}", e);
         }
-        // Save window state directly
-        let mut config = crate::core::config::AppConfig::load().unwrap_or_default();
-        config.window_width = Some(self.window_size[0]);
-        config.window_height = Some(self.window_size[1]);
-        if let Some(pos) = self.window_pos {
-            config.window_pos_x = Some(pos[0]);
-            config.window_pos_y = Some(pos[1]);
-        }
-        config.pinned_monitor_ids = self.observability_state.pinned_monitor_ids.clone();
-        config.pinned_monitor_layouts = self.observability_state.pinned_monitor_layouts.clone();
-        if let Err(e) = config.save() {
-            tracing::warn!("Failed to save window state: {}", e);
-        }
+        self.save_window_state();
     }
 }
 
