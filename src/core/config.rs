@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 use directories::ProjectDirs;
@@ -160,6 +160,9 @@ pub struct LlmSettings {
     /// Run read-only (GET/HEAD) tool requests without asking. Writes always ask.
     #[serde(default = "default_true")]
     pub auto_run_reads: bool,
+    /// Configurable system prompt instructing the AI how to behave.
+    #[serde(default = "default_llm_system_prompt")]
+    pub system_prompt: String,
 }
 
 fn default_llm_model() -> String {
@@ -170,6 +173,16 @@ fn default_llm_temperature() -> f32 {
 }
 fn default_llm_max_context_chars() -> usize {
     4000
+}
+pub fn default_llm_system_prompt() -> String {
+    "You are an expert Elasticsearch and Kibana Subject Matter Expert (SME) and Drastic Smurf assistant. \
+     You help with cluster troubleshooting, shard and node diagnostics, query and DSL optimization, \
+     index/ILM/datastream design, Kibana APIs (Fleet, Synthetics, Osquery, Data Views), Painless scripting, \
+     and interpreting error messages. Be concise, accurate, and use code blocks for curl/DSL examples. \
+     If cluster context is provided, reference it specifically. When unsure about exact API syntax, \
+     parameters, version-specific behavior, or Kibana endpoints, use `search_elastic_docs` (when available) \
+     to check the official Elastic and Kibana documentation rather than guessing."
+        .to_string()
 }
 
 impl Default for LlmSettings {
@@ -186,6 +199,7 @@ impl Default for LlmSettings {
             extra_headers: Vec::new(),
             tools_enabled: true,
             auto_run_reads: true,
+            system_prompt: default_llm_system_prompt(),
         }
     }
 }
@@ -632,16 +646,94 @@ pub fn config_file() -> PathBuf {
     config_dir().join("config.json")
 }
 
+/// What happened when an unreadable config was found, for a one-time notice in the UI.
+static LOAD_NOTICE: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+/// Takes the pending config-recovery notice, if loading had to recover from a bad file.
+pub fn take_load_notice() -> Option<String> {
+    LOAD_NOTICE
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .take()
+}
+
+fn backup_path(path: &Path) -> PathBuf {
+    path.with_extension("json.bak")
+}
+
 impl AppConfig {
+    /// Loads `config.json`. Unreadable files are never overwritten: one that fails to
+    /// parse is renamed to `config.json.corrupt-<timestamp>` and the last good copy
+    /// (`config.json.bak`, kept by `save`) is used instead. Without a usable backup the
+    /// error is returned and later loads see no config, so saving starts a fresh file
+    /// while the original stays on disk.
     pub fn load() -> Result<Self> {
-        let path = config_file();
-        if !path.exists() {
-            return Ok(Self::default());
+        Self::load_from(&config_file())
+    }
+
+    fn load_from(path: &Path) -> Result<Self> {
+        let primary_error = match Self::read(path) {
+            Ok(Some(config)) => return Ok(config),
+            Ok(None) => None,
+            Err(e) => {
+                let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S");
+                let aside = path.with_extension(format!("json.corrupt-{stamp}"));
+                let moved = std::fs::rename(path, &aside);
+                tracing::error!(
+                    "Config {} could not be read ({:#}); moved to {} ({:?})",
+                    path.display(),
+                    e,
+                    aside.display(),
+                    moved
+                );
+                if moved.is_err() {
+                    // Leave it alone and refuse to load, so nothing saves over it.
+                    return Err(e.context(format!(
+                        "{} is unreadable and could not be moved aside",
+                        path.display()
+                    )));
+                }
+                Some((e, aside))
+            }
+        };
+
+        let backup = backup_path(path);
+        match Self::read(&backup) {
+            Ok(Some(config)) => {
+                if let Some((_, aside)) = &primary_error {
+                    *LOAD_NOTICE.lock().unwrap_or_else(|e| e.into_inner()) = Some(format!(
+                        "Settings file was unreadable; restored the previous good copy. \
+                         The unreadable file was kept at {}",
+                        aside.display()
+                    ));
+                }
+                tracing::warn!("Loaded config from backup {}", backup.display());
+                Ok(config)
+            }
+            Ok(None) | Err(_) => match primary_error {
+                None => Ok(Self::default()),
+                Some((e, aside)) => {
+                    *LOAD_NOTICE.lock().unwrap_or_else(|e| e.into_inner()) = Some(format!(
+                        "Settings file was unreadable and no backup was found; starting \
+                         with empty settings. The original was kept at {}",
+                        aside.display()
+                    ));
+                    Err(e)
+                }
+            },
         }
-        let contents = std::fs::read_to_string(&path)?;
+    }
+
+    /// `Ok(None)` when the file doesn't exist.
+    fn read(path: &Path) -> Result<Option<Self>> {
+        let contents = match std::fs::read_to_string(path) {
+            Ok(c) => c,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(e) => return Err(e.into()),
+        };
         let mut config: Self = serde_json::from_str(&contents)?;
         config.migrate();
-        Ok(config)
+        Ok(Some(config))
     }
 
     /// Bring older saved configs in line with renamed defaults, leaving anything the
@@ -655,12 +747,36 @@ impl AppConfig {
         }
     }
 
+    /// Loads the saved config, applies `change` and saves it. Nothing is written when the
+    /// load fails, so an unreadable file is never replaced with defaults.
+    pub fn update(change: impl FnOnce(&mut Self)) -> Result<()> {
+        let mut config = Self::load()?;
+        change(&mut config);
+        config.save()
+    }
+
+    /// Writes atomically: the new contents go to a temp file that replaces `config.json`
+    /// only once fully written, and the previous file becomes `config.json.bak`.
     pub fn save(&self) -> Result<()> {
         let dir = config_dir();
         std::fs::create_dir_all(&dir)?;
-        let path = config_file();
-        let contents = serde_json::to_string_pretty(self)?;
-        std::fs::write(&path, contents)?;
+        self.save_to(&config_file())
+    }
+
+    fn save_to(&self, path: &Path) -> Result<()> {
+        use std::io::Write;
+        let contents = serde_json::to_vec_pretty(self)?;
+        let tmp = path.with_extension("json.tmp");
+        {
+            let mut file = std::fs::File::create(&tmp)?;
+            file.write_all(&contents)?;
+            file.sync_all()?;
+        }
+        if path.exists() {
+            // A crash between these renames leaves only the backup, which load() uses.
+            std::fs::rename(path, backup_path(path))?;
+        }
+        std::fs::rename(&tmp, path)?;
         Ok(())
     }
 }
@@ -669,19 +785,86 @@ impl AppConfig {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_load_real_config() {
-        match AppConfig::load() {
-            Ok(cfg) => {
-                println!(
-                    "SUCCESSFULLY LOADED! wizard_completed: {}",
-                    cfg.wizard_completed
-                );
-            }
-            Err(e) => {
-                panic!("ERROR LOADING REAL CONFIG: {:?}", e);
-            }
+    fn temp_config_dir(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "drastic-smurf-test-{}-{}",
+            name,
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn named(name: &str) -> AppConfig {
+        AppConfig {
+            cluster_filter: name.to_string(),
+            ..Default::default()
         }
+    }
+
+    #[test]
+    fn save_keeps_previous_file_as_backup() {
+        let dir = temp_config_dir("backup");
+        let path = dir.join("config.json");
+        named("first").save_to(&path).unwrap();
+        named("second").save_to(&path).unwrap();
+
+        assert_eq!(AppConfig::read(&path).unwrap().unwrap().cluster_filter, "second");
+        let backup = AppConfig::read(&backup_path(&path)).unwrap().unwrap();
+        assert_eq!(backup.cluster_filter, "first");
+        assert!(!path.with_extension("json.tmp").exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn unreadable_config_is_moved_aside_and_backup_used() {
+        let dir = temp_config_dir("corrupt");
+        let path = dir.join("config.json");
+        named("good").save_to(&path).unwrap();
+        named("newer").save_to(&path).unwrap();
+        std::fs::write(&path, b"{\"clusters\": [ truncated").unwrap();
+
+        let loaded = AppConfig::load_from(&path).unwrap();
+        assert_eq!(loaded.cluster_filter, "good");
+        assert!(!path.exists(), "corrupt file must not stay where saves land");
+        let kept: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_name().to_string_lossy().contains("corrupt-"))
+            .collect();
+        assert_eq!(kept.len(), 1);
+        assert_eq!(
+            std::fs::read(kept[0].path()).unwrap(),
+            b"{\"clusters\": [ truncated"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn unreadable_config_without_backup_errors_but_is_preserved() {
+        let dir = temp_config_dir("nobackup");
+        let path = dir.join("config.json");
+        std::fs::write(&path, b"not json").unwrap();
+
+        assert!(AppConfig::load_from(&path).is_err());
+        // A later load sees no config, so a save can't clobber the original.
+        assert_eq!(AppConfig::load_from(&path).unwrap().clusters.len(), 0);
+        named("fresh").save_to(&path).unwrap();
+        let preserved = std::fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .any(|e| std::fs::read(e.path()).ok().as_deref() == Some(b"not json".as_slice()));
+        assert!(preserved);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn missing_config_loads_default() {
+        let dir = temp_config_dir("missing");
+        let loaded = AppConfig::load_from(&dir.join("config.json")).unwrap();
+        assert!(loaded.clusters.is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
