@@ -361,9 +361,37 @@ impl AppTheme {
         }
     }
 
+    pub fn cyber_smurf() -> Self {
+        Self {
+            name: "Cyber Smurf".into(),
+            bg_darkest: Color32::from_rgb(7, 10, 16),
+            bg_dark: Color32::from_rgb(12, 17, 27),
+            bg_card: Color32::from_rgb(16, 23, 38),
+            bg_input: Color32::from_rgb(22, 32, 51),
+            text_primary: Color32::from_rgb(230, 244, 255),
+            text_secondary: Color32::from_rgb(132, 174, 206),
+            text_muted: Color32::from_rgb(84, 110, 138),
+            accent: Color32::from_rgb(0, 240, 255),
+            accent_hover: Color32::from_rgb(80, 248, 255),
+            success: Color32::from_rgb(0, 235, 165),
+            warning: Color32::from_rgb(255, 196, 0),
+            danger: Color32::from_rgb(255, 56, 118),
+            info: Color32::from_rgb(0, 200, 255),
+            snapshot_in_progress: Color32::from_rgb(0, 240, 255),
+            snapshot_success: Color32::from_rgb(0, 235, 165),
+            snapshot_failed: Color32::from_rgb(255, 56, 118),
+            snapshot_partial: Color32::from_rgb(255, 196, 0),
+            progress_start: Color32::from_rgb(255, 42, 133),
+            progress_mid1: Color32::from_rgb(255, 168, 0),
+            progress_mid2: Color32::from_rgb(0, 235, 165),
+            progress_end: Color32::from_rgb(0, 240, 255),
+        }
+    }
+
     pub fn all_presets() -> Vec<Self> {
         vec![
             Self::slate(),
+            Self::cyber_smurf(),
             Self::dracula(),
             Self::nord(),
             Self::solarized_dark(),

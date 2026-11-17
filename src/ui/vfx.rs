@@ -26,6 +26,12 @@ pub fn paint_background(ctx: &Context, settings: &VfxSettings, rect: Rect) {
                 ctx.request_repaint();
             }
         }
+        BackgroundEffect::CyberGrid => {
+            paint_cyber_grid(ctx, rect, settings);
+            if !settings.reduce_motion {
+                ctx.request_repaint();
+            }
+        }
     }
 }
 
@@ -401,4 +407,62 @@ fn paint_particles(ctx: &Context, rect: Rect, settings: &VfxSettings) {
             }
         }
     });
+}
+
+fn paint_cyber_grid(ctx: &Context, rect: Rect, settings: &VfxSettings) {
+    let painter = ctx.layer_painter(egui::LayerId::background());
+    let intensity = settings.background_intensity;
+    if intensity <= 0.0 {
+        return;
+    }
+
+    let accent = Theme::accent();
+    let time = if settings.reduce_motion {
+        0.0
+    } else {
+        ctx.input(|i| i.time as f32) * settings.animation_speed
+    };
+
+    let parallax = if settings.reduce_motion || settings.parallax_amount <= 0.0 {
+        Vec2::ZERO
+    } else {
+        ctx.input(|i| {
+            i.pointer
+                .latest_pos()
+                .map(|p| (p - rect.center()) * settings.parallax_amount * 0.03)
+                .unwrap_or(Vec2::ZERO)
+        })
+    };
+
+    let grid_step = 32.0_f32;
+    let line_alpha = (intensity * 24.0).clamp(4.0, 42.0) as u8;
+    let grid_color = Color32::from_rgba_premultiplied(accent.r(), accent.g(), accent.b(), line_alpha);
+    let stroke = egui::Stroke::new(1.0_f32, grid_color);
+
+    let ox = (-parallax.x).rem_euclid(grid_step);
+    let oy = (-parallax.y + time * 10.0).rem_euclid(grid_step);
+
+    let mut x = rect.left() + ox;
+    while x <= rect.right() {
+        painter.line_segment([Pos2::new(x, rect.top()), Pos2::new(x, rect.bottom())], stroke);
+        x += grid_step;
+    }
+
+    let mut y = rect.top() + oy;
+    while y <= rect.bottom() {
+        painter.line_segment([Pos2::new(rect.left(), y), Pos2::new(rect.right(), y)], stroke);
+        y += grid_step;
+    }
+
+    // Subtle moving horizontal telemetry scanline
+    if !settings.reduce_motion && rect.height() > 1.0 {
+        let scan_y = rect.top() + ((time * 48.0).rem_euclid(rect.height()));
+        let scan_alpha = (intensity * 55.0).clamp(6.0, 75.0) as u8;
+        let scan_color =
+            Color32::from_rgba_premultiplied(accent.r(), accent.g(), accent.b(), scan_alpha);
+        painter.line_segment(
+            [Pos2::new(rect.left(), scan_y), Pos2::new(rect.right(), scan_y)],
+            egui::Stroke::new(1.5_f32, scan_color),
+        );
+    }
 }

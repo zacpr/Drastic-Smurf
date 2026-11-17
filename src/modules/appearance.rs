@@ -181,6 +181,16 @@ pub fn render_appearance_module(
                 {
                     *on_vfx_changed = true;
                 }
+                if ui
+                    .selectable_value(
+                        &mut vfx.background_effect,
+                        BackgroundEffect::CyberGrid,
+                        "Cyber Grid",
+                    )
+                    .changed()
+                {
+                    *on_vfx_changed = true;
+                }
             });
             if vfx.background_effect != BackgroundEffect::None
                 && ui

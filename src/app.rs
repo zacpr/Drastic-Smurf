@@ -32,7 +32,7 @@ use crate::modules::pipeline::{PipelineState, render_pipeline_module};
 use crate::modules::snapshot::{
     ClusterSnapshotStatus, SnapshotHistory, fetch_cluster_snapshot, render_snapshot_module,
 };
-use crate::modules::status::{StatusState, render_status_module};
+use crate::modules::status::StatusState;
 use crate::modules::tasks::{TasksState, render_tasks_module};
 use crate::ui::theme::Theme;
 use crate::ui::toasts::Toasts;
@@ -43,7 +43,6 @@ use serde_json::Value;
 pub enum Tab {
     Clusters,
     Snapshot,
-    Status,
     Dashboard,
     Tasks,
     Console,
@@ -294,7 +293,7 @@ impl DrasticSmurfApp {
             current_tab: if clusters.is_empty() {
                 Tab::Clusters
             } else {
-                Tab::Status
+                Tab::Dashboard
             },
             snapshot_statuses: Vec::new(),
             snapshot_histories: HashMap::new(),
@@ -1230,6 +1229,12 @@ impl DrasticSmurfApp {
     }
 
     fn render_sidebar(&mut self, ui: &mut egui::Ui) {
+        crate::ui::widgets::draw_hud_brackets(
+            ui.painter(),
+            ui.max_rect().shrink(2.0),
+            Theme::accent().linear_multiply(0.45),
+            10.0,
+        );
         let clusters = self.cluster_manager.clusters();
 
         // 1. Calculate overall status first so we can draw it at the bottom.
@@ -1268,8 +1273,8 @@ impl DrasticSmurfApp {
 
         ui.add_space(16.0);
 
-        // Render logo image
-        ui.add(egui::Image::new(egui::include_image!("../drastic.png")).max_width(120.0));
+        // Render cyberpunk wireframe mascot bust (head & shoulders)
+        ui.add(crate::ui::widgets::SmurfWireframe::new(112.0, 106.0));
 
         ui.add_space(8.0);
         let title_response = ui.heading(
@@ -1695,7 +1700,6 @@ impl DrasticSmurfApp {
                         for (label, tab) in [
                             ("Clusters", Tab::Clusters),
                             ("Snapshot", Tab::Snapshot),
-                            ("Status", Tab::Status),
                             ("Dashboard", Tab::Dashboard),
                             ("Tasks", Tab::Tasks),
                             ("Console", Tab::Console),
@@ -1710,14 +1714,39 @@ impl DrasticSmurfApp {
                             ("Settings", Tab::Settings),
                         ] {
                             let is_active = self.current_tab == tab;
+                            let accent = Theme::accent();
                             let text = egui::RichText::new(label).size(14.0);
-                            let text = if is_active {
-                                let active_bg = Theme::accent().linear_multiply(0.25);
-                                text.color(Theme::contrast_text_color(active_bg)).strong()
+                            let (text, fill) = if is_active {
+                                (text.color(accent).strong(), accent.linear_multiply(0.14))
                             } else {
-                                text.color(Theme::text_secondary())
+                                (text.color(Theme::text_secondary()), egui::Color32::TRANSPARENT)
                             };
-                            if ui.selectable_label(is_active, text).clicked() {
+                            let resp = ui.add(
+                                egui::Button::new(text)
+                                    .fill(fill)
+                                    .stroke(egui::Stroke::NONE)
+                                    .corner_radius(4.0),
+                            );
+                            if is_active {
+                                let r = resp.rect;
+                                let glow_rect = egui::Rect::from_min_max(
+                                    egui::Pos2::new(r.left() + 2.0, r.bottom() - 3.0),
+                                    egui::Pos2::new(r.right() - 2.0, r.bottom() + 1.0),
+                                );
+                                ui.painter().rect_filled(
+                                    glow_rect,
+                                    2.0,
+                                    accent.linear_multiply(0.28),
+                                );
+                                ui.painter().line_segment(
+                                    [
+                                        egui::Pos2::new(r.left() + 3.0, r.bottom() - 1.0),
+                                        egui::Pos2::new(r.right() - 3.0, r.bottom() - 1.0),
+                                    ],
+                                    egui::Stroke::new(2.0_f32, accent),
+                                );
+                            }
+                            if resp.clicked() {
                                 self.current_tab = tab;
                             }
                         }
@@ -2012,7 +2041,7 @@ impl DrasticSmurfApp {
                     self.pending_delete = Some(name);
                 }
             }
-            Tab::Status => {
+            Tab::Dashboard => {
                 let clusters: Vec<_> = self
                     .cluster_manager
                     .clusters()
@@ -2086,9 +2115,10 @@ impl DrasticSmurfApp {
                 };
                 let mut on_hot_threads = None;
                 let mut on_show_pending = None;
-                render_status_module(
+                render_dashboard_module(
                     ui,
                     &clusters,
+                    &mut self.dashboard_state,
                     &filtered_state,
                     &mut on_hot_threads,
                     &mut on_show_pending,
@@ -2135,86 +2165,6 @@ impl DrasticSmurfApp {
                 if let Some(cluster_name) = on_show_pending {
                     self.show_pending_cluster = Some(cluster_name);
                 }
-            }
-            Tab::Dashboard => {
-                let clusters: Vec<_> = self
-                    .cluster_manager
-                    .clusters()
-                    .into_iter()
-                    .filter(|c| self.cluster_matches_filter(&c.name))
-                    .collect();
-                let filtered_state = StatusState {
-                    health_data: self
-                        .status_state
-                        .health_data
-                        .iter()
-                        .filter(|(n, _)| self.cluster_matches_filter(n))
-                        .cloned()
-                        .collect(),
-                    stats_data: self
-                        .status_state
-                        .stats_data
-                        .iter()
-                        .filter(|(n, _)| self.cluster_matches_filter(n))
-                        .cloned()
-                        .collect(),
-                    errors: self
-                        .status_state
-                        .errors
-                        .iter()
-                        .filter(|(n, _)| self.cluster_matches_filter(n))
-                        .map(|(n, e)| (n.clone(), e.clone()))
-                        .collect(),
-                    explains: self
-                        .status_state
-                        .explains
-                        .iter()
-                        .filter(|(n, _)| self.cluster_matches_filter(n))
-                        .map(|(n, e)| (n.clone(), e.clone()))
-                        .collect(),
-                    es_versions: self
-                        .status_state
-                        .es_versions
-                        .iter()
-                        .filter(|(n, _)| self.cluster_matches_filter(n))
-                        .map(|(n, v)| (n.clone(), v.clone()))
-                        .collect(),
-                    kibana_versions: self
-                        .status_state
-                        .kibana_versions
-                        .iter()
-                        .filter(|(n, _)| self.cluster_matches_filter(n))
-                        .map(|(n, v)| (n.clone(), v.clone()))
-                        .collect(),
-                    allocations: self
-                        .status_state
-                        .allocations
-                        .iter()
-                        .filter(|(n, _)| self.cluster_matches_filter(n))
-                        .map(|(n, a)| (n.clone(), a.clone()))
-                        .collect(),
-                    nodes: self
-                        .status_state
-                        .nodes
-                        .iter()
-                        .filter(|(n, _)| self.cluster_matches_filter(n))
-                        .map(|(n, nodes_vec)| (n.clone(), nodes_vec.clone()))
-                        .collect(),
-                    pending_tasks: self
-                        .status_state
-                        .pending_tasks
-                        .iter()
-                        .filter(|(n, _)| self.cluster_matches_filter(n))
-                        .map(|(n, t)| (n.clone(), t.clone()))
-                        .collect(),
-                };
-                render_dashboard_module(
-                    ui,
-                    &clusters,
-                    &mut self.dashboard_state,
-                    &filtered_state,
-                    self.vfx.hover_effects && !self.vfx.reduce_motion,
-                );
             }
             Tab::Tasks => {
                 let mut filtered_tasks_state = TasksState {
@@ -3467,8 +3417,7 @@ impl DrasticSmurfApp {
                 let tab = match id.as_str() {
                     "clusters" => Tab::Clusters,
                     "snapshot" => Tab::Snapshot,
-                    "status" => Tab::Status,
-                    "dashboard" => Tab::Dashboard,
+                    "status" | "dashboard" => Tab::Dashboard,
                     "tasks" => Tab::Tasks,
                     "console" => Tab::Console,
                     "god_console" => Tab::GodConsole,

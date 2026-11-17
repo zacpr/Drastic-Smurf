@@ -18,6 +18,7 @@ pub struct StatusState {
     pub errors: std::collections::HashMap<String, String>,
 }
 
+#[allow(dead_code)]
 pub fn render_status_module(
     ui: &mut Ui,
     clusters: &[ClusterConfig],
@@ -110,6 +111,7 @@ pub fn render_status_module(
         });
 }
 
+#[allow(dead_code)]
 fn render_status_card(
     ui: &mut Ui,
     config: &ClusterConfig,

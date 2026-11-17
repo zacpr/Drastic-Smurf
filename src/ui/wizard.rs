@@ -367,7 +367,7 @@ pub fn render_wizard_overlay(
                     }
 
                     WizardStep::ClusterStatus => {
-                        *current_tab = Tab::Status;
+                        *current_tab = Tab::Dashboard;
                         ui.vertical_centered(|ui| {
                             ui.label(egui::RichText::new("📊").size(36.0));
                             ui.add_space(8.0);

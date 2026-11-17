@@ -646,127 +646,29 @@ fn render_chat(
         });
     });
 
-    // Anchor the composer (status/errors, app-access toggle, input box, Send)
-    // to the bottom of the panel first so it is never pushed offscreen by
-    // messages or long error banners; the message list fills the remaining
-    // height above it with a vertical scrollbar.
-    egui::TopBottomPanel::bottom("assistant_chat_composer")
-        .frame(egui::Frame::NONE)
-        .show_inside(ui, |ui| {
-            if state.notice.is_some() || state.last_error.is_some() {
-                ui.add_space(4.0);
-                egui::ScrollArea::vertical()
-                    .id_salt("assistant_status_scroll")
-                    .max_height(72.0)
-                    .show(ui, |ui| {
-                        if let Some(notice) = &state.notice {
-                            ui.label(
-                                egui::RichText::new(format!("ℹ {}", notice))
-                                    .color(Theme::text_muted())
-                                    .size(11.0),
-                            );
-                        }
-                        if let Some(err) = &state.last_error {
-                            ui.label(
-                                egui::RichText::new(format!("⚠ {}", err))
-                                    .color(Theme::danger())
-                                    .size(11.0),
-                            );
-                        }
-                    });
-            }
-
-            ui.add_space(6.0);
-            ui.separator();
-            ui.add_space(4.0);
-
-            ui.horizontal_wrapped(|ui| {
-                let busy = state.is_streaming || state.agent.is_some();
-                if ui
-                    .add_enabled(
-                        !busy,
-                        egui::Checkbox::new(&mut state.settings.tools_enabled, "App access"),
-                    )
-                    .on_hover_text(
-                        "Allow requested cluster lookups and app actions. Writes always require approval. Change this after the current run finishes.",
-                    )
-                    .changed()
-                {
-                    state.tools_unsupported_model = None;
-                    state.notice = None;
-                }
-                ui.label(
-                    egui::RichText::new(format!("→ {}", state.settings.model))
-                        .color(Theme::text_muted())
-                        .size(10.0),
-                );
-            });
-
-            let response = egui::ScrollArea::vertical()
-                .id_salt("assistant_input_scroll")
-                .max_height(110.0)
-                .show(ui, |ui| {
-                    ui.add(
-                        egui::TextEdit::multiline(&mut state.draft)
-                            .hint_text(
-                                "Ask about cluster health, ES API, error messages, DSL queries...",
-                            )
-                            .desired_rows(3)
-                            .desired_width(f32::INFINITY)
-                            .id_source("assistant_input"),
-                    )
-                })
-                .inner;
-
-            let submit_pressed = response.has_focus()
-                && ui.input(|i| i.key_pressed(egui::Key::Enter) && i.modifiers.command);
-
-            ui.add_space(4.0);
-            ui.horizontal(|ui| {
-                let send_btn = ui.add_enabled(
-                    !state.is_streaming && state.agent.is_none() && !state.draft.trim().is_empty(),
-                    egui::Button::new(
-                        egui::RichText::new(if state.is_streaming {
-                            "⏳ Streaming..."
-                        } else {
-                            "📤 Send"
-                        })
-                        .color(Theme::contrast_text_color(Theme::accent())),
-                    )
-                    .fill(Theme::accent()),
-                );
-                let clicked_send = send_btn.clicked();
-
-                if clicked_send || submit_pressed {
-                    *on_send = state.take_send_request(
-                        state.settings.auto_cluster_context && !cluster_ctx.summary.is_empty(),
-                    );
-                }
-
-                if (state.is_streaming || state.agent.is_some()) && ui.button("✖ Cancel").clicked()
-                {
-                    state.cancel();
-                }
-            });
-
-            if response.has_focus() {
-                ui.ctx().request_repaint();
-            }
-        });
+    let status_reserve = if state.notice.is_some() || state.last_error.is_some() {
+        80.0
+    } else {
+        0.0
+    };
+    let composer_reserve = 148.0;
+    let messages_max_h = (ui.available_height() - status_reserve - composer_reserve).max(60.0);
 
     if state.conversations.is_empty() {
-        ui.add_space(8.0);
-        ui.label(
-            egui::RichText::new("No conversations yet. Type a question below to start.")
-                .color(Theme::text_muted())
-                .size(11.0),
-        );
+        ui.allocate_ui(egui::Vec2::new(ui.available_width(), messages_max_h), |ui| {
+            ui.add_space(8.0);
+            ui.label(
+                egui::RichText::new("No conversations yet. Type a question below to start.")
+                    .color(Theme::text_muted())
+                    .size(11.0),
+            );
+        });
     } else {
         let mut decisions: Vec<(String, bool)> = Vec::new();
         egui::ScrollArea::vertical()
             .id_salt("assistant_messages_scroll")
             .max_width(ui.available_width())
-            .max_height(ui.available_height().max(60.0))
+            .max_height(messages_max_h)
             .horizontal_scroll_offset(0.0)
             .stick_to_bottom(true)
             .auto_shrink([false, false])
@@ -823,14 +725,28 @@ fn render_chat(
                             let result = conv
                                 .messages
                                 .iter()
-                                .find(|m| m.role == "tool" && m.tool_call_id.as_deref() == Some(call.id.as_str()))
+                                .find(|m| {
+                                    m.role == "tool"
+                                        && m.tool_call_id.as_deref() == Some(call.id.as_str())
+                                })
                                 .map(|m| m.content.as_str())
                                 .or_else(|| running_results.get(&call.id).map(|r| r.as_str()));
-                            render_tool_card(ui, call, statuses.get(&call.id), result, &mut decisions);
+                            render_tool_card(
+                                ui,
+                                call,
+                                statuses.get(&call.id),
+                                result,
+                                &mut decisions,
+                            );
                         }
                         if msg.role == "assistant" && msg.tool_calls.is_empty() {
                             for action in parse_console_actions(&msg.content) {
-                                render_action_card(ui, &action, available_clusters, on_run_console_action);
+                                render_action_card(
+                                    ui,
+                                    &action,
+                                    available_clusters,
+                                    on_run_console_action,
+                                );
                             }
                         }
                     }
@@ -840,6 +756,127 @@ fn render_chat(
             state.decide(&call_id, approve);
         }
     }
+
+    if state.notice.is_some() || state.last_error.is_some() {
+        ui.add_space(4.0);
+        egui::ScrollArea::vertical()
+            .id_salt("assistant_status_scroll")
+            .max_height(72.0)
+            .horizontal_scroll_offset(0.0)
+            .show(ui, |ui| {
+                if let Some(notice) = &state.notice {
+                    ui.add(
+                        egui::Label::new(
+                            egui::RichText::new(format!("ℹ {}", notice))
+                                .color(Theme::text_muted())
+                                .size(11.0),
+                        )
+                        .wrap(),
+                    );
+                }
+                if let Some(err) = &state.last_error {
+                    ui.add(
+                        egui::Label::new(
+                            egui::RichText::new(format!("⚠ {}", err))
+                                .color(Theme::danger())
+                                .size(11.0),
+                        )
+                        .wrap(),
+                    );
+                }
+            });
+    }
+
+    ui.add_space(6.0);
+    ui.separator();
+    ui.add_space(4.0);
+
+    ui.horizontal_wrapped(|ui| {
+        let busy = state.is_streaming || state.agent.is_some();
+        if ui
+            .add_enabled(
+                !busy,
+                egui::Checkbox::new(&mut state.settings.tools_enabled, "App access"),
+            )
+            .on_hover_text(
+                "Allow requested cluster lookups and app actions. Writes always require approval. Change this after the current run finishes.",
+            )
+            .changed()
+        {
+            state.tools_unsupported_model = None;
+            state.notice = None;
+        }
+        ui.label(
+            egui::RichText::new(format!("→ {}", state.settings.model))
+                .color(Theme::text_muted())
+                .size(10.0),
+        );
+    });
+
+    let input_w = ui.available_width().max(80.0);
+    let response = egui::ScrollArea::vertical()
+        .id_salt("assistant_input_scroll")
+        .max_height(96.0)
+        .horizontal_scroll_offset(0.0)
+        .show(ui, |ui| {
+            ui.add(
+                egui::TextEdit::multiline(&mut state.draft)
+                    .hint_text(
+                        "Ask about cluster health, ES API, error messages, DSL queries...",
+                    )
+                    .desired_rows(3)
+                    .desired_width(input_w)
+                    .id_source("assistant_input"),
+            )
+        })
+        .inner;
+
+    let submit_pressed = response.has_focus()
+        && ui.input(|i| i.key_pressed(egui::Key::Enter) && i.modifiers.command);
+
+    ui.add_space(4.0);
+    ui.horizontal(|ui| {
+        let send_btn = ui.add_enabled(
+            !state.is_streaming && state.agent.is_none() && !state.draft.trim().is_empty(),
+            egui::Button::new(
+                egui::RichText::new(if state.is_streaming {
+                    "⏳ Streaming..."
+                } else {
+                    "📤 Send"
+                })
+                .color(Theme::contrast_text_color(Theme::accent())),
+            )
+            .fill(Theme::accent()),
+        );
+        let clicked_send = send_btn.clicked();
+
+        if clicked_send || submit_pressed {
+            *on_send = state.take_send_request(
+                state.settings.auto_cluster_context && !cluster_ctx.summary.is_empty(),
+            );
+        }
+
+        if (state.is_streaming || state.agent.is_some()) && ui.button("✖ Cancel").clicked() {
+            state.cancel();
+        }
+    });
+
+    if response.has_focus() {
+        ui.ctx().request_repaint();
+    }
+}
+
+/// Render text that strictly wraps within `ui.available_width()`, breaking
+/// long unbroken tokens (URLs, JSON lines) so they never widen the popup.
+fn wrapped_label(ui: &mut egui::Ui, text: &str, font: egui::FontId, color: egui::Color32) {
+    let mut job = egui::text::LayoutJob::simple(
+        text.to_string(),
+        font,
+        color,
+        ui.available_width().max(40.0),
+    );
+    job.wrap.break_anywhere = true;
+    ui.add(egui::Label::new(job));
 }
 
 fn render_message(ui: &mut egui::Ui, msg: &ChatMessage, index: usize, streaming: bool) {
@@ -886,25 +923,21 @@ fn render_message(ui: &mut egui::Ui, msg: &ChatMessage, index: usize, streaming:
                         .horizontal_scroll_offset(0.0)
                         .stick_to_bottom(thinking)
                         .show(ui, |ui| {
-                            ui.add(
-                                egui::Label::new(
-                                    egui::RichText::new(&msg.reasoning)
-                                        .color(Theme::text_muted())
-                                        .size(11.0),
-                                )
-                                .wrap(),
+                            wrapped_label(
+                                ui,
+                                &msg.reasoning,
+                                egui::FontId::proportional(11.0),
+                                Theme::text_muted(),
                             );
                         });
                 });
             }
             if !msg.content.is_empty() {
-                ui.add(
-                    egui::Label::new(
-                        egui::RichText::new(&msg.content)
-                            .color(Theme::text_primary())
-                            .size(12.0),
-                    )
-                    .wrap(),
+                wrapped_label(
+                    ui,
+                    &msg.content,
+                    egui::FontId::proportional(12.0),
+                    Theme::text_primary(),
                 );
             } else if streaming {
                 if msg.reasoning.is_empty() {
@@ -984,8 +1017,11 @@ fn render_tool_card(
                             .size(11.0),
                     );
                 }
-                ui.add(
-                    egui::Label::new(egui::RichText::new(&summary).monospace().size(11.0)).wrap(),
+                wrapped_label(
+                    ui,
+                    &summary,
+                    egui::FontId::monospace(11.0),
+                    Theme::text_primary(),
                 );
                 if matches!(status, Some(ToolStatus::Ready | ToolStatus::Running)) {
                     ui.spinner();
@@ -1000,11 +1036,11 @@ fn render_tool_card(
                         .max_height(140.0)
                         .horizontal_scroll_offset(0.0)
                         .show(ui, |ui| {
-                            ui.add(
-                                egui::Label::new(
-                                    egui::RichText::new(preview).monospace().size(10.0),
-                                )
-                                .wrap(),
+                            wrapped_label(
+                                ui,
+                                &preview,
+                                egui::FontId::monospace(10.0),
+                                Theme::text_primary(),
                             );
                         });
                 }
@@ -1048,11 +1084,11 @@ fn render_tool_card(
                         .max_height(200.0)
                         .horizontal_scroll_offset(0.0)
                         .show(ui, |ui| {
-                            ui.add(
-                                egui::Label::new(
-                                    egui::RichText::new(result).monospace().size(10.0),
-                                )
-                                .wrap(),
+                            wrapped_label(
+                                ui,
+                                result,
+                                egui::FontId::monospace(10.0),
+                                Theme::text_primary(),
                             );
                         });
                 });
@@ -1511,17 +1547,19 @@ fn render_action_card(
                     .strong()
                     .size(11.0),
                 );
-                ui.label(
-                    egui::RichText::new(format!("  {} {}", action.method, action.path))
-                        .code()
-                        .size(11.0),
+                wrapped_label(
+                    ui,
+                    &format!("{} {}", action.method, action.path),
+                    egui::FontId::monospace(11.0),
+                    Theme::text_primary(),
                 );
             });
             if !body_preview.is_empty() {
-                ui.label(
-                    egui::RichText::new(format!("Body: {}", body_preview))
-                        .color(Theme::text_muted())
-                        .size(10.5),
+                wrapped_label(
+                    ui,
+                    &format!("Body: {}", body_preview),
+                    egui::FontId::proportional(10.5),
+                    Theme::text_muted(),
                 );
             }
             ui.add_space(4.0);
@@ -3137,5 +3175,83 @@ curl -X POST 'http://localhost:9200/_refresh'
         let fallback = build_llm_messages_with_prompt(&conv, None, "hi", None, "   ");
         assert!(fallback[0].content.contains("Elasticsearch and Kibana"));
         assert!(fallback[0].content.contains("search_elastic_docs"));
+    }
+
+    #[test]
+    fn assistant_popup_long_url_never_clips_left_or_right() {
+        let ctx = egui::Context::default();
+        let mut state = AssistantState::new(LlmSettings {
+            enabled: true,
+            ..Default::default()
+        }, vec![]);
+        state.conversations.push(ChatConversation {
+            id: "c1".into(),
+            title: "test".into(),
+            messages: vec![
+                ChatMessage {
+                    role: "user".into(),
+                    content: "short question".into(),
+                    ..Default::default()
+                },
+                ChatMessage {
+                    role: "assistant".into(),
+                    content: "Here is the URL:\n`GET /_ml/trained_models?filter_path=trained_model_configs.create_time,trained_model_configs.model_id`\n\nAnd JSON:\n```json\n{\"trained_model_configs\":[{\"create_time\":1782165388572,\"model_id\":\".elser_model_2_linux-x86_64\"}]}\n```".into(),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        });
+        state.active_conversation_id = Some("c1".into());
+        let cluster_ctx = ClusterContext::default();
+        let mut on_send = None;
+        let mut on_open_docs = None;
+        let mut on_new = false;
+        let mut on_del = None;
+        let mut on_console = None;
+        let clusters = vec!["amer-test-1".to_string()];
+
+        let raw = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::Vec2::new(1280.0, 800.0),
+            )),
+            ..Default::default()
+        };
+        let mut win_rect = egui::Rect::NOTHING;
+        for frame_idx in 0..3 {
+            let out = ctx.run(raw.clone(), |ctx| {
+                let resp = egui::Window::new("AI Assistant")
+                    .default_size([420.0, 600.0])
+                    .min_size([320.0, 380.0])
+                    .max_width(460.0)
+                    .max_height(728.0)
+                    .anchor(egui::Align2::RIGHT_TOP, egui::Vec2::new(-8.0, 56.0))
+                    .show(ctx, |ui| {
+                        render_assistant_panel(
+                            ui,
+                            &mut state,
+                            &cluster_ctx,
+                            &mut on_send,
+                            &mut on_open_docs,
+                            &mut on_new,
+                            &mut on_del,
+                            &mut on_console,
+                            &clusters,
+                        );
+                    })
+                    .unwrap();
+                win_rect = resp.response.rect;
+            });
+            for prim in &out.shapes {
+                let bb = prim.shape.visual_bounding_rect();
+                if bb.width() > 0.0 && bb.min.x < win_rect.min.x - 1.0 {
+                    panic!(
+                        "Shape overflowed window left edge on frame {}! shape_bb={:?}, win_rect={:?}",
+                        frame_idx, bb, win_rect
+                    );
+                }
+            }
+        }
+        assert!(win_rect.width() <= 462.0, "win_rect={:?}", win_rect);
     }
 }

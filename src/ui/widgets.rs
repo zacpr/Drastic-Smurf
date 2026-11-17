@@ -98,6 +98,20 @@ impl Widget for GradientProgressBar {
                 }
                 ui.painter().add(Shape::mesh(mesh));
 
+                // Bright neon tip highlight at the leading edge
+                if self.progress > 0.02 {
+                    let tip_x = fill_rect.right().max(fill_rect.left() + 2.0);
+                    let tip_rect = Rect::from_min_max(
+                        Pos2::new(tip_x - 2.0, top),
+                        Pos2::new(tip_x, bottom),
+                    );
+                    ui.painter().rect_filled(
+                        tip_rect,
+                        0.0,
+                        Color32::from_rgba_premultiplied(255, 255, 255, 170),
+                    );
+                }
+
                 if self.shimmer {
                     shimmer_overlay(ui, fill_rect, 0.5, 1.0);
                 }
@@ -145,6 +159,16 @@ impl Widget for ConnectionDot {
             } else {
                 Theme::danger()
             };
+            if self.connected {
+                let halo = Color32::from_rgba_premultiplied(
+                    color.r(),
+                    color.g(),
+                    color.b(),
+                    55,
+                );
+                ui.painter()
+                    .circle_filled(rect.center(), rect.width() * 0.78, halo);
+            }
             ui.painter()
                 .circle_filled(rect.center(), rect.width() / 2.0, color);
         }
@@ -253,13 +277,42 @@ impl Widget for MiniSparkline {
             ui.painter()
                 .add(Shape::convex_polygon(path, fill_color, Stroke::NONE));
 
-            // Dot at latest point
+            // Dot at latest point with subtle neon halo
             if let Some(last) = points.last() {
+                let halo = Color32::from_rgba_premultiplied(
+                    self.color.r(),
+                    self.color.g(),
+                    self.color.b(),
+                    64,
+                );
+                ui.painter().circle_filled(*last, 5.5, halo);
                 ui.painter().circle_filled(*last, 3.0, self.color);
             }
         }
         response
     }
+}
+
+/// Paint subtle HUD corner-bracket ticks (`┌ ┐ └ ┘`) around a card or panel rect.
+pub fn draw_hud_brackets(painter: &egui::Painter, rect: Rect, color: Color32, len: f32) {
+    let l = len.min(rect.width() * 0.25).min(rect.height() * 0.25);
+    if l <= 1.0 {
+        return;
+    }
+    let stroke = Stroke::new(1.5_f32, color);
+    let (left, right, top, bottom) = (rect.left(), rect.right(), rect.top(), rect.bottom());
+    // Top-left
+    painter.line_segment([Pos2::new(left, top + l), Pos2::new(left, top)], stroke);
+    painter.line_segment([Pos2::new(left, top), Pos2::new(left + l, top)], stroke);
+    // Top-right
+    painter.line_segment([Pos2::new(right - l, top), Pos2::new(right, top)], stroke);
+    painter.line_segment([Pos2::new(right, top), Pos2::new(right, top + l)], stroke);
+    // Bottom-left
+    painter.line_segment([Pos2::new(left, bottom - l), Pos2::new(left, bottom)], stroke);
+    painter.line_segment([Pos2::new(left, bottom), Pos2::new(left + l, bottom)], stroke);
+    // Bottom-right
+    painter.line_segment([Pos2::new(right - l, bottom), Pos2::new(right, bottom)], stroke);
+    painter.line_segment([Pos2::new(right, bottom), Pos2::new(right, bottom - l)], stroke);
 }
 
 pub fn human_bytes(bytes: u64) -> String {
@@ -987,6 +1040,185 @@ pub fn secret_labels(method: crate::core::config::AuthMethod) -> (&'static str, 
     match method {
         crate::core::config::AuthMethod::Basic => ("Password:", "Password required"),
         crate::core::config::AuthMethod::ApiKey => ("API Key:", "API key required"),
+    }
+}
+
+/// Cyberpunk wireframe bust (head & shoulders) of the Drastic Smurf mascot.
+pub struct SmurfWireframe {
+    width: f32,
+    height: f32,
+}
+
+impl SmurfWireframe {
+    pub fn new(width: f32, height: f32) -> Self {
+        Self { width, height }
+    }
+}
+
+impl Widget for SmurfWireframe {
+    fn ui(self, ui: &mut Ui) -> egui::Response {
+        let (rect, response) =
+            ui.allocate_exact_size(Vec2::new(self.width, self.height), egui::Sense::hover());
+        if !ui.is_rect_visible(rect) {
+            return response;
+        }
+
+        let painter = ui.painter();
+        let accent = Theme::accent();
+        let bg = Theme::bg_dark();
+
+        // Subtle HUD backing + faint wireframe grid + corner brackets
+        painter.rect_filled(rect, 6.0, bg.linear_multiply(0.85));
+        let grid_color = accent.linear_multiply(0.10);
+        let grid_stroke = Stroke::new(1.0_f32, grid_color);
+        let step = 14.0_f32;
+        let mut gx = rect.left() + step;
+        while gx < rect.right() {
+            painter.line_segment([Pos2::new(gx, rect.top()), Pos2::new(gx, rect.bottom())], grid_stroke);
+            gx += step;
+        }
+        let mut gy = rect.top() + step;
+        while gy < rect.bottom() {
+            painter.line_segment([Pos2::new(rect.left(), gy), Pos2::new(rect.right(), gy)], grid_stroke);
+            gy += step;
+        }
+        draw_hud_brackets(painter, rect, accent.linear_multiply(0.65), 8.0);
+
+        let pt = |nx: f32, ny: f32| -> Pos2 {
+            Pos2::new(
+                rect.left() + nx * rect.width(),
+                rect.top() + ny * rect.height(),
+            )
+        };
+
+        let draw_wire = |pts: &[(f32, f32)], width: f32, alpha: f32| {
+            if pts.len() < 2 {
+                return;
+            }
+            let mapped: Vec<Pos2> = pts.iter().map(|&(x, y)| pt(x, y)).collect();
+            // Soft neon bloom pass
+            painter.add(Shape::line(
+                mapped.clone(),
+                Stroke::new(width + 2.2, accent.linear_multiply(alpha * 0.22)),
+            ));
+            // Crisp wireframe pass
+            painter.add(Shape::line(
+                mapped,
+                Stroke::new(width, accent.linear_multiply(alpha)),
+            ));
+        };
+
+        // 1. Phrygian / Smurf Hat (sweeping forward-right)
+        draw_wire(
+            &[
+                (0.20, 0.44),
+                (0.19, 0.27),
+                (0.29, 0.13),
+                (0.47, 0.06),
+                (0.65, 0.09),
+                (0.71, 0.17),
+                (0.64, 0.24),
+                (0.54, 0.26),
+                (0.68, 0.34),
+            ],
+            1.4,
+            0.95,
+        );
+        // Hat brim
+        draw_wire(
+            &[(0.20, 0.44), (0.35, 0.36), (0.52, 0.33), (0.68, 0.34)],
+            1.4,
+            0.95,
+        );
+        // Hat wireframe stripe & meridian ribs
+        draw_wire(&[(0.20, 0.35), (0.37, 0.28), (0.56, 0.27)], 1.0, 0.45);
+        draw_wire(&[(0.24, 0.23), (0.43, 0.17), (0.64, 0.18)], 1.0, 0.45);
+        draw_wire(&[(0.38, 0.09), (0.36, 0.23), (0.39, 0.35)], 1.0, 0.35);
+        draw_wire(&[(0.52, 0.07), (0.50, 0.21), (0.53, 0.33)], 1.0, 0.35);
+
+        // 2. Left ear + inner swirl
+        draw_wire(
+            &[
+                (0.24, 0.54),
+                (0.14, 0.55),
+                (0.13, 0.64),
+                (0.20, 0.69),
+                (0.29, 0.67),
+            ],
+            1.3,
+            0.90,
+        );
+        draw_wire(&[(0.18, 0.60), (0.22, 0.63), (0.19, 0.65)], 1.0, 0.55);
+
+        // 3. Head / Cheek / Jawline
+        draw_wire(&[(0.24, 0.54), (0.25, 0.42)], 1.2, 0.85);
+        draw_wire(&[(0.65, 0.34), (0.68, 0.45)], 1.2, 0.85);
+        draw_wire(
+            &[
+                (0.29, 0.67),
+                (0.37, 0.76),
+                (0.53, 0.76),
+                (0.67, 0.67),
+                (0.70, 0.57),
+            ],
+            1.4,
+            0.95,
+        );
+        // Subtle 3D wireframe cheek mesh lines
+        draw_wire(&[(0.28, 0.58), (0.36, 0.66), (0.38, 0.75)], 0.9, 0.28);
+        draw_wire(&[(0.32, 0.50), (0.34, 0.61), (0.41, 0.75)], 0.9, 0.25);
+
+        // 4. Bulbous Nose
+        draw_wire(
+            &[
+                (0.57, 0.46),
+                (0.71, 0.44),
+                (0.79, 0.49),
+                (0.76, 0.56),
+                (0.62, 0.57),
+                (0.54, 0.53),
+            ],
+            1.4,
+            0.98,
+        );
+
+        // 5. Worried Eyes & Eyebrows
+        let left_eye = pt(0.44, 0.47);
+        let right_eye = pt(0.57, 0.44);
+        let eye_r = rect.width().min(rect.height()) * 0.052;
+        painter.circle_stroke(left_eye, eye_r, Stroke::new(1.2_f32, accent));
+        painter.circle_stroke(right_eye, eye_r * 0.92, Stroke::new(1.2_f32, accent));
+        painter.circle_filled(pt(0.45, 0.48), 1.8, accent);
+        painter.circle_filled(pt(0.58, 0.45), 1.8, accent);
+        // Worried eyebrows
+        draw_wire(&[(0.36, 0.41), (0.44, 0.38), (0.49, 0.40)], 1.2, 0.85);
+        draw_wire(&[(0.52, 0.39), (0.58, 0.36), (0.63, 0.39)], 1.2, 0.85);
+
+        // 6. Open Shocked Mouth
+        draw_wire(
+            &[
+                (0.41, 0.64),
+                (0.52, 0.61),
+                (0.63, 0.63),
+                (0.58, 0.70),
+                (0.45, 0.70),
+                (0.41, 0.64),
+            ],
+            1.2,
+            0.90,
+        );
+
+        // 7. Neck, Shoulders & Overalls
+        draw_wire(&[(0.38, 0.76), (0.37, 0.84)], 1.2, 0.90);
+        draw_wire(&[(0.55, 0.76), (0.57, 0.84)], 1.2, 0.90);
+        draw_wire(&[(0.16, 0.96), (0.24, 0.86), (0.37, 0.84)], 1.4, 0.95);
+        draw_wire(&[(0.57, 0.84), (0.72, 0.86), (0.83, 0.96)], 1.4, 0.95);
+        // Overalls straps + chest wireframe
+        draw_wire(&[(0.34, 0.84), (0.38, 0.96)], 1.1, 0.65);
+        draw_wire(&[(0.59, 0.84), (0.55, 0.96)], 1.1, 0.65);
+        draw_wire(&[(0.37, 0.90), (0.56, 0.90)], 1.0, 0.45);
+
+        response
     }
 }
 

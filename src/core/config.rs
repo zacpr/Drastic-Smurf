@@ -34,6 +34,7 @@ pub enum BackgroundEffect {
     Gradient,
     Mesh,
     Particles,
+    CyberGrid,
 }
 
 impl Default for VfxSettings {
