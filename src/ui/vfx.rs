@@ -436,7 +436,8 @@ fn paint_cyber_grid(ctx: &Context, rect: Rect, settings: &VfxSettings) {
 
     let grid_step = 32.0_f32;
     let line_alpha = (intensity * 24.0).clamp(4.0, 42.0) as u8;
-    let grid_color = Color32::from_rgba_premultiplied(accent.r(), accent.g(), accent.b(), line_alpha);
+    let grid_color =
+        Color32::from_rgba_premultiplied(accent.r(), accent.g(), accent.b(), line_alpha);
     let stroke = egui::Stroke::new(1.0_f32, grid_color);
 
     let ox = (-parallax.x).rem_euclid(grid_step);
@@ -444,13 +445,19 @@ fn paint_cyber_grid(ctx: &Context, rect: Rect, settings: &VfxSettings) {
 
     let mut x = rect.left() + ox;
     while x <= rect.right() {
-        painter.line_segment([Pos2::new(x, rect.top()), Pos2::new(x, rect.bottom())], stroke);
+        painter.line_segment(
+            [Pos2::new(x, rect.top()), Pos2::new(x, rect.bottom())],
+            stroke,
+        );
         x += grid_step;
     }
 
     let mut y = rect.top() + oy;
     while y <= rect.bottom() {
-        painter.line_segment([Pos2::new(rect.left(), y), Pos2::new(rect.right(), y)], stroke);
+        painter.line_segment(
+            [Pos2::new(rect.left(), y), Pos2::new(rect.right(), y)],
+            stroke,
+        );
         y += grid_step;
     }
 
@@ -461,7 +468,10 @@ fn paint_cyber_grid(ctx: &Context, rect: Rect, settings: &VfxSettings) {
         let scan_color =
             Color32::from_rgba_premultiplied(accent.r(), accent.g(), accent.b(), scan_alpha);
         painter.line_segment(
-            [Pos2::new(rect.left(), scan_y), Pos2::new(rect.right(), scan_y)],
+            [
+                Pos2::new(rect.left(), scan_y),
+                Pos2::new(rect.right(), scan_y),
+            ],
             egui::Stroke::new(1.5_f32, scan_color),
         );
     }

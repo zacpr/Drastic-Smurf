@@ -161,7 +161,10 @@ pub enum ToolAction {
     /// Tool argument id from [`TABS`].
     OpenTab(String),
     /// Search official Elasticsearch / Kibana online docs (or fetch an elastic.co URL).
-    SearchElasticDocs { query: String, product: String },
+    SearchElasticDocs {
+        query: String,
+        product: String,
+    },
 }
 
 impl ToolAction {
@@ -346,8 +349,7 @@ pub fn system_prompt_addendum(clusters: &[String]) -> String {
 /// Check if a URL points to official Elastic documentation (`elastic.co`).
 pub fn is_elastic_docs_url(url: &str) -> bool {
     let trimmed = url.trim();
-    trimmed.starts_with("https://www.elastic.co/")
-        || trimmed.starts_with("https://elastic.co/")
+    trimmed.starts_with("https://www.elastic.co/") || trimmed.starts_with("https://elastic.co/")
 }
 
 /// Search official Elasticsearch / Kibana documentation online (or fetch an
@@ -556,7 +558,10 @@ pub fn parse_ddg_results(html: &str, limit: usize) -> Vec<(String, String, Strin
             let s_after = &window[sp..];
             if let Some(gt) = s_after.find('>') {
                 let body = &s_after[gt + 1..];
-                let end = body.find("</a>").or_else(|| body.find("</div>")).unwrap_or(body.len());
+                let end = body
+                    .find("</a>")
+                    .or_else(|| body.find("</div>"))
+                    .unwrap_or(body.len());
                 strip_tags(&body[..end])
             } else {
                 String::new()
@@ -750,7 +755,9 @@ mod tests {
             )]
         );
         assert_eq!(
-            html_to_text("<html><script>bad()</script><body><h1>Title</h1><p>Body &amp; text</p></body></html>"),
+            html_to_text(
+                "<html><script>bad()</script><body><h1>Title</h1><p>Body &amp; text</p></body></html>"
+            ),
             "Title Body & text"
         );
     }

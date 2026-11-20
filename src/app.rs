@@ -1719,7 +1719,10 @@ impl DrasticSmurfApp {
                             let (text, fill) = if is_active {
                                 (text.color(accent).strong(), accent.linear_multiply(0.14))
                             } else {
-                                (text.color(Theme::text_secondary()), egui::Color32::TRANSPARENT)
+                                (
+                                    text.color(Theme::text_secondary()),
+                                    egui::Color32::TRANSPARENT,
+                                )
                             };
                             let resp = ui.add(
                                 egui::Button::new(text)
@@ -3714,7 +3717,8 @@ impl eframe::App for DrasticSmurfApp {
 
         // Hide to system tray when minimized (if enabled and tray icon is active).
         let is_minimized = ctx.input(|i| i.viewport().minimized) == Some(true);
-        if self.minimize_to_tray && self._tray_icon.is_some() && is_minimized && !self.was_minimized {
+        if self.minimize_to_tray && self._tray_icon.is_some() && is_minimized && !self.was_minimized
+        {
             ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
         }
         self.was_minimized = is_minimized;

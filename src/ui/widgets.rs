@@ -101,10 +101,8 @@ impl Widget for GradientProgressBar {
                 // Bright neon tip highlight at the leading edge
                 if self.progress > 0.02 {
                     let tip_x = fill_rect.right().max(fill_rect.left() + 2.0);
-                    let tip_rect = Rect::from_min_max(
-                        Pos2::new(tip_x - 2.0, top),
-                        Pos2::new(tip_x, bottom),
-                    );
+                    let tip_rect =
+                        Rect::from_min_max(Pos2::new(tip_x - 2.0, top), Pos2::new(tip_x, bottom));
                     ui.painter().rect_filled(
                         tip_rect,
                         0.0,
@@ -160,12 +158,7 @@ impl Widget for ConnectionDot {
                 Theme::danger()
             };
             if self.connected {
-                let halo = Color32::from_rgba_premultiplied(
-                    color.r(),
-                    color.g(),
-                    color.b(),
-                    55,
-                );
+                let halo = Color32::from_rgba_premultiplied(color.r(), color.g(), color.b(), 55);
                 ui.painter()
                     .circle_filled(rect.center(), rect.width() * 0.78, halo);
             }
@@ -265,8 +258,10 @@ impl Widget for MiniSparkline {
                 .collect();
 
             // Draw line
-            ui.painter()
-                .add(Shape::line(points.clone(), Stroke::new(1.5_f32, self.color)));
+            ui.painter().add(Shape::line(
+                points.clone(),
+                Stroke::new(1.5_f32, self.color),
+            ));
 
             // Draw area under line
             let mut path = points.clone();
@@ -308,11 +303,23 @@ pub fn draw_hud_brackets(painter: &egui::Painter, rect: Rect, color: Color32, le
     painter.line_segment([Pos2::new(right - l, top), Pos2::new(right, top)], stroke);
     painter.line_segment([Pos2::new(right, top), Pos2::new(right, top + l)], stroke);
     // Bottom-left
-    painter.line_segment([Pos2::new(left, bottom - l), Pos2::new(left, bottom)], stroke);
-    painter.line_segment([Pos2::new(left, bottom), Pos2::new(left + l, bottom)], stroke);
+    painter.line_segment(
+        [Pos2::new(left, bottom - l), Pos2::new(left, bottom)],
+        stroke,
+    );
+    painter.line_segment(
+        [Pos2::new(left, bottom), Pos2::new(left + l, bottom)],
+        stroke,
+    );
     // Bottom-right
-    painter.line_segment([Pos2::new(right - l, bottom), Pos2::new(right, bottom)], stroke);
-    painter.line_segment([Pos2::new(right, bottom), Pos2::new(right, bottom - l)], stroke);
+    painter.line_segment(
+        [Pos2::new(right - l, bottom), Pos2::new(right, bottom)],
+        stroke,
+    );
+    painter.line_segment(
+        [Pos2::new(right, bottom), Pos2::new(right, bottom - l)],
+        stroke,
+    );
 }
 
 pub fn human_bytes(bytes: u64) -> String {
@@ -1074,12 +1081,18 @@ impl Widget for SmurfWireframe {
         let step = 14.0_f32;
         let mut gx = rect.left() + step;
         while gx < rect.right() {
-            painter.line_segment([Pos2::new(gx, rect.top()), Pos2::new(gx, rect.bottom())], grid_stroke);
+            painter.line_segment(
+                [Pos2::new(gx, rect.top()), Pos2::new(gx, rect.bottom())],
+                grid_stroke,
+            );
             gx += step;
         }
         let mut gy = rect.top() + step;
         while gy < rect.bottom() {
-            painter.line_segment([Pos2::new(rect.left(), gy), Pos2::new(rect.right(), gy)], grid_stroke);
+            painter.line_segment(
+                [Pos2::new(rect.left(), gy), Pos2::new(rect.right(), gy)],
+                grid_stroke,
+            );
             gy += step;
         }
         draw_hud_brackets(painter, rect, accent.linear_multiply(0.65), 8.0);

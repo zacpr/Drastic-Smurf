@@ -220,7 +220,11 @@ fn render_host_links(ui: &mut Ui, config: &ClusterConfig) {
         };
         if !kb_raw.is_empty() {
             let kb_url = normalize_url(&kb_raw);
-            ui.label(egui::RichText::new("•").size(10.0).color(Theme::text_muted()));
+            ui.label(
+                egui::RichText::new("•")
+                    .size(10.0)
+                    .color(Theme::text_muted()),
+            );
             if ui
                 .add(egui::Link::new(
                     egui::RichText::new(format!("KB: {}", clean_url(&kb_url)))
@@ -236,7 +240,11 @@ fn render_host_links(ui: &mut Ui, config: &ClusterConfig) {
 
         if !config.haproxy_host.is_empty() {
             let ha_url = normalize_url(&config.haproxy_host);
-            ui.label(egui::RichText::new("•").size(10.0).color(Theme::text_muted()));
+            ui.label(
+                egui::RichText::new("•")
+                    .size(10.0)
+                    .color(Theme::text_muted()),
+            );
             if ui
                 .add(egui::Link::new(
                     egui::RichText::new(format!("HA: {}", clean_url(&ha_url)))
@@ -249,6 +257,23 @@ fn render_host_links(ui: &mut Ui, config: &ClusterConfig) {
                 open_link(ui.ctx(), &ha_url);
             }
         }
+
+        ui.label(
+            egui::RichText::new("•")
+                .size(10.0)
+                .color(Theme::text_muted()),
+        );
+        ui.label(
+            egui::RichText::new(if config.ssh_tunnel {
+                "API: overSSH"
+            } else {
+                "API: Direct"
+            })
+            .size(10.0)
+            .monospace()
+            .strong()
+            .color(Theme::text_secondary()),
+        );
     });
 }
 
@@ -285,7 +310,10 @@ fn render_overview_card(
         .fill(Theme::bg_card())
         .corner_radius(Theme::CARD_ROUNDING)
         .inner_margin(Theme::CARD_PADDING)
-        .stroke(egui::Stroke::new(1.0_f32, Theme::accent().linear_multiply(0.22)));
+        .stroke(egui::Stroke::new(
+            1.0_f32,
+            Theme::accent().linear_multiply(0.22),
+        ));
 
     let response = frame.show(ui, |ui| {
         let inner_w = (col_width - Theme::CARD_PADDING.x * 2.0 - 4.0).max(200.0);
@@ -437,29 +465,54 @@ fn render_overview_card(
             });
 
             ui.add_space(6.0);
-            ui.horizontal_wrapped(|ui| {
-                ui.label(
-                    egui::RichText::new(format!("Docs: {}", docs_str))
-                        .size(11.0)
-                        .monospace()
-                        .color(Theme::text_secondary()),
-                );
-                if h.unassigned_shards > 0 {
-                    ui.label(egui::RichText::new("•").size(11.0).color(Theme::text_muted()));
-                    ui.label(
-                        egui::RichText::new(format!("⚠ {} Unassigned", h.unassigned_shards))
-                            .size(11.0)
-                            .color(Theme::danger())
-                            .strong(),
-                    );
-                }
-                if h.relocating_shards > 0 {
-                    ui.label(egui::RichText::new("•").size(11.0).color(Theme::text_muted()));
-                    ui.label(
-                        egui::RichText::new(format!("~ {} Relocating", h.relocating_shards))
-                            .size(11.0)
-                            .color(Theme::warning()),
-                    );
+            ui.label(
+                egui::RichText::new(format!("Docs: {}", docs_str))
+                    .size(11.0)
+                    .monospace()
+                    .color(Theme::text_secondary()),
+            );
+            ui.add_space(6.0);
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = tile_gap;
+                for (label, value, color) in [
+                    (
+                        "UNASSIGNED",
+                        h.unassigned_shards,
+                        if h.unassigned_shards > 0 {
+                            Theme::danger()
+                        } else {
+                            Theme::text_primary()
+                        },
+                    ),
+                    (
+                        "RELOCATING",
+                        h.relocating_shards,
+                        if h.relocating_shards > 0 {
+                            Theme::warning()
+                        } else {
+                            Theme::text_primary()
+                        },
+                    ),
+                    (
+                        "DELAYED",
+                        h.delayed_unassigned_shards,
+                        if h.delayed_unassigned_shards > 0 {
+                            Theme::danger()
+                        } else {
+                            Theme::text_primary()
+                        },
+                    ),
+                    (
+                        "INITIALIZING",
+                        h.initializing_shards,
+                        if h.initializing_shards > 0 {
+                            Theme::warning()
+                        } else {
+                            Theme::text_primary()
+                        },
+                    ),
+                ] {
+                    render_kpi_tile(ui, tile_w, label, &value.to_string(), color);
                 }
             });
 
@@ -802,6 +855,72 @@ fn render_detailed_view(
                                 });
                             }
                     });
+
+                    ui.add_space(10.0);
+                    ui.label(
+                        egui::RichText::new("CLUSTER HEALTH")
+                            .size(10.0)
+                            .strong()
+                            .color(Theme::text_muted()),
+                    );
+                    ui.add_space(4.0);
+                    let health_fields = [
+                        ("Cluster name", h.cluster_name.clone()),
+                        ("Status", h.status.clone()),
+                        ("Nodes", h.number_of_nodes.to_string()),
+                        ("Data nodes", h.number_of_data_nodes.to_string()),
+                        ("Active shards", h.active_shards.to_string()),
+                        ("Active primary shards", h.active_primary_shards.to_string()),
+                        (
+                            "Active shards percent",
+                            format!("{:.1}%", h.active_shards_percent_as_number),
+                        ),
+                        ("Relocating shards", h.relocating_shards.to_string()),
+                        ("Initializing shards", h.initializing_shards.to_string()),
+                        ("Unassigned shards", h.unassigned_shards.to_string()),
+                        (
+                            "Unassigned primary shards",
+                            h.unassigned_primary_shards.to_string(),
+                        ),
+                        (
+                            "Delayed unassigned shards",
+                            h.delayed_unassigned_shards.to_string(),
+                        ),
+                        ("In-flight fetches", h.number_of_in_flight_fetch.to_string()),
+                        ("Pending tasks", h.number_of_pending_tasks.to_string()),
+                        (
+                            "Max task queue wait",
+                            format!("{} ms", h.task_max_waiting_in_queue_millis),
+                        ),
+                        (
+                            "Timed out",
+                            h.timed_out
+                                .map(|value| value.to_string())
+                                .unwrap_or_else(|| "—".to_string()),
+                        ),
+                    ];
+                    egui::Grid::new("cluster_health_fields_detailed")
+                        .num_columns(8)
+                        .spacing([16.0, 6.0])
+                        .striped(true)
+                        .show(ui, |ui| {
+                            for row in health_fields.chunks(4) {
+                                for (label, value) in row {
+                                    ui.label(
+                                        egui::RichText::new(*label)
+                                            .size(10.5)
+                                            .color(Theme::text_muted()),
+                                    );
+                                    ui.label(
+                                        egui::RichText::new(value)
+                                            .size(10.5)
+                                            .monospace()
+                                            .color(Theme::text_primary()),
+                                    );
+                                }
+                                ui.end_row();
+                            }
+                        });
 
                     // Overall JVM Heap Bar
                     if let Some(ref s) = stats

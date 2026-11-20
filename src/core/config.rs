@@ -685,10 +685,7 @@ static LOAD_NOTICE: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(Non
 
 /// Takes the pending config-recovery notice, if loading had to recover from a bad file.
 pub fn take_load_notice() -> Option<String> {
-    LOAD_NOTICE
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .take()
+    LOAD_NOTICE.lock().unwrap_or_else(|e| e.into_inner()).take()
 }
 
 fn backup_path(path: &Path) -> PathBuf {
@@ -844,7 +841,10 @@ mod tests {
         named("first").save_to(&path).unwrap();
         named("second").save_to(&path).unwrap();
 
-        assert_eq!(AppConfig::read(&path).unwrap().unwrap().cluster_filter, "second");
+        assert_eq!(
+            AppConfig::read(&path).unwrap().unwrap().cluster_filter,
+            "second"
+        );
         let backup = AppConfig::read(&backup_path(&path)).unwrap().unwrap();
         assert_eq!(backup.cluster_filter, "first");
         assert!(!path.with_extension("json.tmp").exists());
@@ -861,7 +861,10 @@ mod tests {
 
         let loaded = AppConfig::load_from(&path).unwrap();
         assert_eq!(loaded.cluster_filter, "good");
-        assert!(!path.exists(), "corrupt file must not stay where saves land");
+        assert!(
+            !path.exists(),
+            "corrupt file must not stay where saves land"
+        );
         let kept: Vec<_> = std::fs::read_dir(&dir)
             .unwrap()
             .filter_map(|e| e.ok())

@@ -655,14 +655,17 @@ fn render_chat(
     let messages_max_h = (ui.available_height() - status_reserve - composer_reserve).max(60.0);
 
     if state.conversations.is_empty() {
-        ui.allocate_ui(egui::Vec2::new(ui.available_width(), messages_max_h), |ui| {
-            ui.add_space(8.0);
-            ui.label(
-                egui::RichText::new("No conversations yet. Type a question below to start.")
-                    .color(Theme::text_muted())
-                    .size(11.0),
-            );
-        });
+        ui.allocate_ui(
+            egui::Vec2::new(ui.available_width(), messages_max_h),
+            |ui| {
+                ui.add_space(8.0);
+                ui.label(
+                    egui::RichText::new("No conversations yet. Type a question below to start.")
+                        .color(Theme::text_muted())
+                        .size(11.0),
+                );
+            },
+        );
     } else {
         let mut decisions: Vec<(String, bool)> = Vec::new();
         egui::ScrollArea::vertical()
@@ -821,9 +824,7 @@ fn render_chat(
         .show(ui, |ui| {
             ui.add(
                 egui::TextEdit::multiline(&mut state.draft)
-                    .hint_text(
-                        "Ask about cluster health, ES API, error messages, DSL queries...",
-                    )
+                    .hint_text("Ask about cluster health, ES API, error messages, DSL queries...")
                     .desired_rows(3)
                     .desired_width(input_w)
                     .id_source("assistant_input"),
@@ -3180,10 +3181,13 @@ curl -X POST 'http://localhost:9200/_refresh'
     #[test]
     fn assistant_popup_long_url_never_clips_left_or_right() {
         let ctx = egui::Context::default();
-        let mut state = AssistantState::new(LlmSettings {
-            enabled: true,
-            ..Default::default()
-        }, vec![]);
+        let mut state = AssistantState::new(
+            LlmSettings {
+                enabled: true,
+                ..Default::default()
+            },
+            vec![],
+        );
         state.conversations.push(ChatConversation {
             id: "c1".into(),
             title: "test".into(),
