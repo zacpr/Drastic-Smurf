@@ -67,7 +67,7 @@ pub fn render_dashboard_module(
     ui: &mut Ui,
     clusters: &[ClusterConfig],
     all_cluster_names: &[String],
-    cluster_data: &HashMap<String, ClusterData>,
+    get_cluster_data: impl FnOnce() -> HashMap<String, ClusterData>,
     state: &mut DashboardState,
     clusters_state: &mut ClustersState,
     status_state: &crate::modules::status::StatusState,
@@ -133,7 +133,7 @@ pub fn render_dashboard_module(
         ui.add_space(12.0);
     }
     if clusters_state.show_export {
-        render_export_section(ui, clusters_state, clusters, cluster_data);
+        render_export_section(ui, clusters_state, clusters, get_cluster_data);
         ui.add_space(12.0);
     }
 
@@ -184,30 +184,31 @@ fn render_overview_grid(
         return;
     }
 
-    ui.horizontal(|ui| {
+    ui.horizontal_top(|ui| {
         ui.spacing_mut().item_spacing.x = card_spacing;
         for col in 0..cols {
-            let col_idx = col;
-            ui.allocate_ui_with_layout(
-                egui::Vec2::new(col_width, ui.available_height()),
-                egui::Layout::top_down(egui::Align::Min),
-                |ui| {
-                    for (i, cluster) in clusters.iter().enumerate() {
-                        if i % cols == col_idx {
-                            render_overview_card(
-                                ui,
-                                cluster,
-                                state,
-                                status_state,
-                                actions,
-                                col_width,
-                                hover_effects,
-                            );
-                            ui.add_space(card_spacing);
+            ui.push_id(("overview_col", col), |ui| {
+                ui.allocate_ui_with_layout(
+                    egui::Vec2::new(col_width, 0.0),
+                    egui::Layout::top_down(egui::Align::Min),
+                    |ui| {
+                        for (i, cluster) in clusters.iter().enumerate() {
+                            if i % cols == col {
+                                render_overview_card(
+                                    ui,
+                                    cluster,
+                                    state,
+                                    status_state,
+                                    actions,
+                                    col_width,
+                                    hover_effects,
+                                );
+                                ui.add_space(card_spacing);
+                            }
                         }
-                    }
-                },
-            );
+                    },
+                );
+            });
         }
     });
 }
@@ -330,42 +331,149 @@ fn render_host_links(ui: &mut Ui, config: &ClusterConfig) {
     });
 }
 
+/// Renders a single-hitbox, layout-direction-independent cluster enable/disable toggle.
 fn render_enabled_checkbox(ui: &mut Ui, name: &str, enabled: bool, actions: &mut DashboardActions) {
-    let mut flag = enabled;
-    if !enabled {
-        // Highlighted tick box so disabled (greyed-out) clusters can easily be re-enabled.
-        egui::Frame::new()
-            .fill(Theme::accent().linear_multiply(0.18))
-            .stroke(egui::Stroke::new(1.5_f32, Theme::accent()))
-            .corner_radius(4.0)
-            .inner_margin(egui::Margin::symmetric(6, 2))
-            .show(ui, |ui| {
-                if ui
-                    .checkbox(
-                        &mut flag,
-                        egui::RichText::new("Enabled")
-                            .strong()
-                            .size(11.0)
-                            .color(Theme::accent()),
-                    )
-                    .on_hover_text("Enable cluster monitoring & auto-refresh")
-                    .changed()
-                {
-                    actions.toggle_enabled = Some((name.to_string(), flag));
+    ui.push_id(("cluster_enabled_toggle", name), |ui| {
+        let label_text = if enabled {
+            egui::RichText::new("Enabled").size(11.0)
+        } else {
+            egui::RichText::new("Enabled").strong().size(11.0)
+        };
+        let galley = egui::WidgetText::from(label_text).into_galley(
+            ui,
+            Some(egui::TextWrapMode::Extend),
+            f32::INFINITY,
+            egui::TextStyle::Button,
+        );
+
+        let pad_x = 7.0;
+        let pad_y = 3.0;
+        let box_size = 13.0;
+        let gap = 5.0;
+        let desired_size = egui::vec2(
+            pad_x + box_size + gap + galley.size().x + pad_x,
+            (galley.size().y.max(box_size) + pad_y * 2.0).max(22.0),
+        );
+
+        let (rect, response) = ui.allocate_exact_size(desired_size, egui::Sense::click());
+        response.widget_info(|| {
+            egui::WidgetInfo::selected(
+                egui::WidgetType::Checkbox,
+                ui.is_enabled(),
+                enabled,
+                "Enabled",
+            )
+        });
+        let hover_msg = if enabled {
+            "Disable to pause status, snapshot & task polling for this cluster"
+        } else {
+            "Click to enable cluster monitoring & auto-refresh"
+        };
+        let response = response
+            .on_hover_cursor(egui::CursorIcon::PointingHand)
+            .on_hover_text(hover_msg);
+
+        if ui.is_rect_visible(rect) {
+            let hovered = response.hovered();
+            let pressed = response.is_pointer_button_down_on();
+            let focused = response.has_focus();
+            let accent = Theme::accent();
+            let painter = ui.painter();
+
+            if !enabled {
+                let pill_fill = accent.linear_multiply(if pressed {
+                    0.36
+                } else if hovered || focused {
+                    0.28
+                } else {
+                    0.18
+                });
+                let pill_stroke = egui::Stroke::new(
+                    if hovered || focused {
+                        1.75_f32
+                    } else {
+                        1.5_f32
+                    },
+                    accent,
+                );
+                painter.rect(rect, 4.0, pill_fill, pill_stroke, egui::StrokeKind::Inside);
+            } else {
+                let pill_fill = if pressed {
+                    accent.linear_multiply(0.24)
+                } else if hovered || focused {
+                    accent.linear_multiply(0.14)
+                } else {
+                    Color32::TRANSPARENT
+                };
+                let pill_stroke = if hovered || focused {
+                    egui::Stroke::new(1.0_f32, accent.linear_multiply(0.65))
+                } else {
+                    egui::Stroke::NONE
+                };
+                if pill_fill != Color32::TRANSPARENT || pill_stroke != egui::Stroke::NONE {
+                    painter.rect(rect, 4.0, pill_fill, pill_stroke, egui::StrokeKind::Inside);
                 }
-            });
-    } else if ui
-        .checkbox(
-            &mut flag,
-            egui::RichText::new("Enabled")
-                .size(11.0)
-                .color(Theme::text_secondary()),
-        )
-        .on_hover_text("Disable to pause status, snapshot & task polling for this cluster")
-        .changed()
-    {
-        actions.toggle_enabled = Some((name.to_string(), flag));
-    }
+            }
+
+            let box_rect = egui::Rect::from_min_size(
+                egui::pos2(rect.min.x + pad_x, rect.center().y - box_size * 0.5),
+                egui::vec2(box_size, box_size),
+            );
+            if !enabled {
+                let box_fill = if hovered || pressed {
+                    Theme::bg_input()
+                } else {
+                    Theme::bg_darkest()
+                };
+                painter.rect(
+                    box_rect,
+                    2.5,
+                    box_fill,
+                    egui::Stroke::new(1.5_f32, accent),
+                    egui::StrokeKind::Inside,
+                );
+            } else {
+                painter.rect(
+                    box_rect,
+                    2.5,
+                    accent,
+                    egui::Stroke::new(1.0_f32, accent),
+                    egui::StrokeKind::Inside,
+                );
+                let p1 = egui::pos2(
+                    box_rect.left() + box_size * 0.22,
+                    box_rect.top() + box_size * 0.52,
+                );
+                let p2 = egui::pos2(
+                    box_rect.left() + box_size * 0.44,
+                    box_rect.top() + box_size * 0.74,
+                );
+                let p3 = egui::pos2(
+                    box_rect.left() + box_size * 0.78,
+                    box_rect.top() + box_size * 0.28,
+                );
+                painter.add(egui::Shape::line(
+                    vec![p1, p2, p3],
+                    egui::Stroke::new(1.8_f32, Theme::contrast_text_color(accent)),
+                ));
+            }
+
+            let text_pos = egui::pos2(
+                box_rect.max.x + gap,
+                rect.center().y - galley.size().y * 0.5,
+            );
+            let text_color = if !enabled || hovered || focused {
+                Theme::text_primary()
+            } else {
+                Theme::text_secondary()
+            };
+            painter.galley(text_pos, galley, text_color);
+        }
+
+        if response.clicked() {
+            actions.toggle_enabled = Some((name.to_string(), !enabled));
+        }
+    });
 }
 
 fn open_log_viewer_for(state: &mut DashboardState, name: &str, actions: &mut DashboardActions) {
@@ -396,7 +504,8 @@ fn render_overview_card(
     col_width: f32,
     hover_effects: bool,
 ) {
-    let name = &config.name;
+    ui.push_id(("overview_card", config.name.as_str()), |ui| {
+        let name = &config.name;
     let is_enabled = config.enabled;
     let health = if is_enabled {
         status_state
@@ -867,6 +976,7 @@ fn render_overview_card(
             );
         }
     }
+    });
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1997,5 +2107,350 @@ pub fn render_dashboard_telemetry_popups(
         if !is_open {
             state.open_metrics_viewer_cluster = None;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::es_client::ClusterHealth;
+    use crate::modules::clusters::ClustersState;
+    use crate::modules::status::StatusState;
+    use crate::ui::theme::AppTheme;
+
+    fn collect_text(shape: &egui::Shape, out: &mut Vec<(String, egui::Rect)>) {
+        match shape {
+            egui::Shape::Vec(shapes) => shapes.iter().for_each(|s| collect_text(s, out)),
+            egui::Shape::Text(text) => {
+                let rect = egui::Rect::from_min_size(text.pos, text.galley.size());
+                out.push((text.galley.text().to_string(), rect));
+            }
+            _ => {}
+        }
+    }
+
+    fn make_health(name: &str) -> ClusterHealth {
+        ClusterHealth {
+            cluster_name: name.to_string(),
+            status: "green".to_string(),
+            number_of_nodes: 3,
+            number_of_data_nodes: 3,
+            active_primary_shards: 10,
+            active_shards: 20,
+            relocating_shards: 0,
+            initializing_shards: 0,
+            unassigned_shards: 0,
+            unassigned_primary_shards: 0,
+            delayed_unassigned_shards: 0,
+            active_shards_percent_as_number: 100.0,
+            number_of_in_flight_fetch: 0,
+            number_of_pending_tasks: 0,
+            task_max_waiting_in_queue_millis: 0,
+            timed_out: Some(false),
+        }
+    }
+
+    struct DashboardTestHarness {
+        ctx: egui::Context,
+        screen: egui::Rect,
+        time: f64,
+        state: DashboardState,
+        clusters_state: ClustersState,
+    }
+
+    impl DashboardTestHarness {
+        fn new(width: f32, height: f32) -> Self {
+            Theme::set(AppTheme::slate());
+            let ctx = egui::Context::default();
+            ctx.set_visuals(AppTheme::slate().to_egui_visuals());
+            Self {
+                ctx,
+                screen: egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(width, height)),
+                time: 0.0,
+                state: DashboardState::default(),
+                clusters_state: ClustersState::default(),
+            }
+        }
+
+        fn step(
+            &mut self,
+            clusters: &[ClusterConfig],
+            status_state: &StatusState,
+            events: Vec<egui::Event>,
+        ) -> (Vec<(String, egui::Rect)>, DashboardActions) {
+            self.time += 0.05;
+            let raw = egui::RawInput {
+                screen_rect: Some(self.screen),
+                time: Some(self.time),
+                events,
+                ..Default::default()
+            };
+            let all_names: Vec<String> = clusters.iter().map(|c| c.name.clone()).collect();
+            let mut actions = DashboardActions::default();
+            let out = self.ctx.run(raw, |ctx| {
+                ctx.set_visuals(AppTheme::slate().to_egui_visuals());
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    let inner_scroll = ui.spacing().scroll;
+                    ui.spacing_mut().scroll = egui::style::ScrollStyle::solid();
+                    egui::ScrollArea::vertical()
+                        .id_salt(("page_scroll", "dashboard"))
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| {
+                            ui.spacing_mut().scroll = inner_scroll;
+                            render_dashboard_module(
+                                ui,
+                                clusters,
+                                &all_names,
+                                HashMap::new,
+                                &mut self.state,
+                                &mut self.clusters_state,
+                                status_state,
+                                &mut actions,
+                                true,
+                            );
+                        });
+                });
+            });
+            let mut texts = Vec::new();
+            for s in &out.shapes {
+                collect_text(&s.shape, &mut texts);
+            }
+            (texts, actions)
+        }
+
+        fn settle(
+            &mut self,
+            clusters: &[ClusterConfig],
+            status_state: &StatusState,
+            frames: usize,
+        ) -> Vec<(String, egui::Rect)> {
+            let mut texts = Vec::new();
+            for _ in 0..frames {
+                let (t, _) = self.step(clusters, status_state, vec![]);
+                texts = t;
+            }
+            texts
+        }
+
+        fn click(
+            &mut self,
+            clusters: &[ClusterConfig],
+            status_state: &StatusState,
+            pos: egui::Pos2,
+        ) -> DashboardActions {
+            let _ = self.step(clusters, status_state, vec![egui::Event::PointerMoved(pos)]);
+            let _ = self.step(
+                clusters,
+                status_state,
+                vec![egui::Event::PointerButton {
+                    pos,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE,
+                }],
+            );
+            let (_, actions) = self.step(
+                clusters,
+                status_state,
+                vec![egui::Event::PointerButton {
+                    pos,
+                    button: egui::PointerButton::Primary,
+                    pressed: false,
+                    modifiers: egui::Modifiers::NONE,
+                }],
+            );
+            actions
+        }
+    }
+
+    fn find_enabled_text_rect_for_header(
+        texts: &[(String, egui::Rect)],
+        header_needle: &str,
+    ) -> egui::Rect {
+        let (_, header_rect) = texts
+            .iter()
+            .find(|(t, _)| t.contains(header_needle))
+            .unwrap_or_else(|| panic!("header matching '{}' should be rendered", header_needle));
+        texts
+            .iter()
+            .filter(|(t, _)| t == "Enabled")
+            .find(|(_, r)| {
+                r.min.x >= header_rect.min.x && (r.center().y - header_rect.center().y).abs() < 25.0
+            })
+            .map(|(_, r)| *r)
+            .unwrap_or_else(|| {
+                panic!(
+                    "'Enabled' toggle for '{}' should be rendered",
+                    header_needle
+                )
+            })
+    }
+
+    #[test]
+    fn disabled_card_click_anywhere_on_pill() {
+        let mut h = DashboardTestHarness::new(1280.0, 800.0);
+        let clusters = vec![
+            ClusterConfig::new("apac-1", "https://apac-1.example.com", "elastic"),
+            ClusterConfig::new("apac-2", "https://apac-2.example.com", "elastic"),
+            ClusterConfig::new("apac-3", "https://apac-3.example.com", "elastic"),
+            {
+                let mut c = ClusterConfig::new(
+                    "apac-test-3(APAC-ECE-1)",
+                    "https://elastic.apac-test-3.sand.wtg.zone",
+                    "elastic",
+                );
+                c.enabled = false;
+                c
+            },
+        ];
+        let mut status = StatusState::default();
+        for c in &clusters {
+            if c.enabled {
+                status
+                    .health_data
+                    .push((c.name.clone(), Some(make_health(&c.name))));
+            }
+        }
+
+        let texts = h.settle(&clusters, &status, 3);
+        let text_rect = find_enabled_text_rect_for_header(&texts, "apac-test-3(APAC-ECE-1)");
+
+        // Exercise checkbox box, text, and every padded edge inside the highlighted pill.
+        let points = [
+            ("text_center", text_rect.center()),
+            (
+                "checkbox_box_center",
+                egui::pos2(text_rect.min.x - 11.5, text_rect.center().y),
+            ),
+            (
+                "pill_left_padding",
+                egui::pos2(text_rect.min.x - 23.0, text_rect.center().y),
+            ),
+            (
+                "pill_right_padding",
+                egui::pos2(text_rect.max.x + 5.0, text_rect.center().y),
+            ),
+            (
+                "pill_top_padding",
+                egui::pos2(text_rect.center().x, text_rect.center().y - 9.0),
+            ),
+            (
+                "pill_bottom_padding",
+                egui::pos2(text_rect.center().x, text_rect.center().y + 9.0),
+            ),
+        ];
+
+        for (label, pos) in points {
+            let actions = h.click(&clusters, &status, pos);
+            assert_eq!(
+                actions.toggle_enabled,
+                Some(("apac-test-3(APAC-ECE-1)".to_string(), true)),
+                "click on {} at {:?} should enable disabled card",
+                label,
+                pos
+            );
+        }
+    }
+
+    #[test]
+    fn overview_grid_round_trip_toggle() {
+        let mut h = DashboardTestHarness::new(1280.0, 800.0);
+        let mut clusters = vec![
+            ClusterConfig::new("alpha", "https://alpha.example.com", "elastic"),
+            ClusterConfig::new("beta", "https://beta.example.com", "elastic"),
+        ];
+        let mut status = StatusState::default();
+        status
+            .health_data
+            .push(("alpha".to_string(), Some(make_health("alpha"))));
+        status
+            .health_data
+            .push(("beta".to_string(), Some(make_health("beta"))));
+
+        let texts = h.settle(&clusters, &status, 3);
+        let text_rect = find_enabled_text_rect_for_header(&texts, "alpha");
+        let actions = h.click(&clusters, &status, text_rect.center());
+        assert_eq!(actions.toggle_enabled, Some(("alpha".to_string(), false)));
+
+        clusters[0].enabled = false;
+        let texts = h.settle(&clusters, &status, 3);
+        let text_rect = find_enabled_text_rect_for_header(&texts, "alpha");
+        let actions = h.click(&clusters, &status, text_rect.center());
+        assert_eq!(actions.toggle_enabled, Some(("alpha".to_string(), true)));
+    }
+
+    #[test]
+    fn detailed_view_round_trip_toggle() {
+        let mut h = DashboardTestHarness::new(1280.0, 800.0);
+        let mut c = ClusterConfig::new("alpha", "https://alpha.example.com", "elastic");
+        c.enabled = false;
+        let mut clusters = vec![c];
+        h.state.current_tab = DashboardTab::Detailed;
+        h.state.selected_cluster = "alpha".to_string();
+
+        let status = StatusState::default();
+        let texts = h.settle(&clusters, &status, 3);
+        let text_rect = find_enabled_text_rect_for_header(&texts, "Cluster: alpha");
+        let actions = h.click(&clusters, &status, text_rect.center());
+        assert_eq!(actions.toggle_enabled, Some(("alpha".to_string(), true)));
+
+        clusters[0].enabled = true;
+        let texts = h.settle(&clusters, &status, 3);
+        let text_rect = find_enabled_text_rect_for_header(&texts, "Cluster: alpha");
+        let actions = h.click(&clusters, &status, text_rect.center());
+        assert_eq!(actions.toggle_enabled, Some(("alpha".to_string(), false)));
+    }
+
+    #[test]
+    fn scrolled_overview_grid_disabled_toggle() {
+        let mut h = DashboardTestHarness::new(1280.0, 480.0);
+        let clusters: Vec<ClusterConfig> = (0..8)
+            .map(|i| {
+                let mut c = ClusterConfig::new(
+                    format!("cluster-{}", i),
+                    format!("https://c{}.example.com", i),
+                    "elastic",
+                );
+                if i == 5 {
+                    c.enabled = false;
+                }
+                c
+            })
+            .collect();
+        let mut status = StatusState::default();
+        for c in &clusters {
+            if c.enabled {
+                status
+                    .health_data
+                    .push((c.name.clone(), Some(make_health(&c.name))));
+            }
+        }
+
+        let _ = h.settle(&clusters, &status, 2);
+        let _ = h.step(
+            &clusters,
+            &status,
+            vec![
+                egui::Event::PointerMoved(h.screen.center()),
+                egui::Event::MouseWheel {
+                    unit: egui::MouseWheelUnit::Point,
+                    delta: egui::vec2(0.0, -320.0),
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+        );
+        let texts = h.settle(&clusters, &status, 25);
+        let text_rect = find_enabled_text_rect_for_header(&texts, "cluster-5");
+        assert!(
+            h.screen.contains(text_rect.center()),
+            "scrolled cluster-5 toggle {:?} should be inside viewport {:?}",
+            text_rect,
+            h.screen
+        );
+        let actions = h.click(&clusters, &status, text_rect.center());
+        assert_eq!(
+            actions.toggle_enabled,
+            Some(("cluster-5".to_string(), true))
+        );
     }
 }
