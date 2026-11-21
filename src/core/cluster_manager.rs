@@ -1,4 +1,5 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -7,6 +8,23 @@ use crate::core::config::ClusterConfig;
 use crate::core::es_client::EsClient;
 
 const SAVE_DEBOUNCE: Duration = Duration::from_secs(5);
+
+struct SaveSnapshot {
+    clusters: Vec<ClusterConfig>,
+    cluster_data: HashMap<String, crate::core::config::ClusterData>,
+    auto_refresh: bool,
+    refresh_interval_secs: u64,
+    theme: crate::ui::theme::AppTheme,
+    vfx: crate::core::config::VfxSettings,
+    timezone_clocks: Vec<crate::core::config::TimezoneClockConfig>,
+    cluster_filter: String,
+    pipeline_test_presets: Vec<crate::core::config::PipelineTestPreset>,
+    god_console_saved_queries: Vec<crate::core::config::GodSavedQuery>,
+    llm: crate::core::config::LlmSettings,
+    assistant_dock_visible: bool,
+    assistant_conversations: Vec<crate::core::config::ChatConversation>,
+    assistant_active_conversation_id: Option<String>,
+}
 
 #[derive(Debug, Clone)]
 pub struct ClusterManager {
@@ -29,6 +47,10 @@ pub struct ClusterManager {
     assistant_active_conversation_id: Arc<Mutex<Option<String>>>,
     dirty: Arc<AtomicBool>,
     save_after: Arc<Mutex<Option<Instant>>>,
+    save_in_flight: Arc<AtomicBool>,
+    save_io_lock: Arc<Mutex<()>>,
+    last_save_error: Arc<Mutex<Option<String>>>,
+    rebuilding_clients: Arc<Mutex<HashSet<String>>>,
 }
 
 impl Default for ClusterManager {
@@ -57,6 +79,10 @@ impl ClusterManager {
             assistant_active_conversation_id: Arc::new(Mutex::new(None)),
             dirty: Arc::new(AtomicBool::new(false)),
             save_after: Arc::new(Mutex::new(None)),
+            save_in_flight: Arc::new(AtomicBool::new(false)),
+            save_io_lock: Arc::new(Mutex::new(())),
+            last_save_error: Arc::new(Mutex::new(None)),
+            rebuilding_clients: Arc::new(Mutex::new(HashSet::new())),
         }
     }
 
@@ -139,9 +165,9 @@ impl ClusterManager {
         Ok(())
     }
 
-    pub fn save(&self) -> anyhow::Result<()> {
-        let clusters = self.clusters.lock().unwrap();
-        let data = self.cluster_data.lock().unwrap();
+    fn snapshot_for_save(&self) -> SaveSnapshot {
+        let clusters = self.clusters.lock().unwrap().clone();
+        let cluster_data = self.cluster_data.lock().unwrap().clone();
         let auto_refresh = *self.auto_refresh.lock().unwrap();
         let refresh_interval_secs = *self.refresh_interval_secs.lock().unwrap();
         let theme = self.theme.lock().unwrap().clone();
@@ -159,35 +185,66 @@ impl ClusterManager {
             .unwrap()
             .clone();
 
-        // Propagate load errors: saving defaults over an unreadable file would lose it.
-        let mut config = crate::core::config::AppConfig::load()?;
-        config.clusters = clusters.clone();
-        config.cluster_data = data.clone();
-        config.auto_refresh = auto_refresh;
-        config.refresh_interval_secs = refresh_interval_secs;
-        config.theme = theme;
-        config.vfx = vfx;
-        config.timezone_clocks = timezone_clocks;
-        config.cluster_filter = cluster_filter;
-        config.pipeline_test_presets = pipeline_test_presets;
-        config.god_console_saved_queries = god_console_saved_queries;
-        config.llm = llm;
-        config.assistant_dock_visible = assistant_dock_visible;
-        config.assistant_conversations = assistant_conversations;
-        config.assistant_active_conversation_id = assistant_active_conversation_id;
+        SaveSnapshot {
+            clusters,
+            cluster_data,
+            auto_refresh,
+            refresh_interval_secs,
+            theme,
+            vfx,
+            timezone_clocks,
+            cluster_filter,
+            pipeline_test_presets,
+            god_console_saved_queries,
+            llm,
+            assistant_dock_visible,
+            assistant_conversations,
+            assistant_active_conversation_id,
+        }
+    }
 
-        config.save()?;
+    fn write_snapshot_to(&self, snapshot: SaveSnapshot, path: &Path) -> anyhow::Result<()> {
+        let _io_guard = self.save_io_lock.lock().unwrap();
+        // Propagate load errors: saving defaults over an unreadable file would lose it.
+        let mut config = crate::core::config::AppConfig::load_from(path)?;
+        config.clusters = snapshot.clusters;
+        config.cluster_data = snapshot.cluster_data;
+        config.auto_refresh = snapshot.auto_refresh;
+        config.refresh_interval_secs = snapshot.refresh_interval_secs;
+        config.theme = snapshot.theme;
+        config.vfx = snapshot.vfx;
+        config.timezone_clocks = snapshot.timezone_clocks;
+        config.cluster_filter = snapshot.cluster_filter;
+        config.pipeline_test_presets = snapshot.pipeline_test_presets;
+        config.god_console_saved_queries = snapshot.god_console_saved_queries;
+        config.llm = snapshot.llm;
+        config.assistant_dock_visible = snapshot.assistant_dock_visible;
+        config.assistant_conversations = snapshot.assistant_conversations;
+        config.assistant_active_conversation_id = snapshot.assistant_active_conversation_id;
+
+        if let Some(parent) = path.parent()
+            && !parent.as_os_str().is_empty()
+        {
+            std::fs::create_dir_all(parent)?;
+        }
+        config.save_to(path)?;
         Ok(())
     }
 
+    pub fn save(&self) -> anyhow::Result<()> {
+        let snapshot = self.snapshot_for_save();
+        self.write_snapshot_to(snapshot, &crate::core::config::config_file())
+    }
+
     pub fn mark_dirty(&self) {
-        self.dirty.store(true, Ordering::Relaxed);
+        self.dirty.store(true, Ordering::Release);
         let mut after = self.save_after.lock().unwrap();
         *after = Some(Instant::now() + SAVE_DEBOUNCE);
     }
 
+    #[allow(dead_code)]
     pub fn save_if_due(&self) -> anyhow::Result<()> {
-        if !self.dirty.load(Ordering::Relaxed) {
+        if !self.dirty.load(Ordering::Acquire) {
             return Ok(());
         }
         let should_save = {
@@ -203,11 +260,74 @@ impl ClusterManager {
                 *self.save_after.lock().unwrap() = Some(Instant::now() + SAVE_DEBOUNCE);
                 return Err(e);
             }
-            self.dirty.store(false, Ordering::Relaxed);
+            self.dirty.store(false, Ordering::Release);
             let mut after = self.save_after.lock().unwrap();
             *after = None;
         }
         Ok(())
+    }
+
+    /// Runs a due debounced save on a background blocking thread so large configs
+    /// never stall the UI thread.
+    pub fn spawn_save_if_due(&self) {
+        if !self.dirty.load(Ordering::Acquire) {
+            return;
+        }
+        let should_save = {
+            let after = self.save_after.lock().unwrap();
+            match *after {
+                Some(t) => Instant::now() >= t,
+                None => true,
+            }
+        };
+        if !should_save {
+            return;
+        }
+        if self
+            .save_in_flight
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_err()
+        {
+            return;
+        }
+
+        // Clear dirty state before spawning so mutations made while the background
+        // save runs will re-arm the debounce timer instead of being lost.
+        self.dirty.store(false, Ordering::Release);
+        *self.save_after.lock().unwrap() = None;
+
+        struct ResetFlag(Arc<AtomicBool>);
+        impl Drop for ResetFlag {
+            fn drop(&mut self) {
+                self.0.store(false, Ordering::Release);
+            }
+        }
+
+        let manager = self.clone();
+        let run_save = move || {
+            let _guard = ResetFlag(Arc::clone(&manager.save_in_flight));
+            let t0 = Instant::now();
+            match manager.save() {
+                Ok(()) => {
+                    tracing::debug!("Saved config in {:?}", t0.elapsed());
+                }
+                Err(e) => {
+                    manager.mark_dirty();
+                    *manager.last_save_error.lock().unwrap() = Some(e.to_string());
+                }
+            }
+        };
+
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            handle.spawn_blocking(run_save);
+        } else {
+            run_save();
+        }
+    }
+
+    /// Returns the most recent background save error, if any.
+    pub fn take_save_error(&self) -> Option<String> {
+        self.last_save_error.lock().unwrap().take()
     }
 
     pub fn save_theme_and_vfx(
@@ -374,6 +494,8 @@ impl ClusterManager {
     }
 
     pub fn rebuild_client(&self, name: &str) {
+        let t0 = Instant::now();
+        tracing::info!("rebuild_client('{}'): starting", name);
         let config = {
             let clusters = self.clusters.lock().unwrap();
             clusters.iter().find(|c| c.name == name).cloned()
@@ -409,12 +531,57 @@ impl ClusterManager {
                     };
                     let mut clients = self.clients.lock().unwrap();
                     clients.insert(name.to_string(), client);
-                    tracing::info!("Successfully rebuilt ES client for '{}'", name);
+                    tracing::info!(
+                        "Successfully rebuilt ES client for '{}' in {:?}",
+                        name,
+                        t0.elapsed()
+                    );
                 }
                 Err(e) => {
-                    tracing::warn!("Failed to rebuild ES client for '{}': {}", name, e);
+                    tracing::warn!(
+                        "Failed to rebuild ES client for '{}' after {:?}: {}",
+                        name,
+                        t0.elapsed(),
+                        e
+                    );
                 }
             }
+        }
+    }
+
+    /// Rebuilds a cluster's HTTP client on a background blocking thread, deduplicating
+    /// concurrent rebuilds for the same cluster name.
+    pub fn rebuild_client_async(&self, name: String) {
+        {
+            let mut in_flight = self.rebuilding_clients.lock().unwrap();
+            if !in_flight.insert(name.clone()) {
+                return;
+            }
+        }
+
+        struct RebuildGuard {
+            set: Arc<Mutex<HashSet<String>>>,
+            name: String,
+        }
+        impl Drop for RebuildGuard {
+            fn drop(&mut self) {
+                self.set.lock().unwrap().remove(&self.name);
+            }
+        }
+
+        let manager = self.clone();
+        let run = move || {
+            let _guard = RebuildGuard {
+                set: Arc::clone(&manager.rebuilding_clients),
+                name: name.clone(),
+            };
+            manager.rebuild_client(&name);
+        };
+
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            handle.spawn_blocking(run);
+        } else {
+            run();
         }
     }
 
@@ -530,6 +697,32 @@ impl ClusterManager {
             .unwrap_or_default()
     }
 
+    /// Borrows a cluster's cached data under the lock without cloning it or marking dirty.
+    pub fn read_cluster_data<R>(
+        &self,
+        name: &str,
+        f: impl FnOnce(&crate::core::config::ClusterData) -> R,
+    ) -> Option<R> {
+        let data = self.cluster_data.lock().unwrap();
+        data.get(name).map(f)
+    }
+
+    /// Mutates a cluster's cached data in place, creating a default entry if absent,
+    /// and schedules a debounced config save after releasing the lock.
+    pub fn mutate_cluster_data<R>(
+        &self,
+        name: &str,
+        f: impl FnOnce(&mut crate::core::config::ClusterData) -> R,
+    ) -> R {
+        let out = {
+            let mut data = self.cluster_data.lock().unwrap();
+            let entry = data.entry(name.to_string()).or_default();
+            f(entry)
+        };
+        self.mark_dirty();
+        out
+    }
+
     pub fn get_cluster_data(&self, name: &str) -> Option<crate::core::config::ClusterData> {
         self.cluster_data.lock().unwrap().get(name).cloned()
     }
@@ -550,5 +743,160 @@ impl ClusterManager {
 
     pub fn remove_cluster_data(&self, name: &str) {
         self.cluster_data.lock().unwrap().remove(name);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::config::{AppConfig, ClusterData, SavedQuery};
+    use std::path::PathBuf;
+    use std::sync::mpsc;
+
+    fn temp_config_path(name: &str) -> (PathBuf, PathBuf) {
+        let dir = std::env::temp_dir().join(format!(
+            "drastic-smurf-cm-test-{}-{}",
+            name,
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.json");
+        (dir, path)
+    }
+
+    fn test_cluster(name: &str, enabled: bool) -> ClusterConfig {
+        ClusterConfig {
+            enabled,
+            ..ClusterConfig::new(name, "http://127.0.0.1:9200", "elastic")
+        }
+    }
+
+    #[test]
+    fn set_cluster_enabled_toggles_and_marks_dirty() {
+        let manager = ClusterManager::new();
+        manager
+            .add_cluster(test_cluster("alpha", false), Some("pw"))
+            .unwrap();
+        manager.dirty.store(false, Ordering::Release);
+
+        assert!(!manager.set_cluster_enabled("alpha", false));
+        assert!(!manager.dirty.load(Ordering::Acquire));
+
+        assert!(manager.set_cluster_enabled("alpha", true));
+        assert!(manager.dirty.load(Ordering::Acquire));
+        assert!(manager.clusters()[0].enabled);
+
+        manager.dirty.store(false, Ordering::Release);
+        assert!(manager.set_cluster_enabled("alpha", false));
+        assert!(manager.dirty.load(Ordering::Acquire));
+        assert!(!manager.clusters()[0].enabled);
+
+        assert!(!manager.set_cluster_enabled("missing", true));
+    }
+
+    #[test]
+    fn mutate_and_read_cluster_data_in_place() {
+        let manager = ClusterManager::new();
+        assert!(manager.read_cluster_data("beta", |_| 1usize).is_none());
+
+        manager.mutate_cluster_data("beta", |data| {
+            data.variables.push(("env".into(), "staging".into()));
+            data.saved_queries.push(SavedQuery {
+                name: "health".into(),
+                method: "GET".into(),
+                path: "/_cluster/health".into(),
+                body: None,
+            });
+        });
+        assert!(manager.dirty.load(Ordering::Acquire));
+
+        manager.dirty.store(false, Ordering::Release);
+        let summary = manager.read_cluster_data("beta", |data| {
+            (data.variables.clone(), data.saved_queries.len())
+        });
+        assert_eq!(
+            summary,
+            Some((vec![("env".into(), "staging".into())], 1usize))
+        );
+        assert!(!manager.dirty.load(Ordering::Acquire));
+
+        // Mutating one field preserves sibling fields on the same entry.
+        manager.mutate_cluster_data("beta", |data: &mut ClusterData| {
+            data.variables.push(("region".into(), "apac".into()));
+        });
+        let counts = manager.read_cluster_data("beta", |data| {
+            (data.variables.len(), data.saved_queries.len())
+        });
+        assert_eq!(counts, Some((2, 1)));
+    }
+
+    #[test]
+    fn write_snapshot_does_not_block_cluster_reads_or_mutations() {
+        let (dir, path) = temp_config_path("io-nonblocking");
+        let manager = ClusterManager::new();
+        manager
+            .add_cluster(test_cluster("gamma", false), Some("pw"))
+            .unwrap();
+        manager.mutate_cluster_data("gamma", |data| {
+            data.variables.push(("k".into(), "v".into()));
+        });
+
+        let snapshot = manager.snapshot_for_save();
+
+        // Hold `save_io_lock` on a background thread to simulate slow disk I/O.
+        let io_lock = Arc::clone(&manager.save_io_lock);
+        let (locked_tx, locked_rx) = mpsc::channel();
+        let (release_tx, release_rx) = mpsc::channel();
+        let holder = std::thread::spawn(move || {
+            let _guard = io_lock.lock().unwrap();
+            let _ = locked_tx.send(());
+            let _ = release_rx.recv();
+        });
+        locked_rx.recv().unwrap();
+
+        // Reading, toggling enabled, and mutating cluster_data must not block on `save_io_lock`.
+        assert_eq!(manager.clusters().len(), 1);
+        assert!(manager.set_cluster_enabled("gamma", true));
+        manager.mutate_cluster_data("gamma", |data| {
+            data.variables.push(("k2".into(), "v2".into()));
+        });
+
+        let _ = release_tx.send(());
+        holder.join().unwrap();
+
+        // Verify `write_snapshot_to` round-trips cleanly without touching the real config dir.
+        manager.write_snapshot_to(snapshot, &path).unwrap();
+        let loaded = AppConfig::load_from(&path).unwrap();
+        assert_eq!(loaded.clusters.len(), 1);
+        assert_eq!(loaded.clusters[0].name, "gamma");
+        assert!(!loaded.clusters[0].enabled);
+        assert_eq!(loaded.cluster_data["gamma"].variables.len(), 1);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn rebuild_client_async_deduplicates_and_clears_guard() {
+        let manager = ClusterManager::new();
+        manager
+            .add_cluster(test_cluster("delta", true), Some("secret-pw"))
+            .unwrap();
+
+        // Pre-seeding `rebuilding_clients` causes `rebuild_client_async` to return immediately
+        // without touching or clearing the existing marker.
+        manager
+            .rebuilding_clients
+            .lock()
+            .unwrap()
+            .insert("delta".into());
+        manager.rebuild_client_async("delta".into());
+        assert!(manager.rebuilding_clients.lock().unwrap().contains("delta"));
+
+        // Once the marker is cleared, `rebuild_client_async` executes and removes its guard.
+        manager.rebuilding_clients.lock().unwrap().clear();
+        manager.rebuild_client_async("delta".into());
+        assert!(manager.rebuilding_clients.lock().unwrap().is_empty());
+        assert_eq!(manager.get_client("delta").unwrap().password(), "secret-pw");
     }
 }

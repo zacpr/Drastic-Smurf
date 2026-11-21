@@ -753,7 +753,7 @@ impl AppConfig {
         Self::load_from(&config_file())
     }
 
-    fn load_from(path: &Path) -> Result<Self> {
+    pub(crate) fn load_from(path: &Path) -> Result<Self> {
         let primary_error = match Self::read(path) {
             Ok(Some(config)) => return Ok(config),
             Ok(None) => None,
@@ -845,7 +845,7 @@ impl AppConfig {
         self.save_to(&config_file())
     }
 
-    fn save_to(&self, path: &Path) -> Result<()> {
+    pub(crate) fn save_to(&self, path: &Path) -> Result<()> {
         use std::io::Write;
         let contents = serde_json::to_vec_pretty(self)?;
         let tmp = path.with_extension("json.tmp");

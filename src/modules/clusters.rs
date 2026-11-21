@@ -460,7 +460,7 @@ pub fn render_export_section(
     ui: &mut Ui,
     state: &mut ClustersState,
     clusters: &[ClusterConfig],
-    cluster_data: &std::collections::HashMap<String, ClusterData>,
+    get_cluster_data: impl FnOnce() -> std::collections::HashMap<String, ClusterData>,
 ) {
     egui::Frame::new()
         .fill(Theme::bg_card())
@@ -492,7 +492,8 @@ pub fn render_export_section(
             if ui.button("Export All").clicked() {
                 state.export_error = None;
                 state.export_success = None;
-                match perform_export(state, clusters, cluster_data) {
+                let cluster_data = get_cluster_data();
+                match perform_export(state, clusters, &cluster_data) {
                     Ok(()) => {
                         state.export_success = Some(format!(
                             "Exported {} cluster(s) to {}",

@@ -393,7 +393,7 @@ impl DrasticSmurfApp {
             if !cluster.enabled {
                 continue;
             }
-            if let Some(data) = manager.get_cluster_data(&cluster.name) {
+            manager.read_cluster_data(&cluster.name, |data| {
                 if let Some(latest) = data.status_history.last() {
                     app.status_state
                         .health_data
@@ -426,7 +426,7 @@ impl DrasticSmurfApp {
                     };
                     app.snapshot_statuses.push(status);
                 }
-            }
+            });
         }
 
         app
@@ -461,6 +461,192 @@ impl DrasticSmurfApp {
         self.tasks_state.errors.remove(name);
     }
 
+    fn spawn_cluster_refresh(&self, ctx: &egui::Context, name: String) {
+        let manager = self.cluster_manager.clone();
+        let ctx = ctx.clone();
+        let tx = self.refresh_tx.clone();
+
+        // SSH-tunnelled clusters' clients open their tunnel on first request.
+        tokio::spawn(async move {
+            // Snapshot refresh
+            let tx2 = tx.clone();
+            let name2 = name.clone();
+            let ctx2 = ctx.clone();
+            let manager2 = manager.clone();
+            tokio::spawn(async move {
+                if let Some(client) = manager2.get_client(&name2) {
+                    let config = manager2.clusters().into_iter().find(|c| c.name == name2);
+                    if let Some(config) = config {
+                        let status = fetch_cluster_snapshot(&client, &config).await;
+                        let _ = tx2.send(RefreshMsg::SnapshotResult(name2, Box::new(status)));
+                    }
+                }
+                ctx2.request_repaint();
+            });
+
+            // Health refresh
+            let tx3 = tx.clone();
+            let name3 = name.clone();
+            let ctx3 = ctx.clone();
+            let manager3 = manager.clone();
+            tokio::spawn(async move {
+                if let Some(client) = manager3.get_client(&name3) {
+                    match client.cluster_health().await {
+                        Ok(health) => {
+                            let _ = tx3.send(RefreshMsg::HealthResult(name3, Some(health)));
+                        }
+                        Err(e) => {
+                            let _ = tx3.send(RefreshMsg::HealthError(name3, e.to_string()));
+                        }
+                    }
+                }
+                ctx3.request_repaint();
+            });
+
+            // Stats refresh
+            let tx4 = tx.clone();
+            let name4 = name.clone();
+            let ctx4 = ctx.clone();
+            let manager4 = manager.clone();
+            tokio::spawn(async move {
+                if let Some(client) = manager4.get_client(&name4) {
+                    match client.cluster_stats().await {
+                        Ok(stats) => {
+                            let _ = tx4.send(RefreshMsg::StatsResult(name4, Some(stats)));
+                        }
+                        Err(e) => {
+                            let _ = tx4.send(RefreshMsg::StatsError(name4, e.to_string()));
+                        }
+                    }
+                }
+                ctx4.request_repaint();
+            });
+
+            // ES version refresh
+            let tx_es = tx.clone();
+            let name_es = name.clone();
+            let ctx_es = ctx.clone();
+            let manager_es = manager.clone();
+            tokio::spawn(async move {
+                if let Some(client) = manager_es.get_client(&name_es)
+                    && let Ok(ver) = client.get_es_version().await
+                {
+                    let _ = tx_es.send(RefreshMsg::EsVersionResult(name_es, ver));
+                }
+                ctx_es.request_repaint();
+            });
+
+            // Kibana version refresh
+            let tx_kb = tx.clone();
+            let name_kb = name.clone();
+            let ctx_kb = ctx.clone();
+            let manager_kb = manager.clone();
+            tokio::spawn(async move {
+                if let Some(client) = manager_kb.get_client(&name_kb) {
+                    let config = manager_kb
+                        .clusters()
+                        .into_iter()
+                        .find(|c| c.name == name_kb);
+                    if let Some(config) = config {
+                        let kibana_host = if config.kibana_host.is_empty() {
+                            if config.host.contains("elastic") {
+                                config.host.replace("elastic", "kibana")
+                            } else {
+                                config.host.clone()
+                            }
+                        } else {
+                            let h = config.kibana_host.trim();
+                            if h.starts_with("http://") || h.starts_with("https://") {
+                                h.to_string()
+                            } else {
+                                format!("http://{}", h)
+                            }
+                        };
+                        if let Ok(ver) = client.get_kibana_version(&kibana_host).await {
+                            let _ = tx_kb.send(RefreshMsg::KibanaVersionResult(name_kb, ver));
+                        }
+                    }
+                }
+                ctx_kb.request_repaint();
+            });
+
+            // Allocation refresh
+            let tx_alloc = tx.clone();
+            let name_alloc = name.clone();
+            let ctx_alloc = ctx.clone();
+            let manager_alloc = manager.clone();
+            tokio::spawn(async move {
+                if let Some(client) = manager_alloc.get_client(&name_alloc)
+                    && let Ok(allocs) = client.cat_allocation().await
+                {
+                    let _ = tx_alloc.send(RefreshMsg::AllocationResult(name_alloc, allocs));
+                }
+                ctx_alloc.request_repaint();
+            });
+
+            // Nodes list refresh
+            let tx_nodes = tx.clone();
+            let name_nodes = name.clone();
+            let ctx_nodes = ctx.clone();
+            let manager_nodes = manager.clone();
+            tokio::spawn(async move {
+                if let Some(client) = manager_nodes.get_client(&name_nodes)
+                    && let Ok(nodes) = client.cat_nodes().await
+                {
+                    let _ = tx_nodes.send(RefreshMsg::NodesResult(name_nodes, nodes));
+                }
+                ctx_nodes.request_repaint();
+            });
+
+            // Pending tasks refresh
+            let tx_tasks = tx.clone();
+            let name_tasks = name.clone();
+            let ctx_tasks = ctx.clone();
+            let manager_tasks = manager.clone();
+            tokio::spawn(async move {
+                if let Some(client) = manager_tasks.get_client(&name_tasks)
+                    && let Ok(tasks_val) = client.get_pending_tasks().await
+                    && let Some(arr) = tasks_val.get("tasks").and_then(|a| a.as_array())
+                {
+                    let _ = tx_tasks.send(RefreshMsg::PendingTasksResult(name_tasks, arr.clone()));
+                }
+                ctx_tasks.request_repaint();
+            });
+
+            // Tasks refresh
+            let tx5 = tx.clone();
+            let name5 = name.clone();
+            let ctx5 = ctx.clone();
+            let manager5 = manager.clone();
+            tokio::spawn(async move {
+                if let Some(client) = manager5.get_client(&name5) {
+                    match client.tasks(Some("*reindex*,*snapshot*")).await {
+                        Ok(t) => {
+                            let items: Vec<_> = t
+                                .nodes
+                                .into_values()
+                                .flat_map(|n| n.tasks.into_values())
+                                .collect();
+                            let _ = tx5.send(RefreshMsg::TasksResult(name5, items));
+                        }
+                        Err(e) => {
+                            let _ = tx5.send(RefreshMsg::TasksError(name5, e.to_string()));
+                        }
+                    }
+                }
+                ctx5.request_repaint();
+            });
+        });
+    }
+
+    fn trigger_refresh_cluster(&mut self, ctx: &egui::Context, name: &str) {
+        if !self.is_cluster_enabled(name) {
+            return;
+        }
+        tracing::info!("Triggering refresh for single cluster '{}'", name);
+        self.spawn_cluster_refresh(ctx, name.to_string());
+    }
+
     fn trigger_refresh(&mut self, ctx: &egui::Context) {
         let clusters = self.cluster_manager.clusters();
 
@@ -468,183 +654,7 @@ impl DrasticSmurfApp {
             if !cluster.enabled {
                 continue;
             }
-            let manager = self.cluster_manager.clone();
-            let ctx = ctx.clone();
-            let tx = self.refresh_tx.clone();
-            let name = cluster.name.clone();
-
-            // SSH-tunnelled clusters' clients open their tunnel on first request.
-            tokio::spawn(async move {
-                // Snapshot refresh
-                let tx2 = tx.clone();
-                let name2 = name.clone();
-                let ctx2 = ctx.clone();
-                let manager2 = manager.clone();
-                tokio::spawn(async move {
-                    if let Some(client) = manager2.get_client(&name2) {
-                        let config = manager2.clusters().into_iter().find(|c| c.name == name2);
-                        if let Some(config) = config {
-                            let status = fetch_cluster_snapshot(&client, &config).await;
-                            let _ = tx2.send(RefreshMsg::SnapshotResult(name2, Box::new(status)));
-                        }
-                    }
-                    ctx2.request_repaint();
-                });
-
-                // Health refresh
-                let tx3 = tx.clone();
-                let name3 = name.clone();
-                let ctx3 = ctx.clone();
-                let manager3 = manager.clone();
-                tokio::spawn(async move {
-                    if let Some(client) = manager3.get_client(&name3) {
-                        match client.cluster_health().await {
-                            Ok(health) => {
-                                let _ = tx3.send(RefreshMsg::HealthResult(name3, Some(health)));
-                            }
-                            Err(e) => {
-                                let _ = tx3.send(RefreshMsg::HealthError(name3, e.to_string()));
-                            }
-                        }
-                    }
-                    ctx3.request_repaint();
-                });
-
-                // Stats refresh
-                let tx4 = tx.clone();
-                let name4 = name.clone();
-                let ctx4 = ctx.clone();
-                let manager4 = manager.clone();
-                tokio::spawn(async move {
-                    if let Some(client) = manager4.get_client(&name4) {
-                        match client.cluster_stats().await {
-                            Ok(stats) => {
-                                let _ = tx4.send(RefreshMsg::StatsResult(name4, Some(stats)));
-                            }
-                            Err(e) => {
-                                let _ = tx4.send(RefreshMsg::StatsError(name4, e.to_string()));
-                            }
-                        }
-                    }
-                    ctx4.request_repaint();
-                });
-
-                // ES version refresh
-                let tx_es = tx.clone();
-                let name_es = name.clone();
-                let ctx_es = ctx.clone();
-                let manager_es = manager.clone();
-                tokio::spawn(async move {
-                    if let Some(client) = manager_es.get_client(&name_es)
-                        && let Ok(ver) = client.get_es_version().await
-                    {
-                        let _ = tx_es.send(RefreshMsg::EsVersionResult(name_es, ver));
-                    }
-                    ctx_es.request_repaint();
-                });
-
-                // Kibana version refresh
-                let tx_kb = tx.clone();
-                let name_kb = name.clone();
-                let ctx_kb = ctx.clone();
-                let manager_kb = manager.clone();
-                tokio::spawn(async move {
-                    if let Some(client) = manager_kb.get_client(&name_kb) {
-                        let config = manager_kb
-                            .clusters()
-                            .into_iter()
-                            .find(|c| c.name == name_kb);
-                        if let Some(config) = config {
-                            let kibana_host = if config.kibana_host.is_empty() {
-                                if config.host.contains("elastic") {
-                                    config.host.replace("elastic", "kibana")
-                                } else {
-                                    config.host.clone()
-                                }
-                            } else {
-                                let h = config.kibana_host.trim();
-                                if h.starts_with("http://") || h.starts_with("https://") {
-                                    h.to_string()
-                                } else {
-                                    format!("http://{}", h)
-                                }
-                            };
-                            if let Ok(ver) = client.get_kibana_version(&kibana_host).await {
-                                let _ = tx_kb.send(RefreshMsg::KibanaVersionResult(name_kb, ver));
-                            }
-                        }
-                    }
-                    ctx_kb.request_repaint();
-                });
-
-                // Allocation refresh
-                let tx_alloc = tx.clone();
-                let name_alloc = name.clone();
-                let ctx_alloc = ctx.clone();
-                let manager_alloc = manager.clone();
-                tokio::spawn(async move {
-                    if let Some(client) = manager_alloc.get_client(&name_alloc)
-                        && let Ok(allocs) = client.cat_allocation().await
-                    {
-                        let _ = tx_alloc.send(RefreshMsg::AllocationResult(name_alloc, allocs));
-                    }
-                    ctx_alloc.request_repaint();
-                });
-
-                // Nodes list refresh
-                let tx_nodes = tx.clone();
-                let name_nodes = name.clone();
-                let ctx_nodes = ctx.clone();
-                let manager_nodes = manager.clone();
-                tokio::spawn(async move {
-                    if let Some(client) = manager_nodes.get_client(&name_nodes)
-                        && let Ok(nodes) = client.cat_nodes().await
-                    {
-                        let _ = tx_nodes.send(RefreshMsg::NodesResult(name_nodes, nodes));
-                    }
-                    ctx_nodes.request_repaint();
-                });
-
-                // Pending tasks refresh
-                let tx_tasks = tx.clone();
-                let name_tasks = name.clone();
-                let ctx_tasks = ctx.clone();
-                let manager_tasks = manager.clone();
-                tokio::spawn(async move {
-                    if let Some(client) = manager_tasks.get_client(&name_tasks)
-                        && let Ok(tasks_val) = client.get_pending_tasks().await
-                        && let Some(arr) = tasks_val.get("tasks").and_then(|a| a.as_array())
-                    {
-                        let _ =
-                            tx_tasks.send(RefreshMsg::PendingTasksResult(name_tasks, arr.clone()));
-                    }
-                    ctx_tasks.request_repaint();
-                });
-
-                // Tasks refresh
-                let tx5 = tx.clone();
-                let name5 = name.clone();
-                let ctx5 = ctx.clone();
-                let manager5 = manager.clone();
-                tokio::spawn(async move {
-                    if let Some(client) = manager5.get_client(&name5) {
-                        match client.tasks(Some("*reindex*,*snapshot*")).await {
-                            Ok(t) => {
-                                let items: Vec<_> = t
-                                    .nodes
-                                    .into_values()
-                                    .flat_map(|n| n.tasks.into_values())
-                                    .collect();
-                                let _ = tx5.send(RefreshMsg::TasksResult(name5, items));
-                            }
-                            Err(e) => {
-                                let _ = tx5.send(RefreshMsg::TasksError(name5, e.to_string()));
-                            }
-                        }
-                    }
-                    ctx5.request_repaint();
-                });
-            });
+            self.spawn_cluster_refresh(ctx, cluster.name);
         }
 
         self.last_refresh = Some(Instant::now());
@@ -666,7 +676,7 @@ impl DrasticSmurfApp {
                         .map(|e| e.contains("401") || e.to_lowercase().contains("unauthorized"))
                         .unwrap_or(false)
                     {
-                        self.cluster_manager.rebuild_client(&name);
+                        self.cluster_manager.rebuild_client_async(name.clone());
                     }
                     // Update speed history
                     if let Some(ref stats) = status.snapshot_stats {
@@ -771,7 +781,7 @@ impl DrasticSmurfApp {
                         continue;
                     }
                     if err.contains("401") || err.to_lowercase().contains("unauthorized") {
-                        self.cluster_manager.rebuild_client(&name);
+                        self.cluster_manager.rebuild_client_async(name.clone());
                     }
                     if let Some(existing) = self
                         .status_state
@@ -816,7 +826,7 @@ impl DrasticSmurfApp {
                         continue;
                     }
                     if err.contains("401") || err.to_lowercase().contains("unauthorized") {
-                        self.cluster_manager.rebuild_client(&name);
+                        self.cluster_manager.rebuild_client_async(name.clone());
                     }
                     if let Some(existing) = self
                         .status_state
@@ -858,7 +868,7 @@ impl DrasticSmurfApp {
                         continue;
                     }
                     if err.contains("401") || err.to_lowercase().contains("unauthorized") {
-                        self.cluster_manager.rebuild_client(&name);
+                        self.cluster_manager.rebuild_client_async(name.clone());
                     }
                     self.tasks_state.tasks.retain(|(n, _)| n != &name);
                     self.tasks_state.errors.insert(name, err);
@@ -1218,17 +1228,12 @@ impl DrasticSmurfApp {
             health,
             stats,
         };
-        if let Some(mut data) = self.cluster_manager.get_cluster_data(name) {
+        self.cluster_manager.mutate_cluster_data(name, |data| {
             data.status_history.push(snapshot);
             while data.status_history.len() > 100 {
                 data.status_history.remove(0);
             }
-            self.cluster_manager.set_cluster_data(name, data);
-        } else {
-            let mut data = crate::core::config::ClusterData::default();
-            data.status_history.push(snapshot);
-            self.cluster_manager.set_cluster_data(name, data);
-        }
+        });
     }
 
     fn save_tasks_cache(&self, name: &str, tasks: Vec<crate::core::es_client::TaskInfo>) {
@@ -1236,17 +1241,12 @@ impl DrasticSmurfApp {
             timestamp: chrono::Utc::now(),
             tasks,
         };
-        if let Some(mut data) = self.cluster_manager.get_cluster_data(name) {
+        self.cluster_manager.mutate_cluster_data(name, |data| {
             data.tasks_cache.push(entry);
             while data.tasks_cache.len() > 20 {
                 data.tasks_cache.remove(0);
             }
-            self.cluster_manager.set_cluster_data(name, data);
-        } else {
-            let mut data = crate::core::config::ClusterData::default();
-            data.tasks_cache.push(entry);
-            self.cluster_manager.set_cluster_data(name, data);
-        }
+        });
     }
 
     fn save_snapshot_cache(&self, name: &str, status: &ClusterSnapshotStatus) {
@@ -1264,17 +1264,12 @@ impl DrasticSmurfApp {
             resolved_repo: status.resolved_repo.clone(),
             backups: status.backups.clone(),
         };
-        if let Some(mut data) = self.cluster_manager.get_cluster_data(name) {
+        self.cluster_manager.mutate_cluster_data(name, |data| {
             data.snapshot_cache.push(entry);
             while data.snapshot_cache.len() > 50 {
                 data.snapshot_cache.remove(0);
             }
-            self.cluster_manager.set_cluster_data(name, data);
-        } else {
-            let mut data = crate::core::config::ClusterData::default();
-            data.snapshot_cache.push(entry);
-            self.cluster_manager.set_cluster_data(name, data);
-        }
+        });
     }
 
     fn cluster_matches_filter(&self, name: &str) -> bool {
@@ -1891,16 +1886,27 @@ impl DrasticSmurfApp {
             self.show_add_cluster = true;
         }
 
-        if let Some((name, enabled)) = actions.toggle_enabled
-            && self.cluster_manager.set_cluster_enabled(&name, enabled)
-        {
-            if enabled {
-                self.trigger_refresh(ctx);
-                self.toasts.info(format!("Enabled cluster '{}'", name));
-            } else {
-                self.clear_cluster_runtime_data(&name);
-                self.toasts.info(format!("Disabled cluster '{}'", name));
+        if let Some((name, enabled)) = actions.toggle_enabled {
+            let t0 = Instant::now();
+            tracing::info!("Dashboard toggle_enabled('{}', {}) starting", name, enabled);
+            if self.cluster_manager.set_cluster_enabled(&name, enabled) {
+                if self.clusters_state.editing_cluster.as_deref() == Some(name.as_str()) {
+                    self.clusters_state.edit_form.enabled = enabled;
+                }
+                if enabled {
+                    self.trigger_refresh_cluster(ctx, &name);
+                    self.toasts.info(format!("Enabled cluster '{}'", name));
+                } else {
+                    self.clear_cluster_runtime_data(&name);
+                    self.toasts.info(format!("Disabled cluster '{}'", name));
+                }
             }
+            tracing::info!(
+                "Dashboard toggle_enabled('{}', {}) finished in {:?}",
+                name,
+                enabled,
+                t0.elapsed()
+            );
         }
 
         if let Some((old_name, config, password)) = actions.save_cluster {
@@ -1930,7 +1936,7 @@ impl DrasticSmurfApp {
             }
             if success {
                 if enabled_after {
-                    self.trigger_refresh(ctx);
+                    self.trigger_refresh_cluster(ctx, &saved_name);
                 } else {
                     self.clear_cluster_runtime_data(&saved_name);
                 }
@@ -2276,7 +2282,6 @@ impl DrasticSmurfApp {
                     .into_iter()
                     .filter(|c| self.cluster_matches_filter(&c.name))
                     .collect();
-                let cluster_data = self.cluster_manager.all_cluster_data();
                 let filtered_state = StatusState {
                     health_data: self
                         .status_state
@@ -2343,11 +2348,12 @@ impl DrasticSmurfApp {
                         .collect(),
                 };
                 let mut actions = DashboardActions::default();
+                let cm = &self.cluster_manager;
                 render_dashboard_module(
                     ui,
                     &clusters,
                     &all_cluster_names,
-                    &cluster_data,
+                    || cm.all_cluster_data(),
                     &mut self.dashboard_state,
                     &mut self.clusters_state,
                     &filtered_state,
@@ -2397,9 +2403,13 @@ impl DrasticSmurfApp {
 
                 // Sync variables and saved queries when cluster selection changes
                 if self.console_state.last_selected_cluster != selected {
-                    if let Some(data) = self.cluster_manager.get_cluster_data(&selected) {
-                        self.console_state.variables = data.variables.clone();
-                        self.console_state.saved_queries = data.saved_queries.clone();
+                    if let Some((vars, queries)) =
+                        self.cluster_manager.read_cluster_data(&selected, |data| {
+                            (data.variables.clone(), data.saved_queries.clone())
+                        })
+                    {
+                        self.console_state.variables = vars;
+                        self.console_state.saved_queries = queries;
                     } else {
                         self.console_state.variables.clear();
                         self.console_state.saved_queries.clear();
@@ -2421,7 +2431,7 @@ impl DrasticSmurfApp {
 
                 if let Some(query) = on_save_query {
                     let cluster = &self.console_state.selected_cluster;
-                    if let Some(mut data) = self.cluster_manager.get_cluster_data(cluster) {
+                    let saved_queries = self.cluster_manager.mutate_cluster_data(cluster, |data| {
                         // Replace if name exists
                         if let Some(idx) =
                             data.saved_queries.iter().position(|q| q.name == query.name)
@@ -2430,40 +2440,27 @@ impl DrasticSmurfApp {
                         } else {
                             data.saved_queries.push(query);
                         }
-                        self.cluster_manager.set_cluster_data(cluster, data);
-                    } else {
-                        let mut data = crate::core::config::ClusterData::default();
-                        data.saved_queries.push(query);
-                        self.cluster_manager.set_cluster_data(cluster, data);
-                    }
-                    // Also update console state so it shows immediately
-                    if let Some(data) = self.cluster_manager.get_cluster_data(cluster) {
-                        self.console_state.saved_queries = data.saved_queries;
-                    }
+                        data.saved_queries.clone()
+                    });
+                    self.console_state.saved_queries = saved_queries;
                 }
 
                 if let Some(query_name) = on_delete_query {
                     let cluster = &self.console_state.selected_cluster;
-                    if let Some(mut data) = self.cluster_manager.get_cluster_data(cluster) {
+                    let saved_queries = self.cluster_manager.mutate_cluster_data(cluster, |data| {
                         data.saved_queries.retain(|q| q.name != query_name);
-                        self.cluster_manager.set_cluster_data(cluster, data);
-                    }
-                    if let Some(data) = self.cluster_manager.get_cluster_data(cluster) {
-                        self.console_state.saved_queries = data.saved_queries;
-                    }
+                        data.saved_queries.clone()
+                    });
+                    self.console_state.saved_queries = saved_queries;
                     self.toasts.info(format!("Deleted query '{}'", query_name));
                 }
 
                 // Persist variable changes back to ClusterData when modified
                 if self.console_state.variables_changed && !selected.is_empty() {
-                    if let Some(mut data) = self.cluster_manager.get_cluster_data(&selected) {
-                        data.variables = self.console_state.variables.clone();
-                        self.cluster_manager.set_cluster_data(&selected, data);
-                    } else {
-                        let mut data = crate::core::config::ClusterData::default();
-                        data.variables = self.console_state.variables.clone();
-                        self.cluster_manager.set_cluster_data(&selected, data);
-                    }
+                    let vars = self.console_state.variables.clone();
+                    self.cluster_manager.mutate_cluster_data(&selected, |data| {
+                        data.variables = vars;
+                    });
                     self.console_state.variables_changed = false;
                 }
             }
@@ -3861,7 +3858,7 @@ impl DrasticSmurfApp {
 
                                 if save_ok {
                                     if self.new_cluster.enabled {
-                                        self.trigger_refresh(ctx);
+                                        self.trigger_refresh_cluster(ctx, &name);
                                     } else {
                                         self.clear_cluster_runtime_data(&name);
                                     }
@@ -4727,8 +4724,9 @@ impl eframe::App for DrasticSmurfApp {
         }
 
         // Debounced config save
-        if let Err(e) = self.cluster_manager.save_if_due() {
-            self.toasts.error(format!("Failed to save config: {}", e));
+        self.cluster_manager.spawn_save_if_due();
+        if let Some(err) = self.cluster_manager.take_save_error() {
+            self.toasts.error(format!("Failed to save config: {}", err));
         }
 
         // Log viewer window (toggled via konami code: hover title + press 6 x3)
