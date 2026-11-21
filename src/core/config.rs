@@ -34,6 +34,7 @@ pub enum BackgroundEffect {
     Gradient,
     Mesh,
     Particles,
+    CyberGrid,
 }
 
 impl Default for VfxSettings {
@@ -418,6 +419,15 @@ pub struct ClusterConfig {
     pub ssh_user: String,
     #[serde(default = "default_ssh_port")]
     pub ssh_port: u16,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// Target cluster used to query logs and metrics (empty = this cluster).
+    #[serde(default)]
+    pub logs_metrics_cluster: String,
+    #[serde(default = "default_logs_index_pattern")]
+    pub logs_index_pattern: String,
+    #[serde(default = "default_metrics_index_pattern")]
+    pub metrics_index_pattern: String,
 }
 
 fn default_verify_ssl() -> bool {
@@ -426,6 +436,14 @@ fn default_verify_ssl() -> bool {
 
 fn default_ssh_port() -> u16 {
     22
+}
+
+pub fn default_logs_index_pattern() -> String {
+    "logs-elasticsearch.*,logs-kibana.*".to_string()
+}
+
+pub fn default_metrics_index_pattern() -> String {
+    "metrics-elasticsearch.*,metrics-kibana.*".to_string()
 }
 
 impl Default for ClusterConfig {
@@ -447,6 +465,10 @@ impl Default for ClusterConfig {
             ssh_host: String::new(),
             ssh_user: String::new(),
             ssh_port: 22,
+            enabled: true,
+            logs_metrics_cluster: String::new(),
+            logs_index_pattern: default_logs_index_pattern(),
+            metrics_index_pattern: default_metrics_index_pattern(),
         }
     }
 }
@@ -463,6 +485,36 @@ impl ClusterConfig {
             host: host.into(),
             username: username.into(),
             ..Default::default()
+        }
+    }
+
+    /// Cluster name to query for logs and metrics (falls back to this cluster).
+    pub fn effective_telemetry_cluster(&self) -> &str {
+        let trimmed = self.logs_metrics_cluster.trim();
+        if trimmed.is_empty() {
+            &self.name
+        } else {
+            trimmed
+        }
+    }
+
+    /// Logs index pattern for this cluster (falls back to default Elastic + Kibana pattern).
+    pub fn effective_logs_index_pattern(&self) -> &str {
+        let trimmed = self.logs_index_pattern.trim();
+        if trimmed.is_empty() {
+            "logs-elasticsearch.*,logs-kibana.*"
+        } else {
+            trimmed
+        }
+    }
+
+    /// Metrics index pattern for this cluster (falls back to default Elastic + Kibana pattern).
+    pub fn effective_metrics_index_pattern(&self) -> &str {
+        let trimmed = self.metrics_index_pattern.trim();
+        if trimmed.is_empty() {
+            "metrics-elasticsearch.*,metrics-kibana.*"
+        } else {
+            trimmed
         }
     }
 }
@@ -585,7 +637,7 @@ pub struct PinnedMonitorLayout {
     pub h: f32,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
     pub clusters: Vec<ClusterConfig>,
     #[serde(default)]
@@ -630,6 +682,39 @@ pub struct AppConfig {
     pub assistant_active_conversation_id: Option<String>,
     #[serde(default)]
     pub logs: LogSettings,
+    /// Hide the main window to the system tray when minimized (default true).
+    #[serde(default = "default_true")]
+    pub minimize_to_tray: bool,
+}
+
+impl Default for AppConfig {
+    fn default() -> Self {
+        Self {
+            clusters: Vec::new(),
+            cluster_data: HashMap::new(),
+            auto_refresh: false,
+            refresh_interval_secs: default_refresh_interval_secs(),
+            theme: AppTheme::default(),
+            vfx: VfxSettings::default(),
+            timezone_clocks: default_timezone_clocks(),
+            cluster_filter: String::new(),
+            window_width: None,
+            window_height: None,
+            window_pos_x: None,
+            window_pos_y: None,
+            wizard_completed: false,
+            pinned_monitor_ids: Vec::new(),
+            pinned_monitor_layouts: HashMap::new(),
+            pipeline_test_presets: Vec::new(),
+            god_console_saved_queries: Vec::new(),
+            llm: LlmSettings::default(),
+            assistant_dock_visible: false,
+            assistant_conversations: Vec::new(),
+            assistant_active_conversation_id: None,
+            logs: LogSettings::default(),
+            minimize_to_tray: true,
+        }
+    }
 }
 
 fn default_refresh_interval_secs() -> u64 {
@@ -651,10 +736,7 @@ static LOAD_NOTICE: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(Non
 
 /// Takes the pending config-recovery notice, if loading had to recover from a bad file.
 pub fn take_load_notice() -> Option<String> {
-    LOAD_NOTICE
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .take()
+    LOAD_NOTICE.lock().unwrap_or_else(|e| e.into_inner()).take()
 }
 
 fn backup_path(path: &Path) -> PathBuf {
@@ -810,7 +892,10 @@ mod tests {
         named("first").save_to(&path).unwrap();
         named("second").save_to(&path).unwrap();
 
-        assert_eq!(AppConfig::read(&path).unwrap().unwrap().cluster_filter, "second");
+        assert_eq!(
+            AppConfig::read(&path).unwrap().unwrap().cluster_filter,
+            "second"
+        );
         let backup = AppConfig::read(&backup_path(&path)).unwrap().unwrap();
         assert_eq!(backup.cluster_filter, "first");
         assert!(!path.with_extension("json.tmp").exists());
@@ -827,7 +912,10 @@ mod tests {
 
         let loaded = AppConfig::load_from(&path).unwrap();
         assert_eq!(loaded.cluster_filter, "good");
-        assert!(!path.exists(), "corrupt file must not stay where saves land");
+        assert!(
+            !path.exists(),
+            "corrupt file must not stay where saves land"
+        );
         let kept: Vec<_> = std::fs::read_dir(&dir)
             .unwrap()
             .filter_map(|e| e.ok())
@@ -923,6 +1011,10 @@ mod tests {
             ssh_host: "10.0.0.1".to_string(),
             ssh_user: "ssh-user".to_string(),
             ssh_port: 2222,
+            enabled: false,
+            logs_metrics_cluster: "mon-cluster".to_string(),
+            logs_index_pattern: "logs-custom-*".to_string(),
+            metrics_index_pattern: "metrics-custom-*".to_string(),
         });
         config.cluster_filter = "test".to_string();
         config.wizard_completed = true;
@@ -951,7 +1043,48 @@ mod tests {
         assert_eq!(cluster.ssh_host, "10.0.0.1");
         assert_eq!(cluster.ssh_user, "ssh-user");
         assert_eq!(cluster.ssh_port, 2222);
+        assert!(!cluster.enabled);
+        assert_eq!(cluster.logs_metrics_cluster, "mon-cluster");
+        assert_eq!(cluster.logs_index_pattern, "logs-custom-*");
+        assert_eq!(cluster.metrics_index_pattern, "metrics-custom-*");
+        assert_eq!(cluster.effective_telemetry_cluster(), "mon-cluster");
+        assert_eq!(cluster.effective_logs_index_pattern(), "logs-custom-*");
+        assert_eq!(
+            cluster.effective_metrics_index_pattern(),
+            "metrics-custom-*"
+        );
         assert_eq!(deserialized.cluster_filter, "test");
         assert_eq!(deserialized.wizard_completed, true);
+    }
+
+    #[test]
+    fn cluster_config_telemetry_and_enabled_defaults() {
+        let cfg: ClusterConfig = serde_json::from_value(serde_json::json!({
+            "name": "prod-1",
+            "host": "https://es.example.com",
+            "username": "elastic",
+            "snapshot_repo": "",
+            "slm_policy": "",
+            "ssh_host": "",
+            "ssh_user": ""
+        }))
+        .unwrap();
+
+        assert!(cfg.enabled);
+        assert_eq!(cfg.logs_metrics_cluster, "");
+        assert_eq!(cfg.logs_index_pattern, "logs-elasticsearch.*,logs-kibana.*");
+        assert_eq!(
+            cfg.metrics_index_pattern,
+            "metrics-elasticsearch.*,metrics-kibana.*"
+        );
+        assert_eq!(cfg.effective_telemetry_cluster(), "prod-1");
+        assert_eq!(
+            cfg.effective_logs_index_pattern(),
+            "logs-elasticsearch.*,logs-kibana.*"
+        );
+        assert_eq!(
+            cfg.effective_metrics_index_pattern(),
+            "metrics-elasticsearch.*,metrics-kibana.*"
+        );
     }
 }

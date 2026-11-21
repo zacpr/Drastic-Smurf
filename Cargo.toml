@@ -1,6 +1,6 @@
 [package]
 name = "drastic-smurf"
-version = "0.5.19"
+version = "0.5.25"
 edition = "2024"
 authors = ["Zac <zac@example.com>"]
 description = "Extensible desktop GUI for monitoring and interacting with multiple Elasticsearch clusters"
@@ -22,7 +22,6 @@ hex = "0.4"
 directories = "6.0"
 anyhow = "1.0"
 thiserror = "2.0"
-poll-promise = { version = "0.3", features = ["tokio"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 webbrowser = "1.2.1"

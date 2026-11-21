@@ -1009,6 +1009,18 @@ pub struct ClusterHealth {
     pub initializing_shards: u32,
     #[serde(rename = "unassigned_shards")]
     pub unassigned_shards: u32,
+    #[serde(default)]
+    pub unassigned_primary_shards: u32,
+    #[serde(default)]
+    pub delayed_unassigned_shards: u32,
+    #[serde(default)]
+    pub active_shards_percent_as_number: f64,
+    #[serde(default)]
+    pub number_of_in_flight_fetch: u32,
+    #[serde(default)]
+    pub number_of_pending_tasks: u32,
+    #[serde(default)]
+    pub task_max_waiting_in_queue_millis: u64,
     #[serde(rename = "timed_out")]
     pub timed_out: Option<bool>,
 }
@@ -1641,6 +1653,36 @@ mod tests {
         let client = EsClient::with_password(&config, "key\r\nInjected: value").unwrap();
         let (req, _, _) = client.request(reqwest::Method::GET, "/");
         assert!(req.build().is_err());
+    }
+
+    #[test]
+    fn cluster_health_deserializes_all_dashboard_fields() {
+        let health: ClusterHealth = serde_json::from_value(json!({
+            "active_primary_shards": 1535,
+            "active_shards": 3203,
+            "active_shards_percent_as_number": 100.0,
+            "cluster_name": "apac-test-1",
+            "delayed_unassigned_shards": 0,
+            "initializing_shards": 0,
+            "number_of_data_nodes": 7,
+            "number_of_in_flight_fetch": 0,
+            "number_of_nodes": 12,
+            "number_of_pending_tasks": 0,
+            "relocating_shards": 0,
+            "status": "green",
+            "task_max_waiting_in_queue_millis": 0,
+            "timed_out": false,
+            "unassigned_primary_shards": 0,
+            "unassigned_shards": 0
+        }))
+        .unwrap();
+
+        assert_eq!(health.active_shards_percent_as_number, 100.0);
+        assert_eq!(health.delayed_unassigned_shards, 0);
+        assert_eq!(health.number_of_in_flight_fetch, 0);
+        assert_eq!(health.number_of_pending_tasks, 0);
+        assert_eq!(health.task_max_waiting_in_queue_millis, 0);
+        assert_eq!(health.unassigned_primary_shards, 0);
     }
 
     #[test]

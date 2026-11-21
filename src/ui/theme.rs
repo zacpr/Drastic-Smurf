@@ -361,9 +361,37 @@ impl AppTheme {
         }
     }
 
+    pub fn cyber_smurf() -> Self {
+        Self {
+            name: "Cyber Smurf".into(),
+            bg_darkest: Color32::from_rgb(7, 10, 16),
+            bg_dark: Color32::from_rgb(12, 17, 27),
+            bg_card: Color32::from_rgb(16, 23, 38),
+            bg_input: Color32::from_rgb(22, 32, 51),
+            text_primary: Color32::from_rgb(230, 244, 255),
+            text_secondary: Color32::from_rgb(132, 174, 206),
+            text_muted: Color32::from_rgb(84, 110, 138),
+            accent: Color32::from_rgb(0, 240, 255),
+            accent_hover: Color32::from_rgb(80, 248, 255),
+            success: Color32::from_rgb(0, 235, 165),
+            warning: Color32::from_rgb(255, 196, 0),
+            danger: Color32::from_rgb(255, 56, 118),
+            info: Color32::from_rgb(0, 200, 255),
+            snapshot_in_progress: Color32::from_rgb(0, 240, 255),
+            snapshot_success: Color32::from_rgb(0, 235, 165),
+            snapshot_failed: Color32::from_rgb(255, 56, 118),
+            snapshot_partial: Color32::from_rgb(255, 196, 0),
+            progress_start: Color32::from_rgb(255, 42, 133),
+            progress_mid1: Color32::from_rgb(255, 168, 0),
+            progress_mid2: Color32::from_rgb(0, 235, 165),
+            progress_end: Color32::from_rgb(0, 240, 255),
+        }
+    }
+
     pub fn all_presets() -> Vec<Self> {
         vec![
             Self::slate(),
+            Self::cyber_smurf(),
             Self::dracula(),
             Self::nord(),
             Self::solarized_dark(),
@@ -379,22 +407,22 @@ impl AppTheme {
         let mut v = egui::Visuals::dark();
         v.panel_fill = self.bg_dark;
         v.window_fill = self.bg_card;
-        v.window_stroke = egui::Stroke::new(1.0, self.bg_input);
+        v.window_stroke = egui::Stroke::new(1.0_f32, self.bg_input);
         v.widgets.inactive.bg_fill = self.bg_input;
         v.widgets.inactive.weak_bg_fill = self.bg_input;
-        v.widgets.inactive.bg_stroke = egui::Stroke::new(1.0, self.bg_input);
-        v.widgets.inactive.fg_stroke = egui::Stroke::new(1.0, self.text_primary);
+        v.widgets.inactive.bg_stroke = egui::Stroke::new(1.0_f32, self.bg_input);
+        v.widgets.inactive.fg_stroke = egui::Stroke::new(1.0_f32, self.text_primary);
         v.widgets.hovered.bg_fill = self.accent.linear_multiply(0.15);
         v.widgets.hovered.weak_bg_fill = self.accent.linear_multiply(0.15);
-        v.widgets.hovered.bg_stroke = egui::Stroke::new(1.0, self.accent);
-        v.widgets.hovered.fg_stroke = egui::Stroke::new(1.0, self.text_primary);
+        v.widgets.hovered.bg_stroke = egui::Stroke::new(1.0_f32, self.accent);
+        v.widgets.hovered.fg_stroke = egui::Stroke::new(1.0_f32, self.text_primary);
         v.widgets.active.bg_fill = self.accent.linear_multiply(0.25);
         v.widgets.active.weak_bg_fill = self.accent.linear_multiply(0.25);
-        v.widgets.active.bg_stroke = egui::Stroke::new(1.0, self.accent_hover);
-        v.widgets.active.fg_stroke = egui::Stroke::new(1.0, self.text_primary);
+        v.widgets.active.bg_stroke = egui::Stroke::new(1.0_f32, self.accent_hover);
+        v.widgets.active.fg_stroke = egui::Stroke::new(1.0_f32, self.text_primary);
         v.widgets.open.bg_fill = self.bg_card;
         v.selection.bg_fill = self.accent.linear_multiply(0.3);
-        v.selection.stroke = egui::Stroke::new(1.0, self.accent);
+        v.selection.stroke = egui::Stroke::new(1.0_f32, self.accent);
         v.hyperlink_color = self.accent;
         v.faint_bg_color = self.bg_card.linear_multiply(0.5);
         v.extreme_bg_color = self.bg_darkest;

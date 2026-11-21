@@ -10,9 +10,11 @@ use crate::core::config::ChatMessage;
 use crate::core::config::ClusterConfig;
 use crate::core::es_client::{ClusterHealth, EsClient, LogEntry, LogFieldNames, LogFilters};
 use crate::modules::appearance::{AppearanceState, render_appearance_module};
-use crate::modules::clusters::{ClustersState, render_clusters_module};
+use crate::modules::clusters::ClustersState;
 use crate::modules::console::{ConsoleState, render_console_module};
-use crate::modules::dashboard::{DashboardState, render_dashboard_module};
+use crate::modules::dashboard::{
+    DashboardActions, DashboardState, render_dashboard_module, render_dashboard_telemetry_popups,
+};
 use crate::modules::discover::{DiscoverState, render_discover_module};
 use crate::modules::god_console::{
     GodConsoleActions, GodConsoleState, GodJob, GodJobResult, GodRunRequest,
@@ -32,7 +34,7 @@ use crate::modules::pipeline::{PipelineState, render_pipeline_module};
 use crate::modules::snapshot::{
     ClusterSnapshotStatus, SnapshotHistory, fetch_cluster_snapshot, render_snapshot_module,
 };
-use crate::modules::status::{StatusState, render_status_module};
+use crate::modules::status::StatusState;
 use crate::modules::tasks::{TasksState, render_tasks_module};
 use crate::ui::theme::Theme;
 use crate::ui::toasts::Toasts;
@@ -41,10 +43,8 @@ use serde_json::Value;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Tab {
-    Clusters,
-    Snapshot,
-    Status,
     Dashboard,
+    Snapshot,
     Tasks,
     Console,
     GodConsole,
@@ -119,6 +119,14 @@ pub enum RefreshMsg {
     OnlineSimulateResult(Result<String, String>),
     OnlineFileResult(Result<String, String>),
     LogsResult(String, Result<Vec<LogEntry>, String>),
+    DashboardLogsResult(
+        String,
+        Result<Vec<crate::modules::telemetry::DashboardLogRow>, String>,
+    ),
+    DashboardMetricsResult(
+        String,
+        Result<crate::modules::telemetry::ClusterMetricsData, String>,
+    ),
     PainlessResult(Result<String, String>),
     OsqueryResult(OsqueryResponse),
 }
@@ -191,6 +199,8 @@ pub struct DrasticSmurfApp {
     _tray_icon: Option<tray_icon::TrayIcon>,
     tray_show_id: Option<tray_icon::menu::MenuId>,
     tray_quit_id: Option<tray_icon::menu::MenuId>,
+    pub minimize_to_tray: bool,
+    was_minimized: bool,
 }
 
 fn load_tray_icon() -> Option<(
@@ -289,11 +299,7 @@ impl DrasticSmurfApp {
 
         let mut app = Self {
             cluster_manager: manager.clone(),
-            current_tab: if clusters.is_empty() {
-                Tab::Clusters
-            } else {
-                Tab::Status
-            },
+            current_tab: Tab::Dashboard,
             snapshot_statuses: Vec::new(),
             snapshot_histories: HashMap::new(),
             status_state: StatusState::default(),
@@ -379,9 +385,14 @@ impl DrasticSmurfApp {
             _tray_icon: tray,
             tray_show_id: show_id,
             tray_quit_id: quit_id,
+            minimize_to_tray: config.minimize_to_tray,
+            was_minimized: false,
         };
 
         for cluster in &clusters {
+            if !cluster.enabled {
+                continue;
+            }
             if let Some(data) = manager.get_cluster_data(&cluster.name) {
                 if let Some(latest) = data.status_history.last() {
                     app.status_state
@@ -428,10 +439,35 @@ impl DrasticSmurfApp {
         Self::with_log_entries(log_entries)
     }
 
+    fn is_cluster_enabled(&self, name: &str) -> bool {
+        self.cluster_manager
+            .clusters()
+            .into_iter()
+            .any(|c| c.name == name && c.enabled)
+    }
+
+    fn clear_cluster_runtime_data(&mut self, name: &str) {
+        self.snapshot_statuses.retain(|s| s.config.name != name);
+        self.status_state.health_data.retain(|(n, _)| n != name);
+        self.status_state.stats_data.retain(|(n, _)| n != name);
+        self.status_state.errors.remove(name);
+        self.status_state.explains.remove(name);
+        self.status_state.es_versions.remove(name);
+        self.status_state.kibana_versions.remove(name);
+        self.status_state.allocations.remove(name);
+        self.status_state.pending_tasks.remove(name);
+        self.status_state.nodes.remove(name);
+        self.tasks_state.tasks.retain(|(n, _)| n != name);
+        self.tasks_state.errors.remove(name);
+    }
+
     fn trigger_refresh(&mut self, ctx: &egui::Context) {
         let clusters = self.cluster_manager.clusters();
 
         for cluster in clusters {
+            if !cluster.enabled {
+                continue;
+            }
             let manager = self.cluster_manager.clone();
             let ctx = ctx.clone();
             let tx = self.refresh_tx.clone();
@@ -618,6 +654,9 @@ impl DrasticSmurfApp {
         while let Ok(msg) = self.refresh_rx.try_recv() {
             match msg {
                 RefreshMsg::SnapshotResult(name, status) => {
+                    if !self.is_cluster_enabled(&name) {
+                        continue;
+                    }
                     let status = *status;
                     let status_for_cache = status.clone();
                     // Rebuild client on auth failure
@@ -669,6 +708,9 @@ impl DrasticSmurfApp {
                     self.save_snapshot_cache(&name, &status_for_cache);
                 }
                 RefreshMsg::HealthResult(name, health) => {
+                    if !self.is_cluster_enabled(&name) {
+                        continue;
+                    }
                     if let Some(existing) = self
                         .status_state
                         .health_data
@@ -725,6 +767,9 @@ impl DrasticSmurfApp {
                     }
                 }
                 RefreshMsg::HealthError(name, err) => {
+                    if !self.is_cluster_enabled(&name) {
+                        continue;
+                    }
                     if err.contains("401") || err.to_lowercase().contains("unauthorized") {
                         self.cluster_manager.rebuild_client(&name);
                     }
@@ -741,6 +786,9 @@ impl DrasticSmurfApp {
                     self.status_state.errors.insert(name, err);
                 }
                 RefreshMsg::StatsResult(name, stats) => {
+                    if !self.is_cluster_enabled(&name) {
+                        continue;
+                    }
                     if let Some(existing) = self
                         .status_state
                         .stats_data
@@ -764,6 +812,9 @@ impl DrasticSmurfApp {
                     self.save_status_snapshot(&name, health, stats);
                 }
                 RefreshMsg::StatsError(name, err) => {
+                    if !self.is_cluster_enabled(&name) {
+                        continue;
+                    }
                     if err.contains("401") || err.to_lowercase().contains("unauthorized") {
                         self.cluster_manager.rebuild_client(&name);
                     }
@@ -780,12 +831,21 @@ impl DrasticSmurfApp {
                     self.status_state.errors.insert(name, err);
                 }
                 RefreshMsg::ExplainResult(name, explain) => {
+                    if !self.is_cluster_enabled(&name) {
+                        continue;
+                    }
                     self.status_state.explains.insert(name, explain);
                 }
                 RefreshMsg::ExplainError(name, _err) => {
+                    if !self.is_cluster_enabled(&name) {
+                        continue;
+                    }
                     self.status_state.explains.insert(name, None);
                 }
                 RefreshMsg::TasksResult(name, tasks) => {
+                    if !self.is_cluster_enabled(&name) {
+                        continue;
+                    }
                     self.tasks_state.tasks.retain(|(n, _)| n != &name);
                     for task in tasks.iter().cloned() {
                         self.tasks_state.tasks.push((name.clone(), task));
@@ -794,6 +854,9 @@ impl DrasticSmurfApp {
                     self.save_tasks_cache(&name, tasks);
                 }
                 RefreshMsg::TasksError(name, err) => {
+                    if !self.is_cluster_enabled(&name) {
+                        continue;
+                    }
                     if err.contains("401") || err.to_lowercase().contains("unauthorized") {
                         self.cluster_manager.rebuild_client(&name);
                     }
@@ -867,6 +930,40 @@ impl DrasticSmurfApp {
                         }
                     }
                 }
+                RefreshMsg::DashboardLogsResult(name, result) => {
+                    let viewer = self.dashboard_state.log_viewers.entry(name).or_default();
+                    viewer.is_loading = false;
+                    viewer.has_loaded = true;
+                    match result {
+                        Ok(rows) => {
+                            viewer.available_fields =
+                                crate::modules::telemetry::collect_available_fields(&rows);
+                            viewer.rows = rows;
+                            viewer.error = None;
+                        }
+                        Err(e) => {
+                            viewer.error = Some(e);
+                        }
+                    }
+                }
+                RefreshMsg::DashboardMetricsResult(name, result) => {
+                    let viewer = self
+                        .dashboard_state
+                        .metrics_viewers
+                        .entry(name)
+                        .or_default();
+                    viewer.is_loading = false;
+                    viewer.has_loaded = true;
+                    match result {
+                        Ok(data) => {
+                            viewer.data = data;
+                            viewer.error = None;
+                        }
+                        Err(e) => {
+                            viewer.error = Some(e);
+                        }
+                    }
+                }
                 RefreshMsg::IndicesResult(_name, indices, datastreams, templates, components) => {
                     self.indices_state
                         .update_data(indices, datastreams, templates, components);
@@ -934,19 +1031,29 @@ impl DrasticSmurfApp {
                     self.history_loading = false;
                 }
                 RefreshMsg::EsVersionResult(name, version) => {
-                    self.status_state.es_versions.insert(name, version);
+                    if self.is_cluster_enabled(&name) {
+                        self.status_state.es_versions.insert(name, version);
+                    }
                 }
                 RefreshMsg::KibanaVersionResult(name, version) => {
-                    self.status_state.kibana_versions.insert(name, version);
+                    if self.is_cluster_enabled(&name) {
+                        self.status_state.kibana_versions.insert(name, version);
+                    }
                 }
                 RefreshMsg::AllocationResult(name, allocations) => {
-                    self.status_state.allocations.insert(name, allocations);
+                    if self.is_cluster_enabled(&name) {
+                        self.status_state.allocations.insert(name, allocations);
+                    }
                 }
                 RefreshMsg::NodesResult(name, nodes) => {
-                    self.status_state.nodes.insert(name, nodes);
+                    if self.is_cluster_enabled(&name) {
+                        self.status_state.nodes.insert(name, nodes);
+                    }
                 }
                 RefreshMsg::PendingTasksResult(name, tasks) => {
-                    self.status_state.pending_tasks.insert(name, tasks);
+                    if self.is_cluster_enabled(&name) {
+                        self.status_state.pending_tasks.insert(name, tasks);
+                    }
                 }
                 RefreshMsg::HotThreadsResult(cluster_name, node_name, res) => {
                     if let Some((ref active_cluster, ref active_node)) = self.hot_threads_node
@@ -1226,6 +1333,12 @@ impl DrasticSmurfApp {
     }
 
     fn render_sidebar(&mut self, ui: &mut egui::Ui) {
+        crate::ui::widgets::draw_hud_brackets(
+            ui.painter(),
+            ui.max_rect().shrink(2.0),
+            Theme::accent().linear_multiply(0.45),
+            10.0,
+        );
         let clusters = self.cluster_manager.clusters();
 
         // 1. Calculate overall status first so we can draw it at the bottom.
@@ -1236,6 +1349,9 @@ impl DrasticSmurfApp {
             let mut any_yellow = false;
             let mut any_red = false;
             for cluster in &clusters {
+                if !cluster.enabled {
+                    continue;
+                }
                 let health_opt = self
                     .status_state
                     .health_data
@@ -1264,8 +1380,8 @@ impl DrasticSmurfApp {
 
         ui.add_space(16.0);
 
-        // Render logo image
-        ui.add(egui::Image::new(egui::include_image!("../drastic.png")).max_width(120.0));
+        // Render cyberpunk wireframe mascot bust (head & shoulders)
+        ui.add(crate::ui::widgets::SmurfWireframe::new(112.0, 106.0));
 
         ui.add_space(8.0);
         let title_response = ui.heading(
@@ -1335,32 +1451,49 @@ impl DrasticSmurfApp {
                             continue;
                         }
                         ui.horizontal(|ui| {
-                            let health_opt = self
-                                .status_state
-                                .health_data
-                                .iter()
-                                .find(|(n, _)| n == &cluster.name)
-                                .and_then(|(_, h)| h.as_ref());
+                            let health_opt = if cluster.enabled {
+                                self.status_state
+                                    .health_data
+                                    .iter()
+                                    .find(|(n, _)| n == &cluster.name)
+                                    .and_then(|(_, h)| h.as_ref())
+                            } else {
+                                None
+                            };
 
-                            let dot_color = match health_opt {
-                                Some(health) => match health.status.as_str() {
-                                    "green" => Theme::success(),
-                                    "yellow" => egui::Color32::from_rgb(235, 179, 41), // Vibrant Yellow
-                                    "red" => Theme::danger(),
-                                    _ => egui::Color32::from_rgb(60, 60, 60), // Dark Grey
-                                },
-                                None => egui::Color32::from_rgb(60, 60, 60), // Offline
+                            let dot_color = if !cluster.enabled {
+                                Theme::text_muted()
+                            } else {
+                                match health_opt {
+                                    Some(health) => match health.status.as_str() {
+                                        "green" => Theme::success(),
+                                        "yellow" => egui::Color32::from_rgb(235, 179, 41), // Vibrant Yellow
+                                        "red" => Theme::danger(),
+                                        _ => egui::Color32::from_rgb(60, 60, 60), // Dark Grey
+                                    },
+                                    None => egui::Color32::from_rgb(60, 60, 60), // Offline
+                                }
                             };
 
                             ui.add(
-                                crate::ui::widgets::ConnectionDot::new(health_opt.is_some())
-                                    .color(dot_color)
-                                    .size(8.0),
+                                crate::ui::widgets::ConnectionDot::new(
+                                    cluster.enabled && health_opt.is_some(),
+                                )
+                                .color(dot_color)
+                                .size(8.0),
                             );
                             ui.label(
-                                egui::RichText::new(&cluster.name)
-                                    .color(Theme::text_primary())
-                                    .size(13.0),
+                                egui::RichText::new(if cluster.enabled {
+                                    cluster.name.clone()
+                                } else {
+                                    format!("{} (off)", cluster.name)
+                                })
+                                .color(if cluster.enabled {
+                                    Theme::text_primary()
+                                } else {
+                                    Theme::text_muted()
+                                })
+                                .size(13.0),
                             );
                         });
                     }
@@ -1689,10 +1822,8 @@ impl DrasticSmurfApp {
                 .show(ui, |ui| {
                     ui.horizontal(|ui| {
                         for (label, tab) in [
-                            ("Clusters", Tab::Clusters),
-                            ("Snapshot", Tab::Snapshot),
-                            ("Status", Tab::Status),
                             ("Dashboard", Tab::Dashboard),
+                            ("Snapshot", Tab::Snapshot),
                             ("Tasks", Tab::Tasks),
                             ("Console", Tab::Console),
                             ("God-mode Console", Tab::GodConsole),
@@ -1706,14 +1837,42 @@ impl DrasticSmurfApp {
                             ("Settings", Tab::Settings),
                         ] {
                             let is_active = self.current_tab == tab;
+                            let accent = Theme::accent();
                             let text = egui::RichText::new(label).size(14.0);
-                            let text = if is_active {
-                                let active_bg = Theme::accent().linear_multiply(0.25);
-                                text.color(Theme::contrast_text_color(active_bg)).strong()
+                            let (text, fill) = if is_active {
+                                (text.color(accent).strong(), accent.linear_multiply(0.14))
                             } else {
-                                text.color(Theme::text_secondary())
+                                (
+                                    text.color(Theme::text_secondary()),
+                                    egui::Color32::TRANSPARENT,
+                                )
                             };
-                            if ui.selectable_label(is_active, text).clicked() {
+                            let resp = ui.add(
+                                egui::Button::new(text)
+                                    .fill(fill)
+                                    .stroke(egui::Stroke::NONE)
+                                    .corner_radius(4.0),
+                            );
+                            if is_active {
+                                let r = resp.rect;
+                                let glow_rect = egui::Rect::from_min_max(
+                                    egui::Pos2::new(r.left() + 2.0, r.bottom() - 3.0),
+                                    egui::Pos2::new(r.right() - 2.0, r.bottom() + 1.0),
+                                );
+                                ui.painter().rect_filled(
+                                    glow_rect,
+                                    2.0,
+                                    accent.linear_multiply(0.28),
+                                );
+                                ui.painter().line_segment(
+                                    [
+                                        egui::Pos2::new(r.left() + 3.0, r.bottom() - 1.0),
+                                        egui::Pos2::new(r.right() - 3.0, r.bottom() - 1.0),
+                                    ],
+                                    egui::Stroke::new(2.0_f32, accent),
+                                );
+                            }
+                            if resp.clicked() {
                                 self.current_tab = tab;
                             }
                         }
@@ -1723,202 +1882,303 @@ impl DrasticSmurfApp {
         ui.separator();
     }
 
+    fn handle_dashboard_actions(&mut self, actions: DashboardActions, ctx: &egui::Context) {
+        if actions.add_cluster {
+            self.new_cluster = ClusterConfig::default();
+            self.new_password.clear();
+            self.editing_cluster = None;
+            self.test_result = None;
+            self.show_add_cluster = true;
+        }
+
+        if let Some((name, enabled)) = actions.toggle_enabled
+            && self.cluster_manager.set_cluster_enabled(&name, enabled)
+        {
+            if enabled {
+                self.trigger_refresh(ctx);
+                self.toasts.info(format!("Enabled cluster '{}'", name));
+            } else {
+                self.clear_cluster_runtime_data(&name);
+                self.toasts.info(format!("Disabled cluster '{}'", name));
+            }
+        }
+
+        if let Some((old_name, config, password)) = actions.save_cluster {
+            if let Err(e) = crate::core::auth::set_password(&config.name, &password) {
+                self.toasts.error(format!("Failed to save password: {}", e));
+            }
+            let enabled_after = config.enabled;
+            let saved_name = config.name.clone();
+            let mut success = false;
+            if let Some(old) = old_name {
+                if let Err(e) = self
+                    .cluster_manager
+                    .update_cluster(&old, config, Some(&password))
+                {
+                    self.toasts
+                        .error(format!("Failed to update cluster: {}", e));
+                } else {
+                    if old != saved_name && self.dashboard_state.selected_cluster == old {
+                        self.dashboard_state.selected_cluster = saved_name.clone();
+                    }
+                    success = true;
+                }
+            } else if let Err(e) = self.cluster_manager.add_cluster(config, Some(&password)) {
+                self.toasts.error(format!("Failed to add cluster: {}", e));
+            } else {
+                success = true;
+            }
+            if success {
+                if enabled_after {
+                    self.trigger_refresh(ctx);
+                } else {
+                    self.clear_cluster_runtime_data(&saved_name);
+                }
+            }
+        }
+
+        if let Some(name) = actions.delete_cluster {
+            self.pending_delete = Some(name);
+        }
+
+        if let Some((config, password)) = actions.test_cluster {
+            let name = config.name.clone();
+            if let Ok(client) = EsClient::with_password(&config, &password) {
+                let client_clone = client.clone();
+                let test_name = name.clone();
+                let ctx_clone = ctx.clone();
+                let tx = self.refresh_tx.clone();
+                tokio::spawn(async move {
+                    let result = client.test_connection_detailed().await;
+                    match &result {
+                        Ok(msg) => {
+                            tracing::info!(
+                                "Test connection succeeded for '{}': {}",
+                                test_name,
+                                msg
+                            );
+                        }
+                        Err(msg) => {
+                            tracing::warn!("Test connection failed for '{}': {}", test_name, msg);
+                        }
+                    }
+                    let msg = match result {
+                        Ok(msg) => msg,
+                        Err(msg) => msg,
+                    };
+                    let _ = tx.send(RefreshMsg::TestResult(msg));
+                    ctx_clone.request_repaint();
+                });
+                self.clusters_state.test_result = Some("Testing...".to_string());
+
+                if !password.is_empty() && !name.is_empty() {
+                    self.cluster_manager.set_client(&name, client_clone);
+                    if let Err(e) = crate::core::auth::set_password(&name, &password) {
+                        tracing::warn!("Failed to save password after successful test: {}", e);
+                    }
+                }
+            } else {
+                self.clusters_state.test_result = Some("Failed to create client".to_string());
+            }
+        }
+
+        if let Some(imported) = actions.import_config {
+            self.clusters_import = Some(imported);
+        }
+
+        if let Some(cluster_name) = actions.fetch_repos {
+            if let Some(client) = self.cluster_manager.get_client(&cluster_name) {
+                let ctx_clone = ctx.clone();
+                let tx = self.refresh_tx.clone();
+                let name = cluster_name.clone();
+                tokio::spawn(async move {
+                    match client
+                        .execute(reqwest::Method::GET, "/_snapshot", None)
+                        .await
+                    {
+                        Ok(val) => {
+                            let repos: Vec<String> = match val {
+                                serde_json::Value::Object(map) => map.keys().cloned().collect(),
+                                _ => vec![],
+                            };
+                            let _ = tx.send(RefreshMsg::FetchedRepos(name.clone(), repos));
+                        }
+                        Err(e) => {
+                            tracing::warn!("Failed to fetch repos for '{}': {}", name, e);
+                        }
+                    }
+                    ctx_clone.request_repaint();
+                });
+                self.clusters_state.test_result =
+                    Some("Fetching snapshot repositories...".to_string());
+            } else {
+                self.clusters_state.test_result =
+                    Some("No client for this cluster. Test connection first.".to_string());
+            }
+        }
+
+        if let Some(cluster_name) = actions.fetch_slm {
+            if let Some(client) = self.cluster_manager.get_client(&cluster_name) {
+                let ctx_clone = ctx.clone();
+                let tx = self.refresh_tx.clone();
+                let name = cluster_name.clone();
+                tokio::spawn(async move {
+                    match client.slm_policies_all().await {
+                        Ok(resp) => {
+                            let policies: Vec<String> = resp.policies.keys().cloned().collect();
+                            let _ = tx.send(RefreshMsg::FetchedSlmPolicies(name.clone(), policies));
+                        }
+                        Err(e) => {
+                            tracing::warn!("Failed to fetch SLM policies for '{}': {}", name, e);
+                        }
+                    }
+                    ctx_clone.request_repaint();
+                });
+                self.clusters_state.test_result = Some("Fetching SLM policies...".to_string());
+            } else {
+                self.clusters_state.test_result =
+                    Some("No client for this cluster. Test connection first.".to_string());
+            }
+        }
+
+        if let Some((cluster_name, node_name)) = actions.hot_threads {
+            self.hot_threads_node = Some((cluster_name.clone(), node_name.clone()));
+            self.hot_threads_text = None;
+            self.hot_threads_loading = true;
+
+            let tx = self.refresh_tx.clone();
+            let ctx_clone = ctx.clone();
+            let manager = self.cluster_manager.clone();
+            tokio::spawn(async move {
+                if let Some(client) = manager.get_client(&cluster_name) {
+                    match client.get_node_hot_threads(&node_name).await {
+                        Ok(text) => {
+                            let _ = tx.send(RefreshMsg::HotThreadsResult(
+                                cluster_name,
+                                node_name,
+                                Ok(text),
+                            ));
+                        }
+                        Err(e) => {
+                            let _ = tx.send(RefreshMsg::HotThreadsResult(
+                                cluster_name,
+                                node_name,
+                                Err(e.to_string()),
+                            ));
+                        }
+                    }
+                } else {
+                    let _ = tx.send(RefreshMsg::HotThreadsResult(
+                        cluster_name,
+                        node_name,
+                        Err("Failed to obtain client".to_string()),
+                    ));
+                }
+                ctx_clone.request_repaint();
+            });
+        }
+
+        if let Some(cluster_name) = actions.show_pending {
+            self.show_pending_cluster = Some(cluster_name);
+        }
+
+        if actions.manual_refresh {
+            self.trigger_refresh(ctx);
+        }
+
+        let all_clusters = self.cluster_manager.clusters();
+        for cluster_name in actions.fetch_logs {
+            let Some(cfg) = all_clusters
+                .iter()
+                .find(|c| c.name == cluster_name)
+                .cloned()
+            else {
+                continue;
+            };
+            let target_name = cfg.effective_telemetry_cluster().to_string();
+            let viewer_state = self
+                .dashboard_state
+                .log_viewers
+                .entry(cluster_name.clone())
+                .or_default();
+            viewer_state.is_loading = true;
+            viewer_state.error = None;
+            let (path, body) =
+                crate::modules::telemetry::build_dashboard_logs_query(&cfg, viewer_state);
+
+            if let Some(client) = self.cluster_manager.get_client(&target_name) {
+                let tx = self.refresh_tx.clone();
+                let ctx_clone = ctx.clone();
+                let name = cluster_name.clone();
+                tokio::spawn(async move {
+                    let res = client
+                        .execute(reqwest::Method::POST, &path, Some(body.to_string()))
+                        .await
+                        .map(|val| crate::modules::telemetry::parse_dashboard_logs_response(&val))
+                        .map_err(|e| e.to_string());
+                    let _ = tx.send(RefreshMsg::DashboardLogsResult(name, res));
+                    ctx_clone.request_repaint();
+                });
+            } else {
+                let _ = self.refresh_tx.send(RefreshMsg::DashboardLogsResult(
+                    cluster_name,
+                    Err(format!(
+                        "No client found for telemetry cluster '{}'.",
+                        target_name
+                    )),
+                ));
+            }
+        }
+
+        for cluster_name in actions.fetch_metrics {
+            let Some(cfg) = all_clusters
+                .iter()
+                .find(|c| c.name == cluster_name)
+                .cloned()
+            else {
+                continue;
+            };
+            let target_name = cfg.effective_telemetry_cluster().to_string();
+            let viewer_state = self
+                .dashboard_state
+                .metrics_viewers
+                .entry(cluster_name.clone())
+                .or_default();
+            viewer_state.is_loading = true;
+            viewer_state.error = None;
+            let (path, body) =
+                crate::modules::telemetry::build_dashboard_metrics_query(&cfg, viewer_state);
+
+            if let Some(client) = self.cluster_manager.get_client(&target_name) {
+                let tx = self.refresh_tx.clone();
+                let ctx_clone = ctx.clone();
+                let name = cluster_name.clone();
+                tokio::spawn(async move {
+                    let res = client
+                        .execute(reqwest::Method::POST, &path, Some(body.to_string()))
+                        .await
+                        .map(|val| {
+                            crate::modules::telemetry::parse_dashboard_metrics_response(&val)
+                        })
+                        .map_err(|e| e.to_string());
+                    let _ = tx.send(RefreshMsg::DashboardMetricsResult(name, res));
+                    ctx_clone.request_repaint();
+                });
+            } else {
+                let _ = self.refresh_tx.send(RefreshMsg::DashboardMetricsResult(
+                    cluster_name,
+                    Err(format!(
+                        "No client found for telemetry cluster '{}'.",
+                        target_name
+                    )),
+                ));
+            }
+        }
+    }
+
     fn render_content(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
         match self.current_tab {
-            Tab::Clusters => {
-                let clusters: Vec<_> = self
-                    .cluster_manager
-                    .clusters()
-                    .into_iter()
-                    .filter(|c| self.cluster_matches_filter(&c.name))
-                    .collect();
-                let data = self.cluster_manager.all_cluster_data();
-                let mut on_save = None;
-                let mut on_delete = None;
-                let mut on_test = None;
-                let mut on_import = None;
-                let mut on_show_dialog = false;
-                let mut on_fetch_repos: Option<String> = None;
-                let mut on_fetch_slm: Option<String> = None;
-                let health_status: std::collections::HashMap<String, Option<String>> = self
-                    .status_state
-                    .health_data
-                    .iter()
-                    .map(|(n, h)| (n.clone(), h.as_ref().map(|health| health.status.clone())))
-                    .collect();
-                render_clusters_module(
-                    ui,
-                    &mut self.clusters_state,
-                    &clusters,
-                    &data,
-                    &health_status,
-                    &mut on_save,
-                    &mut on_delete,
-                    &mut on_test,
-                    &mut on_import,
-                    &mut on_show_dialog,
-                    &mut on_fetch_repos,
-                    &mut on_fetch_slm,
-                );
-                if on_show_dialog {
-                    self.new_cluster = ClusterConfig::default();
-                    self.new_password.clear();
-                    self.editing_cluster = None;
-                    self.test_result = None;
-                    self.show_add_cluster = true;
-                }
-                if let Some((old_name, config, password)) = on_save {
-                    if let Err(e) = crate::core::auth::set_password(&config.name, &password) {
-                        self.toasts.error(format!("Failed to save password: {}", e));
-                    }
-                    let mut success = false;
-                    if let Some(old) = old_name {
-                        if let Err(e) =
-                            self.cluster_manager
-                                .update_cluster(&old, config, Some(&password))
-                        {
-                            self.toasts
-                                .error(format!("Failed to update cluster: {}", e));
-                        } else {
-                            success = true;
-                        }
-                    } else {
-                        if let Err(e) = self.cluster_manager.add_cluster(config, Some(&password)) {
-                            self.toasts.error(format!("Failed to add cluster: {}", e));
-                        } else {
-                            success = true;
-                        }
-                    }
-                    if success {
-                        self.trigger_refresh(&ctx);
-                    }
-                }
-                if let Some(name) = on_delete {
-                    self.pending_delete = Some(name);
-                }
-                if let Some((name, password)) = on_test {
-                    let config = self
-                        .cluster_manager
-                        .clusters()
-                        .into_iter()
-                        .find(|c| c.name == name)
-                        .unwrap_or_default();
-                    if let Ok(client) = EsClient::with_password(&config, &password) {
-                        let client_clone = client.clone();
-                        let test_name = name.clone();
-                        let ctx = ui.ctx().clone();
-                        let tx = self.refresh_tx.clone();
-                        tokio::spawn(async move {
-                            let result = client.test_connection_detailed().await;
-                            match &result {
-                                Ok(msg) => {
-                                    tracing::info!(
-                                        "Test connection succeeded for '{}': {}",
-                                        test_name,
-                                        msg
-                                    );
-                                }
-                                Err(msg) => {
-                                    tracing::warn!(
-                                        "Test connection failed for '{}': {}",
-                                        test_name,
-                                        msg
-                                    );
-                                }
-                            }
-                            let msg = match result {
-                                Ok(msg) => msg,
-                                Err(msg) => msg,
-                            };
-                            let _ = tx.send(RefreshMsg::TestResult(msg));
-                            ctx.request_repaint();
-                        });
-                        self.clusters_state.test_result = Some("Testing...".to_string());
-
-                        // Store the working client so auto-refresh uses it
-                        if !password.is_empty() {
-                            self.cluster_manager.set_client(&name, client_clone);
-                            if let Err(e) = crate::core::auth::set_password(&name, &password) {
-                                tracing::warn!(
-                                    "Failed to save password after successful test: {}",
-                                    e
-                                );
-                            }
-                        }
-                    } else {
-                        self.clusters_state.test_result =
-                            Some("Failed to create client".to_string());
-                    }
-                }
-                if let Some(imported) = on_import {
-                    self.clusters_import = Some(imported);
-                }
-                if let Some(cluster_name) = on_fetch_repos {
-                    if let Some(client) = self.cluster_manager.get_client(&cluster_name) {
-                        let ctx = ui.ctx().clone();
-                        let tx = self.refresh_tx.clone();
-                        let name = cluster_name.clone();
-                        tokio::spawn(async move {
-                            match client
-                                .execute(reqwest::Method::GET, "/_snapshot", None)
-                                .await
-                            {
-                                Ok(val) => {
-                                    let repos: Vec<String> = match val {
-                                        serde_json::Value::Object(map) => {
-                                            map.keys().cloned().collect()
-                                        }
-                                        _ => vec![],
-                                    };
-                                    let _ = tx.send(RefreshMsg::FetchedRepos(name.clone(), repos));
-                                }
-                                Err(e) => {
-                                    tracing::warn!("Failed to fetch repos for '{}': {}", name, e);
-                                }
-                            }
-                            ctx.request_repaint();
-                        });
-                        self.clusters_state.test_result =
-                            Some("Fetching snapshot repositories...".to_string());
-                    } else {
-                        self.clusters_state.test_result =
-                            Some("No client for this cluster. Test connection first.".to_string());
-                    }
-                }
-                if let Some(cluster_name) = on_fetch_slm {
-                    if let Some(client) = self.cluster_manager.get_client(&cluster_name) {
-                        let ctx = ui.ctx().clone();
-                        let tx = self.refresh_tx.clone();
-                        let name = cluster_name.clone();
-                        tokio::spawn(async move {
-                            match client.slm_policies_all().await {
-                                Ok(resp) => {
-                                    let policies: Vec<String> =
-                                        resp.policies.keys().cloned().collect();
-                                    let _ = tx.send(RefreshMsg::FetchedSlmPolicies(
-                                        name.clone(),
-                                        policies,
-                                    ));
-                                }
-                                Err(e) => {
-                                    tracing::warn!(
-                                        "Failed to fetch SLM policies for '{}': {}",
-                                        name,
-                                        e
-                                    );
-                                }
-                            }
-                            ctx.request_repaint();
-                        });
-                        self.clusters_state.test_result =
-                            Some("Fetching SLM policies...".to_string());
-                    } else {
-                        self.clusters_state.test_result =
-                            Some("No client for this cluster. Test connection first.".to_string());
-                    }
-                }
-            }
             Tab::Snapshot => {
                 let mut on_edit = None;
                 let mut on_delete = None;
@@ -2008,137 +2268,15 @@ impl DrasticSmurfApp {
                     self.pending_delete = Some(name);
                 }
             }
-            Tab::Status => {
-                let clusters: Vec<_> = self
-                    .cluster_manager
-                    .clusters()
-                    .into_iter()
-                    .filter(|c| self.cluster_matches_filter(&c.name))
-                    .collect();
-                let filtered_state = StatusState {
-                    health_data: self
-                        .status_state
-                        .health_data
-                        .iter()
-                        .filter(|(n, _)| self.cluster_matches_filter(n))
-                        .cloned()
-                        .collect(),
-                    stats_data: self
-                        .status_state
-                        .stats_data
-                        .iter()
-                        .filter(|(n, _)| self.cluster_matches_filter(n))
-                        .cloned()
-                        .collect(),
-                    errors: self
-                        .status_state
-                        .errors
-                        .iter()
-                        .filter(|(n, _)| self.cluster_matches_filter(n))
-                        .map(|(n, e)| (n.clone(), e.clone()))
-                        .collect(),
-                    explains: self
-                        .status_state
-                        .explains
-                        .iter()
-                        .filter(|(n, _)| self.cluster_matches_filter(n))
-                        .map(|(n, e)| (n.clone(), e.clone()))
-                        .collect(),
-                    es_versions: self
-                        .status_state
-                        .es_versions
-                        .iter()
-                        .filter(|(n, _)| self.cluster_matches_filter(n))
-                        .map(|(n, v)| (n.clone(), v.clone()))
-                        .collect(),
-                    kibana_versions: self
-                        .status_state
-                        .kibana_versions
-                        .iter()
-                        .filter(|(n, _)| self.cluster_matches_filter(n))
-                        .map(|(n, v)| (n.clone(), v.clone()))
-                        .collect(),
-                    allocations: self
-                        .status_state
-                        .allocations
-                        .iter()
-                        .filter(|(n, _)| self.cluster_matches_filter(n))
-                        .map(|(n, a)| (n.clone(), a.clone()))
-                        .collect(),
-                    pending_tasks: self
-                        .status_state
-                        .pending_tasks
-                        .iter()
-                        .filter(|(n, _)| self.cluster_matches_filter(n))
-                        .map(|(n, t)| (n.clone(), t.clone()))
-                        .collect(),
-                    nodes: self
-                        .status_state
-                        .nodes
-                        .iter()
-                        .filter(|(n, _)| self.cluster_matches_filter(n))
-                        .map(|(n, nodes_vec)| (n.clone(), nodes_vec.clone()))
-                        .collect(),
-                };
-                let mut on_hot_threads = None;
-                let mut on_show_pending = None;
-                render_status_module(
-                    ui,
-                    &clusters,
-                    &filtered_state,
-                    &mut on_hot_threads,
-                    &mut on_show_pending,
-                    self.vfx.hover_effects && !self.vfx.reduce_motion,
-                );
-
-                if let Some((cluster_name, node_name)) = on_hot_threads {
-                    self.hot_threads_node = Some((cluster_name.clone(), node_name.clone()));
-                    self.hot_threads_text = None;
-                    self.hot_threads_loading = true;
-
-                    let tx = self.refresh_tx.clone();
-                    let ctx = ui.ctx().clone();
-                    let manager = self.cluster_manager.clone();
-                    tokio::spawn(async move {
-                        if let Some(client) = manager.get_client(&cluster_name) {
-                            match client.get_node_hot_threads(&node_name).await {
-                                Ok(text) => {
-                                    let _ = tx.send(RefreshMsg::HotThreadsResult(
-                                        cluster_name,
-                                        node_name,
-                                        Ok(text),
-                                    ));
-                                }
-                                Err(e) => {
-                                    let _ = tx.send(RefreshMsg::HotThreadsResult(
-                                        cluster_name,
-                                        node_name,
-                                        Err(e.to_string()),
-                                    ));
-                                }
-                            }
-                        } else {
-                            let _ = tx.send(RefreshMsg::HotThreadsResult(
-                                cluster_name,
-                                node_name,
-                                Err("Failed to obtain client".to_string()),
-                            ));
-                        }
-                        ctx.request_repaint();
-                    });
-                }
-
-                if let Some(cluster_name) = on_show_pending {
-                    self.show_pending_cluster = Some(cluster_name);
-                }
-            }
             Tab::Dashboard => {
-                let clusters: Vec<_> = self
-                    .cluster_manager
-                    .clusters()
+                let all_clusters = self.cluster_manager.clusters();
+                let all_cluster_names: Vec<String> =
+                    all_clusters.iter().map(|c| c.name.clone()).collect();
+                let clusters: Vec<_> = all_clusters
                     .into_iter()
                     .filter(|c| self.cluster_matches_filter(&c.name))
                     .collect();
+                let cluster_data = self.cluster_manager.all_cluster_data();
                 let filtered_state = StatusState {
                     health_data: self
                         .status_state
@@ -2189,13 +2327,6 @@ impl DrasticSmurfApp {
                         .filter(|(n, _)| self.cluster_matches_filter(n))
                         .map(|(n, a)| (n.clone(), a.clone()))
                         .collect(),
-                    nodes: self
-                        .status_state
-                        .nodes
-                        .iter()
-                        .filter(|(n, _)| self.cluster_matches_filter(n))
-                        .map(|(n, nodes_vec)| (n.clone(), nodes_vec.clone()))
-                        .collect(),
                     pending_tasks: self
                         .status_state
                         .pending_tasks
@@ -2203,14 +2334,27 @@ impl DrasticSmurfApp {
                         .filter(|(n, _)| self.cluster_matches_filter(n))
                         .map(|(n, t)| (n.clone(), t.clone()))
                         .collect(),
+                    nodes: self
+                        .status_state
+                        .nodes
+                        .iter()
+                        .filter(|(n, _)| self.cluster_matches_filter(n))
+                        .map(|(n, nodes_vec)| (n.clone(), nodes_vec.clone()))
+                        .collect(),
                 };
+                let mut actions = DashboardActions::default();
                 render_dashboard_module(
                     ui,
                     &clusters,
+                    &all_cluster_names,
+                    &cluster_data,
                     &mut self.dashboard_state,
+                    &mut self.clusters_state,
                     &filtered_state,
+                    &mut actions,
                     self.vfx.hover_effects && !self.vfx.reduce_motion,
                 );
+                self.handle_dashboard_actions(actions, &ctx);
             }
             Tab::Tasks => {
                 let mut filtered_tasks_state = TasksState {
@@ -2757,6 +2901,44 @@ impl DrasticSmurfApp {
                             && let Err(e) = self.cluster_manager.save_timezone_clocks(self.timezone_clocks.clone()) {
                                 self.toasts.error(format!("Failed to save timezone settings: {}", e));
                             }
+
+                        ui.add_space(16.0);
+
+                        // System Tray Card
+                        egui::Frame::new()
+                            .fill(Theme::bg_card())
+                            .corner_radius(Theme::CARD_ROUNDING)
+                            .inner_margin(Theme::CARD_PADDING)
+                            .show(ui, |ui| {
+                                ui.heading("🖥 Window & System Tray");
+                                ui.add_space(4.0);
+                                if ui
+                                    .checkbox(
+                                        &mut self.minimize_to_tray,
+                                        "Minimize to system tray",
+                                    )
+                                    .on_hover_text(
+                                        "Hide the window to the system tray when minimized. Click the tray icon or choose Show Window to restore.",
+                                    )
+                                    .changed()
+                                {
+                                    let val = self.minimize_to_tray;
+                                    if let Err(e) = crate::core::config::AppConfig::update(|c| {
+                                        c.minimize_to_tray = val;
+                                    }) {
+                                        self.toasts.error(format!("Failed to save tray setting: {}", e));
+                                    }
+                                }
+                                if self._tray_icon.is_none() {
+                                    ui.label(
+                                        egui::RichText::new(
+                                            "System tray icon is unavailable on this desktop session; minimizing will use the taskbar.",
+                                        )
+                                        .color(Theme::text_muted())
+                                        .size(11.0),
+                                    );
+                                }
+                            });
                     });
 
                 if tour_triggered {
@@ -3092,11 +3274,13 @@ impl DrasticSmurfApp {
     }
 
     fn compute_assistant_cluster_context(&self) -> ClusterContext {
-        let cluster_name = if !self.cluster_manager.clusters().is_empty() {
-            self.cluster_manager.clusters()[0].name.clone()
-        } else {
-            String::new()
-        };
+        let all_clusters = self.cluster_manager.clusters();
+        let cluster_name = all_clusters
+            .iter()
+            .find(|c| c.enabled)
+            .or_else(|| all_clusters.first())
+            .map(|c| c.name.clone())
+            .unwrap_or_default();
 
         let health = self
             .status_state
@@ -3423,10 +3607,8 @@ impl DrasticSmurfApp {
             }
             ToolAction::OpenTab(id) => {
                 let tab = match id.as_str() {
-                    "clusters" => Tab::Clusters,
+                    "clusters" | "status" | "dashboard" => Tab::Dashboard,
                     "snapshot" => Tab::Snapshot,
-                    "status" => Tab::Status,
-                    "dashboard" => Tab::Dashboard,
                     "tasks" => Tab::Tasks,
                     "console" => Tab::Console,
                     "god_console" => Tab::GodConsole,
@@ -3506,160 +3688,198 @@ impl DrasticSmurfApp {
             "Add Cluster"
         };
 
+        let all_cluster_names: Vec<String> = self
+            .cluster_manager
+            .clusters()
+            .into_iter()
+            .map(|c| c.name)
+            .collect();
+
         egui::Window::new(title)
             .collapsible(false)
             .resizable(false)
             .max_width(640.0)
             .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
             .show(ctx, |ui| {
-                ui.set_min_width(400.0);
+                ui.set_min_width(440.0);
 
-                ui.horizontal(|ui| {
-                    ui.label("Name:");
-                    ui.text_edit_singleline(&mut self.new_cluster.name);
-                    crate::ui::widgets::required_tag(ui, "Required");
-                });
-                ui.horizontal(|ui| {
-                    ui.label("Host:");
-                    ui.text_edit_singleline(&mut self.new_cluster.host);
-                    crate::ui::widgets::required_tag(ui, "Required");
-                });
-                let credentials_valid = crate::modules::clusters::render_auth_fields(
-                    ui,
-                    &mut self.new_cluster,
-                    &mut self.new_password,
-                );
-                ui.horizontal(|ui| {
-                    ui.label("Snapshot Repo:");
-                    ui.text_edit_singleline(&mut self.new_cluster.snapshot_repo);
-                    crate::ui::widgets::optional_tag(ui);
-                });
-                ui.horizontal(|ui| {
-                    ui.label("SLM Policy:");
-                    ui.text_edit_singleline(&mut self.new_cluster.slm_policy);
-                    crate::ui::widgets::optional_tag(ui);
-                });
-                ui.horizontal(|ui| {
-                    ui.label("Kibana Host:");
-                    ui.text_edit_singleline(&mut self.new_cluster.kibana_host);
-                    crate::ui::widgets::optional_tag(ui);
-                });
-                ui.checkbox(&mut self.new_cluster.verify_ssl, "Verify SSL");
-
-                ui.add_space(8.0);
-                ui.checkbox(&mut self.new_cluster.ssh_tunnel, "SSH Tunnel");
-                if self.new_cluster.ssh_tunnel {
-                    ui.horizontal(|ui| {
-                        ui.label("SSH Host:");
-                        ui.text_edit_singleline(&mut self.new_cluster.ssh_host);
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("SSH User:");
-                        ui.text_edit_singleline(&mut self.new_cluster.ssh_user);
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("SSH Port:");
-                        ui.add(
-                            egui::DragValue::new(&mut self.new_cluster.ssh_port)
-                                .speed(1)
-                                .range(1..=65535),
+                egui::ScrollArea::vertical()
+                    .id_salt("add_cluster_dialog_scroll")
+                    .max_height(560.0)
+                    .show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.label("Name:");
+                            ui.text_edit_singleline(&mut self.new_cluster.name);
+                            crate::ui::widgets::required_tag(ui, "Required");
+                        });
+                        ui.horizontal(|ui| {
+                            ui.label("Host:");
+                            ui.text_edit_singleline(&mut self.new_cluster.host);
+                            crate::ui::widgets::required_tag(ui, "Required");
+                        });
+                        let credentials_valid = crate::modules::clusters::render_auth_fields(
+                            ui,
+                            &mut self.new_cluster,
+                            &mut self.new_password,
                         );
-                    });
-                }
-
-                ui.add_space(8.0);
-                ui.horizontal(|ui| {
-                    if ui
-                        .add_enabled(credentials_valid, egui::Button::new("Test Connection"))
-                        .clicked()
-                    {
-                        let client = EsClient::with_password(&self.new_cluster, &self.new_password);
-                        match client {
-                            Ok(c) => {
-                                let ctx = ctx.clone();
-                                let tx = self.refresh_tx.clone();
-                                tokio::spawn(async move {
-                                    let result = c.test_connection_detailed().await;
-                                    let msg = match result {
-                                        Ok(msg) => msg,
-                                        Err(msg) => msg,
-                                    };
-                                    let _ = tx.send(RefreshMsg::TestResult(msg));
-                                    ctx.request_repaint();
-                                });
-                                self.test_result = Some("Testing...".to_string());
-                            }
-                            Err(e) => {
-                                self.test_result = Some(format!("Client error: {}", e));
-                            }
-                        }
-                    }
-                });
-                if let Some(ref result) = self.test_result {
-                    crate::modules::clusters::render_test_result(ui, result);
-                }
-
-                ui.add_space(12.0);
-                let mut save_clicked = false;
-                ui.horizontal(|ui| {
-                    if ui
-                        .add_enabled(credentials_valid, egui::Button::new("Save"))
-                        .clicked()
-                    {
-                        save_clicked = true;
-                    }
-                    if ui.button("Cancel").clicked() {
-                        self.show_add_cluster = false;
-                        self.editing_cluster = None;
-                    }
-                });
-
-                let name_empty = self.new_cluster.name.trim().is_empty();
-                let host_empty = self.new_cluster.host.trim().is_empty();
-                if save_clicked {
-                    if name_empty || host_empty {
-                        ui.label(
-                            egui::RichText::new("Name and Host are required.")
-                                .color(Theme::danger())
-                                .size(12.0),
+                        ui.horizontal(|ui| {
+                            ui.label("Snapshot Repo:");
+                            ui.text_edit_singleline(&mut self.new_cluster.snapshot_repo);
+                            crate::ui::widgets::optional_tag(ui);
+                        });
+                        ui.horizontal(|ui| {
+                            ui.label("SLM Policy:");
+                            ui.text_edit_singleline(&mut self.new_cluster.slm_policy);
+                            crate::ui::widgets::optional_tag(ui);
+                        });
+                        ui.horizontal(|ui| {
+                            ui.label("Kibana Host:");
+                            ui.text_edit_singleline(&mut self.new_cluster.kibana_host);
+                            crate::ui::widgets::optional_tag(ui);
+                        });
+                        ui.horizontal(|ui| {
+                            ui.label("HAProxy Host:");
+                            ui.text_edit_singleline(&mut self.new_cluster.haproxy_host);
+                            crate::ui::widgets::optional_tag(ui);
+                        });
+                        ui.add_space(4.0);
+                        crate::modules::clusters::render_telemetry_config_fields(
+                            ui,
+                            &mut self.new_cluster,
+                            &all_cluster_names,
+                            "add_cluster_dialog",
                         );
-                    } else {
-                        let name = self.new_cluster.name.trim().to_string();
-                        self.new_cluster.name = name.clone();
-                        if let Err(e) = crate::core::auth::set_password(&name, &self.new_password) {
-                            self.toasts.error(format!("Failed to save password: {}", e));
+                        ui.add_space(4.0);
+                        ui.checkbox(&mut self.new_cluster.verify_ssl, "Verify SSL");
+
+                        ui.add_space(8.0);
+                        ui.checkbox(&mut self.new_cluster.ssh_tunnel, "SSH Tunnel");
+                        if self.new_cluster.ssh_tunnel {
+                            ui.horizontal(|ui| {
+                                ui.label("SSH Host:");
+                                ui.text_edit_singleline(&mut self.new_cluster.ssh_host);
+                            });
+                            ui.horizontal(|ui| {
+                                ui.label("SSH User:");
+                                ui.text_edit_singleline(&mut self.new_cluster.ssh_user);
+                            });
+                            ui.horizontal(|ui| {
+                                ui.label("SSH Port:");
+                                ui.add(
+                                    egui::DragValue::new(&mut self.new_cluster.ssh_port)
+                                        .speed(1)
+                                        .range(1..=65535),
+                                );
+                            });
                         }
 
-                        let save_ok = if let Some(ref old_name) = self.editing_cluster {
-                            self.cluster_manager
-                                .update_cluster(
-                                    old_name,
-                                    self.new_cluster.clone(),
-                                    Some(&self.new_password),
+                        ui.add_space(8.0);
+                        ui.horizontal(|ui| {
+                            if ui
+                                .add_enabled(
+                                    credentials_valid,
+                                    egui::Button::new("Test Connection"),
                                 )
-                                .is_ok()
-                        } else {
-                            self.cluster_manager
-                                .add_cluster(self.new_cluster.clone(), Some(&self.new_password))
-                                .is_ok()
-                        };
-
-                        if save_ok {
-                            self.trigger_refresh(ctx);
-                            self.show_add_cluster = false;
-                            self.editing_cluster = None;
-                            self.new_cluster = ClusterConfig::default();
-                            self.new_password.clear();
-                            self.test_result = None;
+                                .clicked()
+                            {
+                                let client =
+                                    EsClient::with_password(&self.new_cluster, &self.new_password);
+                                match client {
+                                    Ok(c) => {
+                                        let ctx = ctx.clone();
+                                        let tx = self.refresh_tx.clone();
+                                        tokio::spawn(async move {
+                                            let result = c.test_connection_detailed().await;
+                                            let msg = match result {
+                                                Ok(msg) => msg,
+                                                Err(msg) => msg,
+                                            };
+                                            let _ = tx.send(RefreshMsg::TestResult(msg));
+                                            ctx.request_repaint();
+                                        });
+                                        self.test_result = Some("Testing...".to_string());
+                                    }
+                                    Err(e) => {
+                                        self.test_result = Some(format!("Client error: {}", e));
+                                    }
+                                }
+                            }
+                        });
+                        if let Some(ref result) = self.test_result {
+                            crate::modules::clusters::render_test_result(ui, result);
                         }
-                    }
-                } else if name_empty || host_empty {
-                    ui.label(
-                        egui::RichText::new("Name and Host are required.")
-                            .color(Theme::warning())
-                            .size(12.0),
-                    );
-                }
+
+                        ui.add_space(12.0);
+                        let mut save_clicked = false;
+                        ui.horizontal(|ui| {
+                            if ui
+                                .add_enabled(credentials_valid, egui::Button::new("Save"))
+                                .clicked()
+                            {
+                                save_clicked = true;
+                            }
+                            if ui.button("Cancel").clicked() {
+                                self.show_add_cluster = false;
+                                self.editing_cluster = None;
+                            }
+                        });
+
+                        let name_empty = self.new_cluster.name.trim().is_empty();
+                        let host_empty = self.new_cluster.host.trim().is_empty();
+                        if save_clicked {
+                            if name_empty || host_empty {
+                                ui.label(
+                                    egui::RichText::new("Name and Host are required.")
+                                        .color(Theme::danger())
+                                        .size(12.0),
+                                );
+                            } else {
+                                let name = self.new_cluster.name.trim().to_string();
+                                self.new_cluster.name = name.clone();
+                                if let Err(e) =
+                                    crate::core::auth::set_password(&name, &self.new_password)
+                                {
+                                    self.toasts.error(format!("Failed to save password: {}", e));
+                                }
+
+                                let save_ok = if let Some(ref old_name) = self.editing_cluster {
+                                    self.cluster_manager
+                                        .update_cluster(
+                                            old_name,
+                                            self.new_cluster.clone(),
+                                            Some(&self.new_password),
+                                        )
+                                        .is_ok()
+                                } else {
+                                    self.cluster_manager
+                                        .add_cluster(
+                                            self.new_cluster.clone(),
+                                            Some(&self.new_password),
+                                        )
+                                        .is_ok()
+                                };
+
+                                if save_ok {
+                                    if self.new_cluster.enabled {
+                                        self.trigger_refresh(ctx);
+                                    } else {
+                                        self.clear_cluster_runtime_data(&name);
+                                    }
+                                    self.show_add_cluster = false;
+                                    self.editing_cluster = None;
+                                    self.new_cluster = ClusterConfig::default();
+                                    self.new_password.clear();
+                                    self.test_result = None;
+                                }
+                            }
+                        } else if name_empty || host_empty {
+                            ui.label(
+                                egui::RichText::new("Name and Host are required.")
+                                    .color(Theme::warning())
+                                    .size(12.0),
+                            );
+                        }
+                    });
             });
     }
 
@@ -3681,8 +3901,21 @@ impl DrasticSmurfApp {
                                 self.toasts
                                     .error(format!("Failed to remove cluster: {}", e));
                             }
-                            self.snapshot_statuses.retain(|s| s.config.name != name);
-                            self.status_state.health_data.retain(|(n, _)| n != &name);
+                            self.clear_cluster_runtime_data(&name);
+                            if self.dashboard_state.open_log_viewer_cluster.as_deref()
+                                == Some(name.as_str())
+                            {
+                                self.dashboard_state.open_log_viewer_cluster = None;
+                            }
+                            if self.dashboard_state.open_metrics_viewer_cluster.as_deref()
+                                == Some(name.as_str())
+                            {
+                                self.dashboard_state.open_metrics_viewer_cluster = None;
+                            }
+                            if self.clusters_state.editing_cluster.as_deref() == Some(name.as_str())
+                            {
+                                self.clusters_state.editing_cluster = None;
+                            }
                             self.pending_delete = None;
                         }
                         if ui.button("Cancel").clicked() {
@@ -3704,6 +3937,7 @@ impl eframe::App for DrasticSmurfApp {
             } = event
             {
                 ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
+                ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
                 ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
             }
         }
@@ -3712,12 +3946,21 @@ impl eframe::App for DrasticSmurfApp {
         while let Ok(event) = tray_icon::menu::MenuEvent::receiver().try_recv() {
             if self.tray_show_id.as_ref() == Some(&event.id) {
                 ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
+                ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
                 ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
             }
             if self.tray_quit_id.as_ref() == Some(&event.id) {
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
         }
+
+        // Hide to system tray when minimized (if enabled and tray icon is active).
+        let is_minimized = ctx.input(|i| i.viewport().minimized) == Some(true);
+        if self.minimize_to_tray && self._tray_icon.is_some() && is_minimized && !self.was_minimized
+        {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
+        }
+        self.was_minimized = is_minimized;
 
         if let Some(notice) = crate::core::config::take_load_notice() {
             self.toasts.error(notice);
@@ -4401,7 +4644,7 @@ impl eframe::App for DrasticSmurfApp {
             .frame(
                 egui::Frame::new()
                     .fill(sidebar_fill)
-                    .stroke(egui::Stroke::new(1.0, Theme::border()))
+                    .stroke(egui::Stroke::new(1.0_f32, Theme::border()))
                     .inner_margin(egui::Margin {
                         left: 12,
                         right: 12,
@@ -4418,7 +4661,7 @@ impl eframe::App for DrasticSmurfApp {
             .frame(
                 egui::Frame::new()
                     .fill(central_fill)
-                    .stroke(egui::Stroke::new(1.0, Theme::border()))
+                    .stroke(egui::Stroke::new(1.0_f32, Theme::border()))
                     .inner_margin(egui::Vec2::new(16.0, 16.0)),
             )
             .show(ctx, |ui| {
@@ -4444,9 +4687,18 @@ impl eframe::App for DrasticSmurfApp {
         self.render_assistant_dock(ctx);
         self.render_assistant_chevron(ctx);
 
-        // Dialogs
+        // Dialogs & Dashboard telemetry popup windows
         self.render_add_cluster_dialog(ctx);
         self.render_delete_confirmation(ctx);
+        let popup_clusters = self.cluster_manager.clusters();
+        let mut popup_actions = DashboardActions::default();
+        render_dashboard_telemetry_popups(
+            ctx,
+            &popup_clusters,
+            &mut self.dashboard_state,
+            &mut popup_actions,
+        );
+        self.handle_dashboard_actions(popup_actions, ctx);
 
         // Onboarding Wizard Overlay
         if let Some(mut state) = self.wizard_state.clone() {
@@ -4767,7 +5019,7 @@ impl eframe::App for DrasticSmurfApp {
                                             .fill(bg_color)
                                             .corner_radius(Theme::CARD_ROUNDING)
                                             .inner_margin(8.0)
-                                            .stroke(egui::Stroke::new(1.0, Theme::bg_input()))
+                                            .stroke(egui::Stroke::new(1.0_f32, Theme::bg_input()))
                                             .show(ui, |ui| {
                                                 ui.horizontal(|ui| {
                                                     ui.label(

@@ -159,7 +159,8 @@ impl ClusterManager {
             .unwrap()
             .clone();
 
-        let mut config = crate::core::config::AppConfig::load().unwrap_or_default();
+        // Propagate load errors: saving defaults over an unreadable file would lose it.
+        let mut config = crate::core::config::AppConfig::load()?;
         config.clusters = clusters.clone();
         config.cluster_data = data.clone();
         config.auto_refresh = auto_refresh;
@@ -197,7 +198,11 @@ impl ClusterManager {
             }
         };
         if should_save {
-            self.save()?;
+            if let Err(e) = self.save() {
+                // Retry after the debounce rather than on every frame.
+                *self.save_after.lock().unwrap() = Some(Instant::now() + SAVE_DEBOUNCE);
+                return Err(e);
+            }
             self.dirty.store(false, Ordering::Relaxed);
             let mut after = self.save_after.lock().unwrap();
             *after = None;
@@ -335,6 +340,24 @@ impl ClusterManager {
         self.remove_cluster_data(name);
         self.mark_dirty();
         Ok(())
+    }
+
+    /// Flip a cluster's `enabled` flag and persist on the next debounced save.
+    pub fn set_cluster_enabled(&self, name: &str, enabled: bool) -> bool {
+        let mut changed = false;
+        {
+            let mut clusters = self.clusters.lock().unwrap();
+            if let Some(cluster) = clusters.iter_mut().find(|c| c.name == name)
+                && cluster.enabled != enabled
+            {
+                cluster.enabled = enabled;
+                changed = true;
+            }
+        }
+        if changed {
+            self.mark_dirty();
+        }
+        changed
     }
 
     pub fn get_client(&self, name: &str) -> Option<EsClient> {

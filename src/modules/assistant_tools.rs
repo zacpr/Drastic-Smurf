@@ -16,10 +16,9 @@ pub const MAX_RESULT_CHARS: usize = 6000;
 
 /// Tabs the assistant may open, as (tool argument, display name).
 pub const TABS: &[(&str, &str)] = &[
-    ("clusters", "Clusters"),
+    ("dashboard", "Dashboard"),
     ("snapshot", "Snapshot"),
     ("status", "Status"),
-    ("dashboard", "Dashboard"),
     ("tasks", "Tasks"),
     ("console", "Console"),
     ("god_console", "God-mode Console"),
@@ -161,7 +160,10 @@ pub enum ToolAction {
     /// Tool argument id from [`TABS`].
     OpenTab(String),
     /// Search official Elasticsearch / Kibana online docs (or fetch an elastic.co URL).
-    SearchElasticDocs { query: String, product: String },
+    SearchElasticDocs {
+        query: String,
+        product: String,
+    },
 }
 
 impl ToolAction {
@@ -268,6 +270,11 @@ pub fn parse_call(call: &ToolCall) -> Result<ToolAction, String> {
         "open_tab" => {
             let tab = arg_str(&args, "tab").ok_or("Missing 'tab'")?.to_lowercase();
             let tab = tab.replace([' ', '-'], "_");
+            let tab = if tab == "clusters" {
+                "dashboard".to_string()
+            } else {
+                tab
+            };
             TABS.iter()
                 .find(|(id, label)| {
                     *id == tab || label.to_lowercase().replace([' ', '-'], "_") == tab
@@ -346,8 +353,7 @@ pub fn system_prompt_addendum(clusters: &[String]) -> String {
 /// Check if a URL points to official Elastic documentation (`elastic.co`).
 pub fn is_elastic_docs_url(url: &str) -> bool {
     let trimmed = url.trim();
-    trimmed.starts_with("https://www.elastic.co/")
-        || trimmed.starts_with("https://elastic.co/")
+    trimmed.starts_with("https://www.elastic.co/") || trimmed.starts_with("https://elastic.co/")
 }
 
 /// Search official Elasticsearch / Kibana documentation online (or fetch an
@@ -556,7 +562,10 @@ pub fn parse_ddg_results(html: &str, limit: usize) -> Vec<(String, String, Strin
             let s_after = &window[sp..];
             if let Some(gt) = s_after.find('>') {
                 let body = &s_after[gt + 1..];
-                let end = body.find("</a>").or_else(|| body.find("</div>")).unwrap_or(body.len());
+                let end = body
+                    .find("</a>")
+                    .or_else(|| body.find("</div>"))
+                    .unwrap_or(body.len());
                 strip_tags(&body[..end])
             } else {
                 String::new()
@@ -750,7 +759,9 @@ mod tests {
             )]
         );
         assert_eq!(
-            html_to_text("<html><script>bad()</script><body><h1>Title</h1><p>Body &amp; text</p></body></html>"),
+            html_to_text(
+                "<html><script>bad()</script><body><h1>Title</h1><p>Body &amp; text</p></body></html>"
+            ),
             "Title Body & text"
         );
     }

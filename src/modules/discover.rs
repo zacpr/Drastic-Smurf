@@ -416,7 +416,7 @@ pub fn render_discover_module(
             .fill(Theme::bg_input())
             .corner_radius(Theme::CARD_ROUNDING)
             .inner_margin(Theme::CARD_PADDING)
-            .stroke(Stroke::new(1.0, Theme::accent()))
+            .stroke(Stroke::new(1.0_f32, Theme::accent()))
             .show(ui, |ui| {
                 // Allow the picker to scroll horizontally if it still overflows,
                 // and wrap columns on narrow windows so it remains usable.
@@ -925,7 +925,7 @@ pub fn render_discover_module(
                                             .fill(Theme::bg_input())
                                             .corner_radius(Theme::CARD_ROUNDING)
                                             .inner_margin(Theme::CARD_PADDING)
-                                            .stroke(Stroke::new(1.0, Theme::border()))
+                                            .stroke(Stroke::new(1.0_f32, Theme::border()))
                                             .show(ui, |ui| {
                                                 ui.horizontal(|ui| {
                                                     ui.label(

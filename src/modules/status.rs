@@ -18,6 +18,7 @@ pub struct StatusState {
     pub errors: std::collections::HashMap<String, String>,
 }
 
+#[allow(dead_code)]
 pub fn render_status_module(
     ui: &mut Ui,
     clusters: &[ClusterConfig],
@@ -110,6 +111,7 @@ pub fn render_status_module(
         });
 }
 
+#[allow(dead_code)]
 fn render_status_card(
     ui: &mut Ui,
     config: &ClusterConfig,
@@ -131,7 +133,7 @@ fn render_status_card(
         .fill(Theme::bg_card())
         .corner_radius(Theme::CARD_ROUNDING)
         .inner_margin(Theme::CARD_PADDING)
-        .stroke(egui::Stroke::new(1.0, Theme::bg_input()));
+        .stroke(egui::Stroke::new(1.0_f32, Theme::bg_input()));
 
     let response = frame.show(ui, |ui| {
         ui.set_min_width(col_width - Theme::CARD_PADDING.x * 2.0);
@@ -649,7 +651,7 @@ if count.voting_only > 0 {
             ui.painter().rect_stroke(
                 rect.expand(1.0),
                 Theme::CARD_ROUNDING,
-                egui::Stroke::new(1.0, glow_color),
+                egui::Stroke::new(1.0_f32, glow_color),
                 egui::StrokeKind::Middle,
             );
         }

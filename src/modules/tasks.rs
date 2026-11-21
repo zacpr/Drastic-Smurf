@@ -163,7 +163,7 @@ pub fn render_tasks_module(ui: &mut Ui, state: &mut TasksState) {
                     .fill(Theme::bg_card())
                     .corner_radius(Theme::CARD_ROUNDING)
                     .inner_margin(Theme::CARD_PADDING)
-                    .stroke(egui::Stroke::new(1.0, if is_expanded { Theme::accent() } else { Theme::border() }))
+                    .stroke(egui::Stroke::new(1.0_f32, if is_expanded { Theme::accent() } else { Theme::border() }))
                     .show(ui, |ui| {
                         ui.set_width(ui.available_width());
 

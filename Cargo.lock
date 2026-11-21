@@ -1010,7 +1010,7 @@ checksum = "d8b14ccef22fc6f5a8f4d7d768562a182c04ce9a3b3157b91390b52ddfdf1a76"
 
 [[package]]
 name = "drastic-smurf"
-version = "0.5.19"
+version = "0.5.25"
 dependencies = [
  "anyhow",
  "base64",
@@ -1025,7 +1025,6 @@ dependencies = [
  "image",
  "keyring",
  "libc",
- "poll-promise",
  "reqwest",
  "rfd",
  "serde",
@@ -3191,17 +3190,6 @@ dependencies = [
  "fdeflate",
  "flate2",
  "miniz_oxide",
-]
-
-[[package]]
-name = "poll-promise"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5f6a58fecbf9da8965bcdb20ce4fd29788d1acee68ddbb64f0ba1b81bccdb7df"
-dependencies = [
- "document-features",
- "static_assertions",
- "tokio",
 ]
 
 [[package]]

@@ -136,7 +136,7 @@ pub fn render_wizard_overlay(
         .frame(
             egui::Frame::new()
                 .fill(Theme::bg_card())
-                .stroke(Stroke::new(1.5, Theme::accent()))
+                .stroke(Stroke::new(1.5_f32, Theme::accent()))
                 .corner_radius(Theme::CARD_ROUNDING)
                 .inner_margin(egui::Margin::same(24))
         )
@@ -205,7 +205,7 @@ pub fn render_wizard_overlay(
                     }
 
                     WizardStep::AddCluster => {
-                        *current_tab = Tab::Clusters;
+                        *current_tab = Tab::Dashboard;
                         let existing_clusters = cluster_manager.clusters().len();
 
                         if existing_clusters > 0 {
@@ -367,7 +367,7 @@ pub fn render_wizard_overlay(
                     }
 
                     WizardStep::ClusterStatus => {
-                        *current_tab = Tab::Status;
+                        *current_tab = Tab::Dashboard;
                         ui.vertical_centered(|ui| {
                             ui.label(egui::RichText::new("📊").size(36.0));
                             ui.add_space(8.0);
