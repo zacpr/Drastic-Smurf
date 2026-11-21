@@ -419,6 +419,15 @@ pub struct ClusterConfig {
     pub ssh_user: String,
     #[serde(default = "default_ssh_port")]
     pub ssh_port: u16,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// Target cluster used to query logs and metrics (empty = this cluster).
+    #[serde(default)]
+    pub logs_metrics_cluster: String,
+    #[serde(default = "default_logs_index_pattern")]
+    pub logs_index_pattern: String,
+    #[serde(default = "default_metrics_index_pattern")]
+    pub metrics_index_pattern: String,
 }
 
 fn default_verify_ssl() -> bool {
@@ -427,6 +436,14 @@ fn default_verify_ssl() -> bool {
 
 fn default_ssh_port() -> u16 {
     22
+}
+
+pub fn default_logs_index_pattern() -> String {
+    "logs-elasticsearch.*,logs-kibana.*".to_string()
+}
+
+pub fn default_metrics_index_pattern() -> String {
+    "metrics-elasticsearch.*,metrics-kibana.*".to_string()
 }
 
 impl Default for ClusterConfig {
@@ -448,6 +465,10 @@ impl Default for ClusterConfig {
             ssh_host: String::new(),
             ssh_user: String::new(),
             ssh_port: 22,
+            enabled: true,
+            logs_metrics_cluster: String::new(),
+            logs_index_pattern: default_logs_index_pattern(),
+            metrics_index_pattern: default_metrics_index_pattern(),
         }
     }
 }
@@ -464,6 +485,36 @@ impl ClusterConfig {
             host: host.into(),
             username: username.into(),
             ..Default::default()
+        }
+    }
+
+    /// Cluster name to query for logs and metrics (falls back to this cluster).
+    pub fn effective_telemetry_cluster(&self) -> &str {
+        let trimmed = self.logs_metrics_cluster.trim();
+        if trimmed.is_empty() {
+            &self.name
+        } else {
+            trimmed
+        }
+    }
+
+    /// Logs index pattern for this cluster (falls back to default Elastic + Kibana pattern).
+    pub fn effective_logs_index_pattern(&self) -> &str {
+        let trimmed = self.logs_index_pattern.trim();
+        if trimmed.is_empty() {
+            "logs-elasticsearch.*,logs-kibana.*"
+        } else {
+            trimmed
+        }
+    }
+
+    /// Metrics index pattern for this cluster (falls back to default Elastic + Kibana pattern).
+    pub fn effective_metrics_index_pattern(&self) -> &str {
+        let trimmed = self.metrics_index_pattern.trim();
+        if trimmed.is_empty() {
+            "metrics-elasticsearch.*,metrics-kibana.*"
+        } else {
+            trimmed
         }
     }
 }
@@ -960,6 +1011,10 @@ mod tests {
             ssh_host: "10.0.0.1".to_string(),
             ssh_user: "ssh-user".to_string(),
             ssh_port: 2222,
+            enabled: false,
+            logs_metrics_cluster: "mon-cluster".to_string(),
+            logs_index_pattern: "logs-custom-*".to_string(),
+            metrics_index_pattern: "metrics-custom-*".to_string(),
         });
         config.cluster_filter = "test".to_string();
         config.wizard_completed = true;
@@ -988,7 +1043,48 @@ mod tests {
         assert_eq!(cluster.ssh_host, "10.0.0.1");
         assert_eq!(cluster.ssh_user, "ssh-user");
         assert_eq!(cluster.ssh_port, 2222);
+        assert!(!cluster.enabled);
+        assert_eq!(cluster.logs_metrics_cluster, "mon-cluster");
+        assert_eq!(cluster.logs_index_pattern, "logs-custom-*");
+        assert_eq!(cluster.metrics_index_pattern, "metrics-custom-*");
+        assert_eq!(cluster.effective_telemetry_cluster(), "mon-cluster");
+        assert_eq!(cluster.effective_logs_index_pattern(), "logs-custom-*");
+        assert_eq!(
+            cluster.effective_metrics_index_pattern(),
+            "metrics-custom-*"
+        );
         assert_eq!(deserialized.cluster_filter, "test");
         assert_eq!(deserialized.wizard_completed, true);
+    }
+
+    #[test]
+    fn cluster_config_telemetry_and_enabled_defaults() {
+        let cfg: ClusterConfig = serde_json::from_value(serde_json::json!({
+            "name": "prod-1",
+            "host": "https://es.example.com",
+            "username": "elastic",
+            "snapshot_repo": "",
+            "slm_policy": "",
+            "ssh_host": "",
+            "ssh_user": ""
+        }))
+        .unwrap();
+
+        assert!(cfg.enabled);
+        assert_eq!(cfg.logs_metrics_cluster, "");
+        assert_eq!(cfg.logs_index_pattern, "logs-elasticsearch.*,logs-kibana.*");
+        assert_eq!(
+            cfg.metrics_index_pattern,
+            "metrics-elasticsearch.*,metrics-kibana.*"
+        );
+        assert_eq!(cfg.effective_telemetry_cluster(), "prod-1");
+        assert_eq!(
+            cfg.effective_logs_index_pattern(),
+            "logs-elasticsearch.*,logs-kibana.*"
+        );
+        assert_eq!(
+            cfg.effective_metrics_index_pattern(),
+            "metrics-elasticsearch.*,metrics-kibana.*"
+        );
     }
 }

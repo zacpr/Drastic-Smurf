@@ -342,6 +342,24 @@ impl ClusterManager {
         Ok(())
     }
 
+    /// Flip a cluster's `enabled` flag and persist on the next debounced save.
+    pub fn set_cluster_enabled(&self, name: &str, enabled: bool) -> bool {
+        let mut changed = false;
+        {
+            let mut clusters = self.clusters.lock().unwrap();
+            if let Some(cluster) = clusters.iter_mut().find(|c| c.name == name)
+                && cluster.enabled != enabled
+            {
+                cluster.enabled = enabled;
+                changed = true;
+            }
+        }
+        if changed {
+            self.mark_dirty();
+        }
+        changed
+    }
+
     pub fn get_client(&self, name: &str) -> Option<EsClient> {
         self.clients.lock().unwrap().get(name).cloned()
     }

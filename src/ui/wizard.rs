@@ -205,7 +205,7 @@ pub fn render_wizard_overlay(
                     }
 
                     WizardStep::AddCluster => {
-                        *current_tab = Tab::Clusters;
+                        *current_tab = Tab::Dashboard;
                         let existing_clusters = cluster_manager.clusters().len();
 
                         if existing_clusters > 0 {

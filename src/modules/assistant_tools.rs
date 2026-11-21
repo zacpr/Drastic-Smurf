@@ -16,10 +16,9 @@ pub const MAX_RESULT_CHARS: usize = 6000;
 
 /// Tabs the assistant may open, as (tool argument, display name).
 pub const TABS: &[(&str, &str)] = &[
-    ("clusters", "Clusters"),
+    ("dashboard", "Dashboard"),
     ("snapshot", "Snapshot"),
     ("status", "Status"),
-    ("dashboard", "Dashboard"),
     ("tasks", "Tasks"),
     ("console", "Console"),
     ("god_console", "God-mode Console"),
@@ -271,6 +270,11 @@ pub fn parse_call(call: &ToolCall) -> Result<ToolAction, String> {
         "open_tab" => {
             let tab = arg_str(&args, "tab").ok_or("Missing 'tab'")?.to_lowercase();
             let tab = tab.replace([' ', '-'], "_");
+            let tab = if tab == "clusters" {
+                "dashboard".to_string()
+            } else {
+                tab
+            };
             TABS.iter()
                 .find(|(id, label)| {
                     *id == tab || label.to_lowercase().replace([' ', '-'], "_") == tab
